@@ -1,0 +1,5 @@
+# 보호된 긴급 연락처 관련 파일
+lib/views/emergency_contacts_view.dart linguist-vendored=true
+lib/services/emergency_contact_service.dart linguist-vendored=true
+lib/models/emergency_contact_model.dart linguist-vendored=true
+lib/views/emergency_guide_view.dart linguist-vendored=true 

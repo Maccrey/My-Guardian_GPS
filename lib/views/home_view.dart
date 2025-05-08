@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../services/auth_service.dart';
+import 'emergency_contacts_view.dart';
 import 'emergency_guide_view.dart';
 
 class HomeView extends StatelessWidget {
@@ -12,7 +13,7 @@ class HomeView extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('GPS Search'),
+        // title: const Text('GPS Search'),
         actions: [
           IconButton(
             icon: const Icon(Icons.person),
@@ -113,21 +114,26 @@ class HomeView extends StatelessWidget {
                         // SOS 화면으로 이동
                       },
                     ),
+                    // ********************************************
+                    // ****** 보호된 코드: 절대 수정하지 마세요 ******
+                    // ****** PROTECTED CODE: DO NOT MODIFY ******
                     _buildFeatureCard(
                       '응급사항',
                       Icons.medical_services,
                       Colors.purple.shade100,
                       () {
-                        // 응급사항 화면으로 이동
+                        // 응급 상황 가이드 화면으로 이동
                         Get.to(() => const EmergencyGuideView());
                       },
                     ),
+                    // ********************************************
                     _buildFeatureCard(
                       '긴급 연락처',
                       Icons.contact_phone,
                       Colors.teal.shade100,
                       () {
                         // 긴급 연락처 화면으로 이동
+                        Get.to(() => const EmergencyContactsView());
                       },
                     ),
                   ],

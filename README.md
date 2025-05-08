@@ -3,6 +3,15 @@ GPS Search - 안전한 위치 공유 서비스
 소개
 GPS Search는 학부모와 같은 보호자가 자녀의 위치를 실시간으로 확인할 수 있는 위치 공유 서비스입니다. 사용자 간의 상호 동의 기반으로 작동하여 프라이버시를 존중하면서도 안전을 보장합니다.
 
+⚠️ **중요 경고**
+다음 파일들은 긴급 연락처 및 응급 상황 핵심 기능을 포함하고 있어 수정이 불가능하게 보호되어 있습니다:
+
+- `lib/views/emergency_contacts_view.dart`
+- `lib/services/emergency_contact_service.dart`
+- `lib/models/emergency_contact_model.dart`
+- `lib/views/emergency_guide_view.dart`
+  이 파일들은 앱의 중요한 안전 기능을 담당하므로 어떤 상황에서도 변경하지 마세요.
+
 주요 기능
 위치 공유 시스템
 요청 기반 위치 공유: 메시지 서비스를 통해 위치 공유 요청을 보내고 승인 절차를 거친 후 위치 공유 시작
@@ -23,6 +32,8 @@ SOS 비상 버튼: 긴급 상황 시 SOS 버튼을 눌러 보호자에게 즉시
 
 커스텀 긴급 연락처: 프로필에서 긴급 연락처를 설정 가능
 
+응급사항 가이드: 다양한 응급 상황에 대한 대처 방법 제공
+
 사용자 계정 관리
 편리한 로그인/회원가입: 이메일, 비밀번호 기반 인증
 
@@ -34,49 +45,107 @@ SOS 비상 버튼: 긴급 상황 시 SOS 버튼을 눌러 보호자에게 즉시
 프론트엔드: Flutter, GetX(상태 관리)
 백엔드: Firebase (Firestore, Authentication, Cloud Messaging)
 위치 서비스: Google Maps API, Flutter Geolocator
+로컬 저장소: SharedPreferences
 
 구현 현황
 현재까지 구현된 부분:
-로그인 및 회원가입 시스템 (이메일/비밀번호 인증)
-비밀번호 찾기 기능
-국가 선택 기능 (전세계 국가 데이터 포함)
-보호자/일반 사용자 모드 전환 기능
-GetX를 활용한 상태 관리 시스템
+
+- 로그인 및 회원가입 시스템 (이메일/비밀번호 인증)
+- 비밀번호 찾기 기능
+- 국가 선택 기능 (전세계 국가 데이터 포함)
+- 긴급 연락처 관리 기능 (기본 제공 연락처 및 사용자 정의 연락처)
+- 보호자/일반 사용자 모드 전환 기능
+- GetX를 활용한 상태 관리 시스템
+- 홈 화면 및 기본 UI 구성
 
 추가 구현 예정 기능
-위치 공유 핵심 기능:
-Firebase Firestore 연동 (위치 데이터 저장/조회)
-위치 공유 요청 및 승인 프로세스
-백그라운드 위치 추적 및 알림 서비스
-Google Maps 통합 및 실시간 위치 표시
-SOS 기능 및 긴급 연락처 관리
-귀가 알림 시스템
+
+- 위치 공유 핵심 기능:
+  - Firebase Firestore 연동 (위치 데이터 저장/조회)
+  - 위치 공유 요청 및 승인 프로세스
+  - 백그라운드 위치 추적 및 알림 서비스
+  - Google Maps 통합 및 실시간 위치 표시
+- SOS 기능 구현
+- 응급사항 대처 가이드 상세 내용 구현
+- 귀가 알림 시스템 구현
 
 설치 및 실행 방법
-레포지토리 클론
-Apply to README.md
-Run
-gps_seach
 
-의존성 패키지 설치
-Apply to README.md
-Run
-get
+1. 레포지토리 클론
 
-앱 실행
-Apply to README.md
-Run
-run
+```bash
+git clone <repository-url>
+cd gps_search
+```
+
+2. 의존성 패키지 설치
+
+```bash
+flutter pub get
+```
+
+3. 앱 실행
+
+```bash
+flutter run
+```
+
+개발자 참고사항
+
+- 새 플러그인 추가 후에는 반드시 앱을 완전히 재빌드하세요:
+
+```bash
+flutter clean
+flutter pub get
+flutter run
+```
+
+- iOS와 안드로이드에서 모두 정상 동작하도록 플러그인 관련 이슈를 처리하세요:
+
+  - iOS: iOS 시뮬레이터에서 앱을 완전히 제거하고 다시 설치
+  - 안드로이드: Gradle 캐시 삭제를 위해 다음 명령어 실행
+    ```bash
+    cd android
+    ./gradlew clean
+    cd ..
+    flutter pub get
+    ```
+
+- 홈 화면의 메뉴 항목이 변경되었을 경우, 모든 메뉴가 표시되는지 확인하세요:
+
+  - 위치 공유
+  - 귀가 알림
+  - 메시지
+  - SOS
+  - 응급사항
+  - 긴급 연락처
+
+- 네이티브 플러그인 관련 오류가 발생한 경우(MissingPluginException 등):
+
+  1. `flutter clean` 명령어로 앱을 초기화
+  2. `flutter pub get`으로 의존성 다시 가져오기
+  3. `flutter run`으로 앱을 완전히 재빌드
+  4. 안드로이드 특화 문제 해결은 `android_development_guide.md` 참조
+
+- 안드로이드 빌드 시 minSdkVersion 확인:
+  현재 앱은 최소 SDK 16 이상 요구 (SharedPreferences 등의 플러그인 지원을 위해)
+
+- 플랫폼별 테스트 진행:
+  1. iOS 시뮬레이터에서 테스트
+  2. 안드로이드 에뮬레이터에서 테스트
+  3. 가능하면, 실제 디바이스에서 테스트
 
 권한 요구사항
-위치 정보 접근 권한
-인터넷 접속 권한
-백그라운드 처리 권한
-푸시 알림 권한
-전화 걸기 권한 (SOS 기능용)
+
+- 위치 정보 접근 권한
+- 인터넷 접속 권한
+- 백그라운드 처리 권한
+- 푸시 알림 권한
+- 전화 걸기 권한 (SOS 기능용)
 
 라이선스
 이 프로젝트는 MIT 라이선스 하에 배포됩니다.
+
 개발자 정보
 개발자 연락처: example@example.com
 © 2024 GPS Search. 모든 권리 보유.
