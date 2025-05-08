@@ -5,6 +5,7 @@ import 'services/auth_service.dart';
 import 'views/login_view.dart';
 import 'views/register_view.dart';
 import 'views/forgot_password_view.dart';
+import 'views/home_view.dart';
 
 void main() {
   runApp(const MyApp());
@@ -31,6 +32,7 @@ class MyApp extends StatelessWidget {
         GetPage(name: '/register', page: () => const RegisterView()),
         GetPage(
             name: '/forgot-password', page: () => const ForgotPasswordView()),
+        GetPage(name: '/home', page: () => const HomeView()),
       ],
     );
   }
