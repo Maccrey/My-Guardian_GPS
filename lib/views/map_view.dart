@@ -102,6 +102,10 @@ class MapView extends StatelessWidget {
                 onTap: _onMapTap,
                 compassEnabled: true,
                 zoomControlsEnabled: false, // 커스텀 컨트롤 사용
+                onMapCreated: (GoogleMapController controller) {
+                  // 지도 컨트롤러 설정
+                  locationService.setMapController(controller);
+                },
               );
             }
           }),
@@ -175,7 +179,7 @@ class MapView extends StatelessWidget {
             if (locationService.destinationAddress.value.isNotEmpty &&
                 !locationService.isLoading.value) {
               return Positioned(
-                bottom: 100,
+                bottom: 130,
                 left: 0,
                 right: 0,
                 child: Card(

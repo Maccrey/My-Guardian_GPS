@@ -10,6 +10,14 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../constants/api_keys.dart';
 
+// 검색 결과 항목 클래스
+class SearchResult {
+  final LatLng location;
+  final String address;
+
+  SearchResult({required this.location, required this.address});
+}
+
 /// 위치 관련 서비스 클래스 - 위치 추적 및 경로 안내 기능 제공
 class LocationService extends GetxController {
   // 현재 위치
@@ -17,6 +25,9 @@ class LocationService extends GetxController {
 
   // 목적지 위치
   final Rx<LatLng?> destinationLocation = Rx<LatLng?>(null);
+
+  // 지도 컨트롤러
+  final Rx<GoogleMapController?> mapController = Rx<GoogleMapController?>(null);
 
   // 경로 표시를 위한 폴리라인 좌표 목록
   final RxList<LatLng> polylineCoordinates = <LatLng>[].obs;
@@ -42,6 +53,9 @@ class LocationService extends GetxController {
   // 위치 서비스 로딩 상태
   final RxBool isLoading = false.obs;
 
+  // 검색 결과 목록
+  final RxList<SearchResult> searchResults = <SearchResult>[].obs;
+
   // 경로 거리 (미터)
   final RxDouble routeDistance = 0.0.obs;
 
@@ -62,6 +76,12 @@ class LocationService extends GetxController {
 
   // 폴리라인 ID 생성
   String _getPolylineId() => 'polyline_${_polylineIdCounter++}';
+
+  // 마커 ID 카운터
+  int _markerIdCounter = 0;
+
+  // 마커 ID 생성
+  String _getMarkerId() => 'search_result_${_markerIdCounter++}';
 
   @override
   void onInit() {
@@ -87,12 +107,21 @@ class LocationService extends GetxController {
     _checkLocationPermission();
   }
 
-  @override
-  void onClose() {
-    // 자원 해제
-    _positionStream?.cancel();
-    _locationTimer?.cancel();
-    super.onClose();
+  // 지도 컨트롤러 설정
+  void setMapController(GoogleMapController controller) {
+    mapController.value = controller;
+    debugPrint('✅ 구글 맵 컨트롤러 설정 완료');
+  }
+
+  // 검색 위치로 지도 이동
+  void moveToLocation(LatLng location, {double zoom = 15.0}) {
+    if (mapController.value != null) {
+      mapController.value!.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(target: location, zoom: zoom),
+        ),
+      );
+    }
   }
 
   // 위치 권한 확인 및 요청
@@ -155,6 +184,9 @@ class LocationService extends GetxController {
 
       // 현재 위치 마커 추가
       _updateCurrentLocationMarker();
+
+      // 현재 위치로 지도 이동
+      moveToLocation(location);
 
       isLoading.value = false;
     } catch (e) {
@@ -244,6 +276,7 @@ class LocationService extends GetxController {
     try {
       isLoading.value = true;
       errorMsg.value = '';
+      searchResults.clear();
 
       List<Location> locations = await locationFromAddress(address);
 
@@ -251,12 +284,60 @@ class LocationService extends GetxController {
           .map((location) => LatLng(location.latitude, location.longitude))
           .toList();
 
+      // 검색 결과 저장
+      if (results.isNotEmpty) {
+        for (int i = 0; i < results.length; i++) {
+          searchResults.add(SearchResult(
+            location: results[i],
+            address: i == 0 ? address : '$address (대안 ${i + 1})',
+          ));
+        }
+
+        // 검색 결과 마커 생성
+        _addSearchResultMarkers();
+
+        // 첫 번째 검색 결과로 지도 이동
+        if (results.isNotEmpty) {
+          moveToLocation(results.first);
+        }
+      }
+
       isLoading.value = false;
       return results;
     } catch (e) {
       isLoading.value = false;
       errorMsg.value = '주소 검색 중 오류가 발생했습니다: $e';
       return [];
+    }
+  }
+
+  // 검색 결과 마커 추가
+  void _addSearchResultMarkers() {
+    // 기존 검색 결과 마커 제거
+    markers.removeWhere(
+        (marker) => marker.markerId.value.startsWith('search_result_'));
+
+    // 새 검색 결과 마커 추가
+    for (int i = 0; i < searchResults.length; i++) {
+      final SearchResult result = searchResults[i];
+      final markerId = _getMarkerId();
+
+      markers.add(
+        Marker(
+          markerId: MarkerId(markerId),
+          position: result.location,
+          infoWindow: InfoWindow(
+            title: '검색 결과 ${i + 1}',
+            snippet: result.address,
+          ),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+              i == 0 ? BitmapDescriptor.hueViolet : BitmapDescriptor.hueOrange),
+          onTap: () {
+            // 마커 탭 시 해당 위치로 경로 설정
+            setDestination(result.location, result.address);
+          },
+        ),
+      );
     }
   }
 
@@ -298,13 +379,17 @@ class LocationService extends GetxController {
           'origin=${origin.latitude},${origin.longitude}'
           '&destination=${destination.latitude},${destination.longitude}'
           '&mode=walking' // 도보 경로
+          '&alternatives=true' // 대체 경로도 요청
           '&key=$_apiKey';
+
+      debugPrint('📍 경로 요청: $url');
 
       // API 요청
       var response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
         var data = json.decode(response.body);
+        debugPrint('📍 경로 응답: ${data['status']}');
 
         if (data['status'] == 'OK') {
           // 경로 정보 가져오기
@@ -339,17 +424,24 @@ class LocationService extends GetxController {
                 (data['routes'][0]['legs'][0]['duration']['value'] / 60)
                     .round();
           }
+        } else if (data['status'] == 'ZERO_RESULTS') {
+          errorMsg.value = '해당 위치로 가는 경로를 찾을 수 없습니다. 다른 위치를 선택해 주세요.';
+        } else if (data['status'] == 'NOT_FOUND') {
+          errorMsg.value = '출발지 또는 목적지의 위치를 찾을 수 없습니다.';
+        } else if (data['status'] == 'OVER_QUERY_LIMIT') {
+          errorMsg.value = 'API 할당량 초과로 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.';
         } else {
           errorMsg.value = '경로를 찾을 수 없습니다: ${data['status']}';
         }
       } else {
-        errorMsg.value = '서버 응답 오류: ${response.statusCode}';
+        errorMsg.value = '서버 응답 오류: ${response.statusCode} - 나중에 다시 시도해 주세요.';
       }
 
       isLoading.value = false;
     } catch (e) {
       isLoading.value = false;
       errorMsg.value = '경로 가져오기 중 오류가 발생했습니다: $e';
+      debugPrint('❌ 경로 검색 오류: $e');
     }
   }
 
@@ -372,5 +464,14 @@ class LocationService extends GetxController {
 
     // 현재 위치만 다시 가져오기
     getCurrentLocation();
+  }
+
+  @override
+  void onClose() {
+    // 자원 해제
+    _positionStream?.cancel();
+    _locationTimer?.cancel();
+    mapController.value?.dispose();
+    super.onClose();
   }
 }
