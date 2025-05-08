@@ -88,7 +88,6 @@ class HomeView extends StatelessWidget {
                       Colors.blue.shade100,
                       () {
                         // 위치 공유 화면으로 이동
-                        Get.toNamed('/map');
                       },
                     ),
                     _buildFeatureCard(
