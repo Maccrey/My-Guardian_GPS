@@ -70,6 +70,9 @@ class EmergencyGuideView extends StatelessWidget {
     );
   }
 
+  // ---------------------------------------------------------
+  // ****** 보호된 코드: 헤더 렌더링 - 수정하지 마세요 ******
+  // ---------------------------------------------------------
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.all(16.0),
@@ -103,6 +106,9 @@ class EmergencyGuideView extends StatelessWidget {
     );
   }
 
+  // ---------------------------------------------------------
+  // ****** 보호된 코드: 응급 카드 렌더링 - 수정하지 마세요 ******
+  // ---------------------------------------------------------
   Widget _buildEmergencyCard({
     required String title,
     required String description,
@@ -155,6 +161,9 @@ class EmergencyGuideView extends StatelessWidget {
     );
   }
 
+  // ---------------------------------------------------------
+  // ****** 보호된 코드: 응급 가이드 상세 정보 - 수정하지 마세요 ******
+  // ---------------------------------------------------------
   void _showGuideDetails(BuildContext context, String guideType) {
     String title = '';
     List<Map<String, String>> steps = [];

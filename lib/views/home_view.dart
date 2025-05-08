@@ -13,7 +13,7 @@ class HomeView extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('GPS Search'),
+        // title: const Text('GPS Search'),
         actions: [
           IconButton(
             icon: const Icon(Icons.person),

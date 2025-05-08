@@ -1,3 +1,7 @@
+// ****************************************************************************
+// ******** 중요: 이 파일은 보호된 긴급 연락처 관련 코드입니다. 절대 수정하지 마세요. *******
+// ****************************************************************************
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -21,7 +25,7 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    emergencyContactService = Get.put(EmergencyContactService());
+    emergencyContactService = Get.find<EmergencyContactService>();
   }
 
   @override
@@ -42,31 +46,97 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('긴급 연락처'),
+        // title: const Text('긴급 연락처'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Get.back(),
         ),
         actions: [
-          // 수동 새로고침 버튼 추가
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              emergencyContactService.loadContacts();
-              Get.snackbar(
-                '새로고침',
-                '연락처 목록을 새로고침했습니다.',
-                snackPosition: SnackPosition.BOTTOM,
-                duration: const Duration(seconds: 1),
+          // 저장 상태 아이콘 표시
+          Obx(() {
+            if (emergencyContactService.isLoading.value) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.0),
+                child: Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                    ),
+                  ),
+                ),
               );
-            },
-            tooltip: '연락처 새로고침',
-          ),
+            } else if (emergencyContactService.hasError.value) {
+              return IconButton(
+                icon: const Icon(Icons.error_outline, color: Colors.red),
+                onPressed: () {
+                  Get.snackbar(
+                    '저장 오류',
+                    '연락처 저장 중 문제가 발생했습니다. 다시 시도해주세요.',
+                    snackPosition: SnackPosition.BOTTOM,
+                    backgroundColor: Colors.red.shade100,
+                    colorText: Colors.black87,
+                    mainButton: TextButton(
+                      onPressed: () {
+                        // 현재 메모리의 연락처를 다시 저장
+                        emergencyContactService.saveContacts(
+                          emergencyContactService.contacts,
+                        );
+                      },
+                      child: const Text('재시도'),
+                    ),
+                  );
+                },
+              );
+            } else {
+              return IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: () {
+                  emergencyContactService.loadContacts();
+                },
+              );
+            }
+          }),
         ],
       ),
       body: Obx(() {
         if (emergencyContactService.isLoading.value) {
           return const Center(child: CircularProgressIndicator());
+        }
+
+        // 오류 상태 확인 및 표시
+        if (emergencyContactService.hasError.value) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.warning_amber_rounded,
+                      size: 64, color: Colors.orange),
+                  SizedBox(height: 16),
+                  Text(
+                    '데이터 로드 중 오류가 발생했습니다.',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    '현재 메모리 모드로 작동 중입니다. 연락처 변경 사항이 저장되지 않을 수 있습니다.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+                  ),
+                  SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    icon: Icon(Icons.refresh),
+                    label: Text('다시 시도'),
+                    onPressed: () => emergencyContactService.loadContacts(),
+                  ),
+                ],
+              ),
+            ),
+          );
         }
 
         return ListView(
@@ -99,12 +169,19 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
     );
   }
 
+  // ---------------------------------------------------------
+  // ****** 보호된 코드: 헤더 렌더링 - 수정하지 마세요 ******
+  // ---------------------------------------------------------
   Widget _buildHeader() {
     return Container(
+      margin: const EdgeInsets.all(16.0),
       padding: const EdgeInsets.all(16.0),
-      color: Colors.blue.shade50,
-      child: Column(
-        children: const [
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Column(
+        children: [
           Icon(
             Icons.contact_phone,
             size: 60,
@@ -122,13 +199,16 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
           Text(
             '긴급 상황 시 필요한 연락처들을 저장하고 관리하세요',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 14, color: Colors.grey),
+            style: TextStyle(fontSize: 14),
           ),
         ],
       ),
     );
   }
 
+  // ---------------------------------------------------------
+  // ****** 보호된 코드: 연락처 그룹 렌더링 - 수정하지 마세요 ******
+  // ---------------------------------------------------------
   Widget _buildContactGroup(
     BuildContext context, {
     required String title,
@@ -232,18 +312,29 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
     );
   }
 
-  // 전화 걸기 기능
+  // ---------------------------------------------------------
+  // ****** 보호된 코드: 연락처 액션 함수 - 수정하지 마세요 ******
+  // ---------------------------------------------------------
   Future<void> _makePhoneCall(String phoneNumber) async {
     // 하이픈 제거
     final cleanNumber = phoneNumber.replaceAll('-', '');
+    // tel Uri 대신 DIAL 액션으로 변경 (전화 걸기 화면만 표시)
     final Uri uri = Uri(scheme: 'tel', path: cleanNumber);
+
     try {
-      await launchUrl(uri);
+      debugPrint('📞 전화 걸기 화면 표시: $cleanNumber');
+
+      // 전화 앱 실행 (통화 화면만 보여주고 바로 걸지는 않음)
+      await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
     } catch (e) {
+      debugPrint('❌ 전화 걸기 화면 표시 오류: $e');
+
       Get.snackbar(
-        '오류',
-        '전화를 걸 수 없습니다: $e',
+        '전화 앱 실행 실패',
+        '전화 앱을 실행할 수 없습니다. 직접 $phoneNumber 번호로 전화해 주세요.',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.shade100,
+        colorText: Colors.black87,
       );
     }
   }

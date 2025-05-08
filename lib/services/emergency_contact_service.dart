@@ -1,3 +1,7 @@
+// ****************************************************************************
+// ******** 중요: 이 파일은 보호된 긴급 연락처 서비스 코드입니다. 절대 수정하지 마세요. *******
+// ****************************************************************************
+
 import 'dart:convert';
 import 'dart:math';
 import 'package:get/get.dart';
@@ -6,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/emergency_contact_model.dart';
+import '../main.dart'; // prefsInstance 접근용
 
 class EmergencyContactService extends GetxController
     with WidgetsBindingObserver {
@@ -14,10 +19,71 @@ class EmergencyContactService extends GetxController
   final Rx<bool> isLoading = false.obs;
   final Rx<bool> hasError = false.obs; // 오류 발생 여부 추적
 
+  // 메모리 모드 동작 여부 플래그
+  final bool useMemoryOnly;
+  // 외부에서 주입된 SharedPreferences 인스턴스
+  final SharedPreferences? prefs;
+
+  // 생성자에서 메모리 모드 옵션과 SharedPreferences 인스턴스를 받음
+  EmergencyContactService({
+    this.useMemoryOnly = false,
+    this.prefs,
+  });
+
+  // SharedPreferences 안전 접근
+  Future<SharedPreferences?> _getPrefs() async {
+    // 메모리 모드라면 null을 반환하여 저장소를 사용하지 않음
+    if (useMemoryOnly) {
+      debugPrint('🔍 메모리 모드로 작동 중: 저장소에 접근하지 않음');
+      return null;
+    }
+
+    try {
+      // 주입된 인스턴스가 있으면 사용
+      if (prefs != null) {
+        debugPrint('✅ 주입된 SharedPreferences 인스턴스 사용');
+        return prefs;
+      }
+
+      // 전역 인스턴스가 있으면 사용
+      if (prefsInstance != null && prefsInstance!.getKeys().isNotEmpty) {
+        debugPrint('✅ 전역 SharedPreferences 인스턴스 사용');
+        return prefsInstance;
+      }
+    } catch (e) {
+      debugPrint('전역 SharedPreferences 접근 실패: $e');
+    }
+
+    // 전역 인스턴스가 없거나 접근 실패 시 새로 생성
+    try {
+      debugPrint('🔄 새 SharedPreferences 인스턴스 생성 시도');
+      return await SharedPreferences.getInstance();
+    } catch (e) {
+      debugPrint('❌ SharedPreferences 인스턴스 생성 실패: $e');
+      return null;
+    }
+  }
+
   @override
   void onInit() {
     super.onInit();
     WidgetsBinding.instance.addObserver(this); // 라이프사이클 관찰 시작
+
+    if (useMemoryOnly) {
+      debugPrint('⚠️ 메모리 모드로 작동 중입니다. 앱을 종료하면 데이터가 사라집니다.');
+      // 메모리 모드 알림 표시
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Get.snackbar(
+          '메모리 모드',
+          'SharedPreferences 문제로 메모리 모드로 작동 중입니다. 앱을 종료하면 변경사항이 사라집니다.',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: Colors.yellow.shade100,
+          colorText: Colors.black87,
+          duration: const Duration(seconds: 5),
+        );
+      });
+    }
+
     _initDefaultContacts();
     loadContacts();
     _verifyStorageState(); // 초기 상태 확인
@@ -46,8 +112,8 @@ class EmergencyContactService extends GetxController
   // 저장소 상태 확인
   Future<void> _verifyStorageState() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final storedData = prefs.getString(_storageKey);
+      final prefs = await _getPrefs();
+      final storedData = prefs?.getString(_storageKey);
 
       if (storedData == null) {
         debugPrint('❌ 저장소 확인: SharedPreferences에 데이터가 없음');
@@ -110,7 +176,12 @@ class EmergencyContactService extends GetxController
     ];
 
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _getPrefs();
+      if (prefs == null) {
+        debugPrint('SharedPreferences 인스턴스를 가져올 수 없어 메모리에만 기본 연락처 저장');
+        contacts.value = defaultContacts;
+        return;
+      }
 
       // SharedPreferences 경로 출력 (디버깅용)
       try {
@@ -124,7 +195,11 @@ class EmergencyContactService extends GetxController
       // 이미 저장된 연락처가 있는지 확인
       if (storedContacts == null) {
         debugPrint('⚠️ 저장된 연락처가 없어 기본 연락처를 저장합니다.');
-        await saveContacts(defaultContacts, showMessage: false);
+        final success = await saveContacts(defaultContacts, showMessage: false);
+        if (!success) {
+          // 저장 실패 시 메모리에라도 저장
+          contacts.value = defaultContacts;
+        }
       } else {
         debugPrint('✅ 기존 연락처 데이터 발견: ${storedContacts.length} 바이트');
 
@@ -153,11 +228,20 @@ class EmergencyContactService extends GetxController
               ...customContacts
             ];
 
-            await saveContacts(mergedContacts, showMessage: false);
+            final success =
+                await saveContacts(mergedContacts, showMessage: false);
+            if (!success) {
+              // 저장 실패 시 메모리에라도 업데이트
+              contacts.value = mergedContacts;
+            }
           }
         } catch (e) {
           debugPrint('⚠️ 연락처 데이터 파싱 중 오류: $e');
-          await saveContacts(defaultContacts, showMessage: false);
+          final success =
+              await saveContacts(defaultContacts, showMessage: false);
+          if (!success) {
+            contacts.value = defaultContacts;
+          }
         }
       }
     } catch (e) {
@@ -172,7 +256,11 @@ class EmergencyContactService extends GetxController
     isLoading.value = true;
     hasError.value = false;
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _getPrefs();
+      if (prefs == null) {
+        throw Exception('SharedPreferences 인스턴스를 얻을 수 없음');
+      }
+
       await _checkSharedPreferences(prefs); // SharedPreferences 상태 확인
 
       final storedContacts = prefs.getString(_storageKey);
@@ -304,6 +392,26 @@ class EmergencyContactService extends GetxController
     int retryCount = 0;
     const maxRetries = 3;
 
+    // 메모리 모드라면 저장 없이 메모리 업데이트만 수행
+    if (useMemoryOnly) {
+      contacts.value = contactsList;
+      isLoading.value = false;
+
+      if (showMessage) {
+        Get.snackbar(
+          '메모리 모드',
+          '연락처가 메모리에만 저장되었습니다. 앱을 종료하면 변경사항이 사라집니다.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.yellow.shade100,
+          colorText: Colors.black87,
+          duration: const Duration(seconds: 3),
+        );
+      }
+
+      debugPrint('🔍 메모리 모드: 연락처 ${contactsList.length}개가 메모리에만 저장됨');
+      return false; // 실제 저장은 실패했지만 UI는 업데이트
+    }
+
     // 데이터 직렬화는 한 번만 수행
     final encodedList =
         jsonEncode(contactsList.map((contact) => contact.toJson()).toList());
@@ -312,22 +420,39 @@ class EmergencyContactService extends GetxController
     // 저장 시도 함수
     Future<bool> attemptSave() async {
       try {
-        final prefs = await SharedPreferences.getInstance();
-        final result = await prefs.setString(_storageKey, encodedList);
-
-        // 저장 후 즉시 검증
-        final verifyData = prefs.getString(_storageKey);
-        final verified = verifyData != null && verifyData.isNotEmpty;
-
-        if (!result || !verified) {
-          debugPrint('❌ 저장 실패 또는 검증 실패 (시도 ${retryCount + 1}/$maxRetries)');
+        final prefs = await _getPrefs();
+        if (prefs == null) {
+          debugPrint('❌ SharedPreferences 인스턴스를 얻을 수 없음');
           return false;
         }
 
-        debugPrint('✅ 저장 성공 (시도 ${retryCount + 1}/$maxRetries)');
-        return true;
+        // 저장 시도 전 상태 기록
+        debugPrint('📝 저장 시도 전 상태: 키 개수=${prefs.getKeys().length}');
+
+        try {
+          final result = await prefs.setString(_storageKey, encodedList);
+
+          // 저장 후 즉시 검증
+          final verifyData = prefs.getString(_storageKey);
+          final verified = verifyData != null && verifyData.isNotEmpty;
+
+          if (!result) {
+            debugPrint('❌ 저장 명령 실패 (시도 ${retryCount + 1}/$maxRetries)');
+            return false;
+          } else if (!verified) {
+            debugPrint('❌ 저장 후 데이터 검증 실패 (시도 ${retryCount + 1}/$maxRetries)');
+            return false;
+          }
+
+          debugPrint(
+              '✅ 저장 성공 (시도 ${retryCount + 1}/$maxRetries) - 데이터 크기: ${verifyData?.length ?? 0} 바이트');
+          return true;
+        } catch (e) {
+          debugPrint('❌ setString 작업 중 오류: $e');
+          return false;
+        }
       } catch (e) {
-        debugPrint('❌ 저장 중 오류 발생: $e (시도 ${retryCount + 1}/$maxRetries)');
+        debugPrint('❌ 저장 전 작업 중 오류 발생: $e (시도 ${retryCount + 1}/$maxRetries)');
         return false;
       }
     }
@@ -335,6 +460,7 @@ class EmergencyContactService extends GetxController
     // 최대 3번까지 저장 시도
     while (retryCount < maxRetries && !success) {
       success = await attemptSave();
+
       if (!success) {
         retryCount++;
         if (retryCount < maxRetries) {
@@ -400,23 +526,37 @@ class EmergencyContactService extends GetxController
 
   // 연락처 삭제
   Future<bool> deleteContact(String id) async {
-    // 기본 연락처는 삭제할 수 없음
-    final contactToDelete = contacts.firstWhere((c) => c.id == id);
-    if (contactToDelete.isDefault) {
+    try {
+      // 기본 연락처는 삭제할 수 없음
+      final contactToDelete = contacts.firstWhere((c) => c.id == id);
+      if (contactToDelete.isDefault) {
+        hasError.value = true;
+        Get.snackbar(
+          '삭제 오류',
+          '기본 연락처는 삭제할 수 없습니다.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.shade100,
+          colorText: Colors.black87,
+        );
+        return false;
+      }
+
+      final newList = contacts.where((contact) => contact.id != id).toList();
+      bool result = await saveContacts(newList);
+      return result;
+    } catch (e) {
+      // 연락처를 찾지 못한 경우
+      debugPrint('❌ 연락처 삭제 오류: $e');
       hasError.value = true;
       Get.snackbar(
         '삭제 오류',
-        '기본 연락처는 삭제할 수 없습니다.',
+        '연락처를 찾을 수 없습니다.',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red.shade100,
         colorText: Colors.black87,
       );
       return false;
     }
-
-    final newList = contacts.where((contact) => contact.id != id).toList();
-    bool result = await saveContacts(newList);
-    return result;
   }
 
   // 기본 연락처만 가져오기

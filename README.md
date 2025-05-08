@@ -3,6 +3,15 @@ GPS Search - 안전한 위치 공유 서비스
 소개
 GPS Search는 학부모와 같은 보호자가 자녀의 위치를 실시간으로 확인할 수 있는 위치 공유 서비스입니다. 사용자 간의 상호 동의 기반으로 작동하여 프라이버시를 존중하면서도 안전을 보장합니다.
 
+⚠️ **중요 경고**
+다음 파일들은 긴급 연락처 및 응급 상황 핵심 기능을 포함하고 있어 수정이 불가능하게 보호되어 있습니다:
+
+- `lib/views/emergency_contacts_view.dart`
+- `lib/services/emergency_contact_service.dart`
+- `lib/models/emergency_contact_model.dart`
+- `lib/views/emergency_guide_view.dart`
+  이 파일들은 앱의 중요한 안전 기능을 담당하므로 어떤 상황에서도 변경하지 마세요.
+
 주요 기능
 위치 공유 시스템
 요청 기반 위치 공유: 메시지 서비스를 통해 위치 공유 요청을 보내고 승인 절차를 거친 후 위치 공유 시작
