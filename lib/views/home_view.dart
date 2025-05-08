@@ -112,6 +112,22 @@ class HomeView extends StatelessWidget {
                         // SOS 화면으로 이동
                       },
                     ),
+                    _buildFeatureCard(
+                      '응급사항',
+                      Icons.medical_services,
+                      Colors.purple.shade100,
+                      () {
+                        // 응급대처 화면으로 이동
+                      },
+                    ),
+                    _buildFeatureCard(
+                      '긴급 연락처',
+                      Icons.contact_phone,
+                      Colors.teal.shade100,
+                      () {
+                        // 긴급 연락처 화면으로 이동
+                      },
+                    ),
                   ],
                 ),
               ),
