@@ -445,7 +445,7 @@ class EmergencyContactService extends GetxController
           }
 
           debugPrint(
-              '✅ 저장 성공 (시도 ${retryCount + 1}/$maxRetries) - 데이터 크기: ${verifyData?.length ?? 0} 바이트');
+              '✅ 저장 성공 (시도 ${retryCount + 1}/$maxRetries) - 데이터 크기: ${verifyData.length} 바이트');
           return true;
         } catch (e) {
           debugPrint('❌ setString 작업 중 오류: $e');

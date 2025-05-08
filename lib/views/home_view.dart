@@ -88,6 +88,7 @@ class HomeView extends StatelessWidget {
                       Colors.blue.shade100,
                       () {
                         // 위치 공유 화면으로 이동
+                        Get.toNamed('/map');
                       },
                     ),
                     _buildFeatureCard(
@@ -165,7 +166,21 @@ class HomeView extends StatelessWidget {
           ),
         ],
         onTap: (index) {
-          // 탭에 따른 화면 이동 로직 구현 (추후 개발)
+          // 탭에 따른 화면 이동 로직 구현
+          switch (index) {
+            case 0: // 홈
+              // 이미 홈 화면에 있으므로 아무 작업 안함
+              break;
+            case 1: // 지도
+              Get.toNamed('/map');
+              break;
+            case 2: // 메시지
+              // 아직 구현되지 않음
+              break;
+            case 3: // 설정
+              // 아직 구현되지 않음
+              break;
+          }
         },
       ),
     );

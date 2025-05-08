@@ -51,5 +51,15 @@
 		<string>tel</string>
 		<string>sms</string>
 	</array>
+	<!-- 위치 권한 설명 -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>지도 표시, 현재 위치 추적 및 경로 안내를 위해 위치 정보가 필요합니다.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>백그라운드에서 위치 추적 및 경로 탐색을 위해 항상 위치 정보가 필요합니다.</string>
+	<!-- Google Maps API 키 -->
+	<key>io.flutter.embedded_views_preview</key>
+	<true/>
+	<key>GoogleMapsApiKey</key>
+	<string>$(GOOGLE_MAPS_API_KEY)</string>
 </dict>
 </plist>
