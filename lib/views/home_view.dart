@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../services/auth_service.dart';
+import 'emergency_guide_view.dart';
 
 class HomeView extends StatelessWidget {
   const HomeView({Key? key}) : super(key: key);
@@ -117,7 +118,8 @@ class HomeView extends StatelessWidget {
                       Icons.medical_services,
                       Colors.purple.shade100,
                       () {
-                        // 응급대처 화면으로 이동
+                        // 응급사항 화면으로 이동
+                        Get.to(() => const EmergencyGuideView());
                       },
                     ),
                     _buildFeatureCard(

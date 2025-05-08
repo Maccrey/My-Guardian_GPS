@@ -6,6 +6,7 @@ import 'views/login_view.dart';
 import 'views/register_view.dart';
 import 'views/forgot_password_view.dart';
 import 'views/home_view.dart';
+import 'views/emergency_guide_view.dart';
 
 void main() {
   runApp(const MyApp());
@@ -33,6 +34,8 @@ class MyApp extends StatelessWidget {
         GetPage(
             name: '/forgot-password', page: () => const ForgotPasswordView()),
         GetPage(name: '/home', page: () => const HomeView()),
+        GetPage(
+            name: '/emergency-guide', page: () => const EmergencyGuideView()),
       ],
     );
   }
