@@ -251,6 +251,7 @@ class _SettingsViewState extends State<SettingsView> {
               trailing: const Icon(Icons.arrow_forward_ios, size: 16),
               onTap: () {
                 // 앱 정보 페이지로 이동하는 로직
+                Get.toNamed('/app-info');
               },
             ),
             ListTile(
