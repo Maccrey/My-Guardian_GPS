@@ -121,6 +121,14 @@ class MapView extends StatelessWidget {
                 onTap: _onMapTap,
                 compassEnabled: true,
                 zoomControlsEnabled: false, // 커스텀 컨트롤 사용
+                minMaxZoomPreference:
+                    const MinMaxZoomPreference(9, 19), // 줌 레벨 제한 완화
+                onCameraMove: (CameraPosition position) {
+                  // 카메라 이동 시 호출
+                },
+                onCameraIdle: () {
+                  // 카메라 이동 완료 시 호출
+                },
                 onMapCreated: (GoogleMapController controller) {
                   // 지도 컨트롤러 설정
                   locationService.setMapController(controller);
@@ -525,17 +533,58 @@ class MapView extends StatelessWidget {
 
     FocusManager.instance.primaryFocus?.unfocus();
 
-    List<LatLng> results = await locationService.searchPlacesByAddress(address);
+    try {
+      Get.snackbar(
+        '검색 중',
+        '$address 검색 중입니다...',
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 1),
+      );
 
-    if (results.isNotEmpty) {
-      locationService.setDestination(results.first, address);
-      isSearchMode.value = false;
+      List<LatLng> results =
+          await locationService.searchPlacesByAddress(address);
+
+      if (results.isNotEmpty) {
+        locationService.setDestination(results.first, address);
+        isSearchMode.value = false;
+        debugPrint('✅ 검색 결과: ${results.first}, 주소: $address');
+      } else {
+        Get.snackbar(
+          '검색 실패',
+          '검색 결과가 없습니다. 다른 주소를 시도해보세요.',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      }
+    } catch (e) {
+      Get.snackbar(
+        '검색 오류',
+        '검색 중 오류가 발생했습니다: $e',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      debugPrint('❌ 검색 오류: $e');
     }
   }
 
   // 지도 탭했을 때 해당 위치 목적지로 설정
   void _onMapTap(LatLng position) async {
-    // 좌표로부터 주소 가져오기 기능 추가 가능
-    locationService.setDestination(position, '선택한 위치');
+    try {
+      // 좌표로부터 주소 가져오기 기능 추가
+      Get.snackbar(
+        '위치 설정 중',
+        '선택한 위치로 설정 중입니다...',
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 1),
+      );
+
+      locationService.setDestination(position, '선택한 위치');
+      debugPrint('✅ 지도 탭 위치: $position');
+    } catch (e) {
+      Get.snackbar(
+        '위치 설정 오류',
+        '위치 설정 중 오류가 발생했습니다',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      debugPrint('❌ 지도 탭 오류: $e');
+    }
   }
 }

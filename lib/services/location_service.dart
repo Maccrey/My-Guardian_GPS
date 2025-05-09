@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
+import 'dart:math' show min, max, cos, pi;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
@@ -84,6 +84,9 @@ class LocationService extends GetxController {
   // 마커 ID 생성
   String _getMarkerId() => 'search_result_${_markerIdCounter++}';
 
+  // 지도 경계 제한 설정
+  LatLngBounds? _mapBounds;
+
   @override
   void onInit() {
     super.onInit();
@@ -111,18 +114,63 @@ class LocationService extends GetxController {
   // 지도 컨트롤러 설정
   void setMapController(GoogleMapController controller) {
     mapController.value = controller;
+
+    // 카메라 이동 완료 리스너 추가
+    if (currentLocation.value != null) {
+      // 현재 위치를 중심으로 지도 경계 설정 (약 5km 반경)
+      _setMapBounds(currentLocation.value!);
+    }
+
     debugPrint('✅ 구글 맵 컨트롤러 설정 완료');
   }
 
-  // 검색 위치로 지도 이동
+  // 지도 경계 설정
+  void _setMapBounds(LatLng center) {
+    // 위도 1도 = 약 111km, 경도 1도 = 약 111km * cos(위도)
+    // 약 20km 반경의 경계 설정 (더 넓게 조정)
+    final double latPadding = 0.18; // 약 20km
+    final double lngPadding =
+        0.18 / cos(center.latitude * pi / 180); // 위도에 따른 경도 보정
+
+    _mapBounds = LatLngBounds(
+      southwest:
+          LatLng(center.latitude - latPadding, center.longitude - lngPadding),
+      northeast:
+          LatLng(center.latitude + latPadding, center.longitude + lngPadding),
+    );
+
+    debugPrint('✅ 지도 경계 설정 완료: $_mapBounds');
+  }
+
+  // 검색 위치로 지도 이동 - 경계 제한 추가
   void moveToLocation(LatLng location, {double zoom = 15.0}) {
     if (mapController.value != null) {
+      // 경계 내부로 제한된 위치 계산
+      LatLng boundedLocation = _constrainToMapBounds(location);
+
       mapController.value!.animateCamera(
         CameraUpdate.newCameraPosition(
-          CameraPosition(target: location, zoom: zoom),
+          CameraPosition(target: boundedLocation, zoom: zoom),
         ),
       );
     }
+  }
+
+  // 위치를 지도 경계 내부로 제한
+  LatLng _constrainToMapBounds(LatLng location) {
+    if (_mapBounds == null) return location;
+
+    // 경계를 벗어나면 경계 내부로 조정
+    double lat = location.latitude;
+    double lng = location.longitude;
+
+    lat = max(_mapBounds!.southwest.latitude, lat);
+    lat = min(_mapBounds!.northeast.latitude, lat);
+
+    lng = max(_mapBounds!.southwest.longitude, lng);
+    lng = min(_mapBounds!.northeast.longitude, lng);
+
+    return LatLng(lat, lng);
   }
 
   // 위치 권한 확인 및 요청
@@ -344,6 +392,14 @@ class LocationService extends GetxController {
 
   // 목적지 설정
   void setDestination(LatLng destination, String address) {
+    // 경계 제한 일시적 비활성화 또는 확장
+    if (_mapBounds != null) {
+      // 목적지가 현재 경계 밖이면 경계를 확장
+      if (!_isLocationWithinBounds(destination)) {
+        _expandBoundsToIncludeLocation(destination);
+      }
+    }
+
     destinationLocation.value = destination;
     destinationAddress.value = address;
 
@@ -361,7 +417,51 @@ class LocationService extends GetxController {
     // 경로 요청
     if (currentLocation.value != null) {
       getDirections(currentLocation.value!, destination);
+    } else {
+      // 현재 위치가 없는 경우 먼저 가져오기
+      getCurrentLocation().then((_) {
+        if (currentLocation.value != null) {
+          getDirections(currentLocation.value!, destination);
+        }
+      });
     }
+
+    // 도착지로 지도 이동
+    moveToLocation(destination);
+
+    debugPrint('✅ 목적지 설정: $address, 좌표: $destination');
+  }
+
+  // 위치가 경계 내에 있는지 확인
+  bool _isLocationWithinBounds(LatLng location) {
+    if (_mapBounds == null) return true;
+
+    return location.latitude >= _mapBounds!.southwest.latitude &&
+        location.latitude <= _mapBounds!.northeast.latitude &&
+        location.longitude >= _mapBounds!.southwest.longitude &&
+        location.longitude <= _mapBounds!.northeast.longitude;
+  }
+
+  // 경계를 확장하여 위치를 포함
+  void _expandBoundsToIncludeLocation(LatLng location) {
+    if (_mapBounds == null) return;
+
+    // 현재 경계와 새 위치를 모두 포함하는 새 경계 계산
+    double swLat =
+        min(_mapBounds!.southwest.latitude, location.latitude - 0.05);
+    double swLng =
+        min(_mapBounds!.southwest.longitude, location.longitude - 0.05);
+    double neLat =
+        max(_mapBounds!.northeast.latitude, location.latitude + 0.05);
+    double neLng =
+        max(_mapBounds!.northeast.longitude, location.longitude + 0.05);
+
+    _mapBounds = LatLngBounds(
+      southwest: LatLng(swLat, swLng),
+      northeast: LatLng(neLat, neLng),
+    );
+
+    debugPrint('✅ 경계 확장: $_mapBounds');
   }
 
   // 두 지점 간의 경로 가져오기
