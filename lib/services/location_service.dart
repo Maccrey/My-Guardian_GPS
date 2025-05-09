@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
@@ -393,25 +394,71 @@ class LocationService extends GetxController {
 
         if (data['status'] == 'OK') {
           // 경로 정보 가져오기
+          if (data['routes'].isEmpty) {
+            debugPrint('❌ 경로 데이터가 비어 있습니다.');
+            errorMsg.value = '경로 데이터를 찾을 수 없습니다.';
+            isLoading.value = false;
+            return;
+          }
+
+          debugPrint(
+              '📍 경로 데이터 확인: ${data['routes'][0]['overview_polyline']['points']}');
+
           PolylinePoints polylinePoints = PolylinePoints();
           List<PointLatLng> points = polylinePoints.decodePolyline(
             data['routes'][0]['overview_polyline']['points'],
           );
 
+          debugPrint('📍 디코딩된 포인트 수: ${points.length}');
+
+          if (points.isEmpty) {
+            debugPrint('❌ 폴리라인 포인트가 비어 있습니다.');
+            errorMsg.value = '경로 데이터를 디코딩할 수 없습니다.';
+            isLoading.value = false;
+            return;
+          }
+
           // 폴리라인 좌표로 변환
-          polylineCoordinates.value = points
+          List<LatLng> routePoints = points
               .map((point) => LatLng(point.latitude, point.longitude))
               .toList();
 
-          // 폴리라인 생성
+          polylineCoordinates.value = routePoints;
+
+          debugPrint('📍 폴리라인 좌표 개수: ${polylineCoordinates.length}');
+
+          // 확인을 위해 첫 번째와 마지막 좌표 출력
+          if (routePoints.isNotEmpty) {
+            debugPrint(
+                '📍 첫 번째 좌표: ${routePoints.first.latitude}, ${routePoints.first.longitude}');
+            debugPrint(
+                '📍 마지막 좌표: ${routePoints.last.latitude}, ${routePoints.last.longitude}');
+          }
+
+          // 폴리라인 생성 - 명확한 ID와 색상으로 설정
+          final String polylineId = _getPolylineId();
           polylines.add(
             Polyline(
-              polylineId: const PolylineId('direction'),
+              polylineId: PolylineId(polylineId),
               points: polylineCoordinates,
               color: Colors.green,
               width: 5,
+              patterns: [
+                PatternItem.dash(20),
+                PatternItem.gap(10)
+              ], // 가시성을 높이기 위한 패턴 추가
             ),
           );
+
+          debugPrint(
+              '📍 폴리라인 생성 완료: $polylineId, 포인트 수: ${polylineCoordinates.length}');
+
+          // 추가 확인을 위해 현재 polylines 세트 상태 출력
+          debugPrint('📍 현재 polylines 개수: ${polylines.length}');
+          for (var poly in polylines) {
+            debugPrint(
+                '📍 폴리라인 ID: ${poly.polylineId.value}, 포인트 수: ${poly.points.length}');
+          }
 
           // 거리와 시간 정보 업데이트
           if (data['routes'][0]['legs'] != null &&
@@ -423,7 +470,13 @@ class LocationService extends GetxController {
             routeDuration.value =
                 (data['routes'][0]['legs'][0]['duration']['value'] / 60)
                     .round();
+
+            debugPrint(
+                '📍 경로 거리: ${routeDistance.value}m, 소요 시간: ${routeDuration.value}분');
           }
+
+          // 경로를 따라 카메라 이동 - 모든 경로가 보이도록 Bound 설정
+          _fitBoundsForRoute();
         } else if (data['status'] == 'ZERO_RESULTS') {
           errorMsg.value = '해당 위치로 가는 경로를 찾을 수 없습니다. 다른 위치를 선택해 주세요.';
         } else if (data['status'] == 'NOT_FOUND') {
@@ -443,6 +496,60 @@ class LocationService extends GetxController {
       errorMsg.value = '경로 가져오기 중 오류가 발생했습니다: $e';
       debugPrint('❌ 경로 검색 오류: $e');
     }
+  }
+
+  // 경로에 맞게 지도 화면 조정
+  void _fitBoundsForRoute() {
+    if (polylineCoordinates.isEmpty || mapController.value == null) return;
+
+    // 모든 포인트를 포함하는 경계 계산
+    double minLat = double.infinity;
+    double maxLat = -double.infinity;
+    double minLng = double.infinity;
+    double maxLng = -double.infinity;
+
+    // 출발지와 목적지도 경계에 포함
+    if (currentLocation.value != null) {
+      minLat = min(minLat, currentLocation.value!.latitude);
+      maxLat = max(maxLat, currentLocation.value!.latitude);
+      minLng = min(minLng, currentLocation.value!.longitude);
+      maxLng = max(maxLng, currentLocation.value!.longitude);
+    }
+
+    if (destinationLocation.value != null) {
+      minLat = min(minLat, destinationLocation.value!.latitude);
+      maxLat = max(maxLat, destinationLocation.value!.latitude);
+      minLng = min(minLng, destinationLocation.value!.longitude);
+      maxLng = max(maxLng, destinationLocation.value!.longitude);
+    }
+
+    // 모든 경로 포인트 포함
+    for (var point in polylineCoordinates) {
+      minLat = min(minLat, point.latitude);
+      maxLat = max(maxLat, point.latitude);
+      minLng = min(minLng, point.longitude);
+      maxLng = max(maxLng, point.longitude);
+    }
+
+    // 경계에 여백 추가
+    const padding = 0.005; // 약 500m 정도의 여백
+    minLat -= padding;
+    maxLat += padding;
+    minLng -= padding;
+    maxLng += padding;
+
+    // 카메라 이동
+    mapController.value!.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat, minLng),
+          northeast: LatLng(maxLat, maxLng),
+        ),
+        50, // 패딩 (픽셀)
+      ),
+    );
+
+    debugPrint('📍 경로에 맞게 지도 화면 조정 완료');
   }
 
   // 지도 초기화 - 모든 마커와 경로 지우기
