@@ -11,6 +11,7 @@ import 'views/forgot_password_view.dart';
 import 'views/home_view.dart';
 import 'views/emergency_guide_view.dart';
 import 'views/emergency_contacts_view.dart';
+import 'views/privacy_policy_view.dart';
 import 'services/emergency_contact_service.dart';
 import 'services/location_service.dart';
 import 'services/notification_service.dart';
@@ -142,6 +143,10 @@ class MyApp extends StatelessWidget {
         GetPage(
           name: '/settings',
           page: () => const SettingsView(),
+        ),
+        GetPage(
+          name: '/privacy-policy',
+          page: () => const PrivacyPolicyView(),
         ),
         // IMPORTANT: MapView는 지도 화면을 담당하는 중요 컴포넌트입니다.
         // 경로를 변경하거나 다른 구성으로 변경하지 마세요.
