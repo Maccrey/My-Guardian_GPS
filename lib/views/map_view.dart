@@ -73,7 +73,7 @@ class MapView extends StatelessWidget {
                   locationService.cancelDirections();
                   Get.snackbar(
                     '안내',
-                    '경로 안내가 취소되었습니다',
+                    '경로가 취소되었습니다',
                     snackPosition: SnackPosition.BOTTOM,
                   );
                 },
@@ -266,39 +266,47 @@ class MapView extends StatelessWidget {
                           width: double.infinity,
                           child: Row(
                             children: [
-                              Expanded(
-                                flex: 2,
-                                child: ElevatedButton.icon(
-                                  icon: const Icon(Icons.directions),
-                                  label: const Text('경로 안내 시작'),
-                                  onPressed: () {
-                                    // 경로 안내 시작 기능 구현
-                                    Get.snackbar(
-                                      '안내',
-                                      '경로 안내를 시작합니다',
-                                      snackPosition: SnackPosition.BOTTOM,
-                                    );
-                                    locationService.startTracking();
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: colorScheme.primary,
-                                    foregroundColor: colorScheme.onPrimary,
+                              // 추적 중이 아닐 때만 경로 안내 시작 버튼 표시
+                              if (!locationService.isTracking.value)
+                                Expanded(
+                                  flex: 2,
+                                  child: ElevatedButton.icon(
+                                    icon: const Icon(Icons.directions),
+                                    label: const Text('경로 안내 시작'),
+                                    onPressed: () {
+                                      // 경로 안내 시작 기능 구현
+                                      Get.snackbar(
+                                        '안내',
+                                        '경로 안내를 시작합니다',
+                                        snackPosition: SnackPosition.BOTTOM,
+                                      );
+                                      locationService.startTracking();
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: colorScheme.primary,
+                                      foregroundColor: colorScheme.onPrimary,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              // 경로가 있을 때만 취소 버튼 표시
-                              if (locationService.routeDistance.value > 0) ...[
-                                const SizedBox(width: 8),
+                              // 추적 중이거나 경로가 있을 때 취소 버튼 표시
+                              if (locationService.isTracking.value ||
+                                  locationService.routeDistance.value > 0) ...[
+                                if (!locationService.isTracking.value)
+                                  const SizedBox(width: 8),
                                 Expanded(
-                                  flex: 1,
+                                  flex:
+                                      locationService.isTracking.value ? 2 : 1,
                                   child: ElevatedButton.icon(
-                                    label: const Text('취소'),
+                                    icon: const Icon(Icons.close),
+                                    label: Text(locationService.isTracking.value
+                                        ? '경로 안내 취소'
+                                        : '취소'),
                                     onPressed: () {
-                                      // 경로 안내 취소
+                                      // 경로 안내 취소 - 완전히 초기화하도록 수정
                                       locationService.cancelDirections();
                                       Get.snackbar(
                                         '안내',
-                                        '경로 안내가 취소되었습니다',
+                                        '경로가 취소되었습니다',
                                         snackPosition: SnackPosition.BOTTOM,
                                       );
                                     },

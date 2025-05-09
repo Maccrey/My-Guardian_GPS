@@ -561,7 +561,14 @@ class LocationService extends GetxController {
     polylines
         .removeWhere((polyline) => polyline.polylineId.value == 'direction');
 
-    // 목적지 정보 유지하면서 경로만 제거
+    // 목적지 정보도 초기화
+    destinationLocation.value = null;
+    destinationAddress.value = '';
+
+    // 목적지 마커 제거
+    markers.removeWhere((marker) => marker.markerId.value == 'destination');
+
+    // 경로 정보 초기화
     routeDistance.value = 0.0;
     routeDuration.value = 0;
 
