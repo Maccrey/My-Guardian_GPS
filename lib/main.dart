@@ -14,6 +14,8 @@ import 'views/emergency_contacts_view.dart';
 import 'services/emergency_contact_service.dart';
 import 'services/location_service.dart';
 import 'views/map_view.dart';
+import 'views/settings/settings_view.dart';
+import 'services/settings_service.dart';
 
 // SharedPreferences가 초기화되지 않은 경우에도 앱이 작동하도록 기본값으로 사용할 플래그
 bool isSharedPreferencesAvailable = false;
@@ -64,6 +66,9 @@ void main() async {
     debugPrint('⚠️ 메모리 모드로 작동됩니다. 앱을 다시 시작하면 문제가 해결될 수 있습니다.');
   }
 
+  // SettingsService 초기화
+  await SettingsService.getInstance();
+
   runApp(const MyApp());
 }
 
@@ -103,6 +108,10 @@ class MyApp extends StatelessWidget {
         GetPage(
             name: '/emergency-contacts',
             page: () => const EmergencyContactsView()),
+        GetPage(
+          name: '/settings',
+          page: () => const SettingsView(),
+        ),
         // IMPORTANT: MapView는 지도 화면을 담당하는 중요 컴포넌트입니다.
         // 경로를 변경하거나 다른 구성으로 변경하지 마세요.
         GetPage(name: '/map', page: () => MapView()),

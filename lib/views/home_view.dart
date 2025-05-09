@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import '../services/auth_service.dart';
 import 'emergency_contacts_view.dart';
 import 'emergency_guide_view.dart';
+import 'settings/settings_view.dart';
 
 class HomeView extends StatelessWidget {
   const HomeView({Key? key}) : super(key: key);
@@ -177,7 +178,7 @@ class HomeView extends StatelessWidget {
               // 아직 구현되지 않음
               break;
             case 3: // 설정
-              // 아직 구현되지 않음
+              Get.to(() => const SettingsView());
               break;
           }
         },
