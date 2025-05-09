@@ -61,5 +61,8 @@
 	<true/>
 	<key>GoogleMapsApiKey</key>
 	<string>$(GOOGLE_MAPS_API_KEY)</string>
+	<!-- 오디오 사용 설명 -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>SOS 긴급 상황 시 알림음 재생을 위해 사용됩니다.</string>
 </dict>
 </plist>
