@@ -271,7 +271,7 @@ class MapView extends StatelessWidget {
                                 Expanded(
                                   flex: 2,
                                   child: ElevatedButton.icon(
-                                    icon: const Icon(Icons.directions),
+                                    icon: const Icon(Icons.navigation),
                                     label: const Text('경로 안내 시작'),
                                     onPressed: () {
                                       // 경로 안내 시작 기능 구현
@@ -285,22 +285,44 @@ class MapView extends StatelessWidget {
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: colorScheme.primary,
                                       foregroundColor: colorScheme.onPrimary,
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 12),
                                     ),
                                   ),
                                 ),
-                              // 추적 중이거나 경로가 있을 때 취소 버튼 표시
-                              if (locationService.isTracking.value ||
-                                  locationService.routeDistance.value > 0) ...[
-                                if (!locationService.isTracking.value)
-                                  const SizedBox(width: 8),
+                              // 추적 중일 때는 추적 중지 버튼 표시
+                              if (locationService.isTracking.value)
                                 Expanded(
-                                  flex:
-                                      locationService.isTracking.value ? 2 : 1,
+                                  flex: 2,
+                                  child: ElevatedButton.icon(
+                                    icon: const Icon(Icons.stop_circle),
+                                    label: const Text('추적 중지'),
+                                    onPressed: () {
+                                      locationService.stopTracking();
+                                      Get.snackbar(
+                                        '안내',
+                                        '추적이 중지되었습니다',
+                                        snackPosition: SnackPosition.BOTTOM,
+                                      );
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor:
+                                          colorScheme.primaryContainer,
+                                      foregroundColor:
+                                          colorScheme.onPrimaryContainer,
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 12),
+                                    ),
+                                  ),
+                                ),
+                              // 경로가 있을 때 취소 버튼 표시
+                              if (locationService.routeDistance.value > 0) ...[
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  flex: 1,
                                   child: ElevatedButton.icon(
                                     icon: const Icon(Icons.close),
-                                    label: Text(locationService.isTracking.value
-                                        ? '경로 안내 취소'
-                                        : '취소'),
+                                    label: const Text('취소'),
                                     onPressed: () {
                                       // 경로 안내 취소 - 완전히 초기화하도록 수정
                                       locationService.cancelDirections();
@@ -313,6 +335,8 @@ class MapView extends StatelessWidget {
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: colorScheme.error,
                                       foregroundColor: colorScheme.onError,
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 12),
                                     ),
                                   ),
                                 ),
@@ -333,16 +357,59 @@ class MapView extends StatelessWidget {
       ),
 
       // 하단 컨트롤 버튼 그룹
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 16.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.end,
           children: [
+            // 확대/축소 버튼 그룹
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 확대 버튼
+                FloatingActionButton(
+                  heroTag: 'zoomInButton',
+                  mini: true,
+                  onPressed: () {
+                    if (locationService.mapController.value != null) {
+                      locationService.mapController.value!.animateCamera(
+                        CameraUpdate.zoomIn(),
+                      );
+                    }
+                  },
+                  backgroundColor: colorScheme.primaryContainer,
+                  child: Icon(
+                    Icons.add,
+                    color: colorScheme.onPrimaryContainer,
+                  ),
+                  tooltip: '지도 확대',
+                ),
+                const SizedBox(height: 8),
+                // 축소 버튼
+                FloatingActionButton(
+                  heroTag: 'zoomOutButton',
+                  mini: true,
+                  onPressed: () {
+                    if (locationService.mapController.value != null) {
+                      locationService.mapController.value!.animateCamera(
+                        CameraUpdate.zoomOut(),
+                      );
+                    }
+                  },
+                  backgroundColor: colorScheme.primaryContainer,
+                  child: Icon(
+                    Icons.remove,
+                    color: colorScheme.onPrimaryContainer,
+                  ),
+                  tooltip: '지도 축소',
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
             // 현재 위치 이동 버튼
             FloatingActionButton(
               heroTag: 'locationButton',
-              mini: true,
               onPressed: () => locationService.getCurrentLocation(),
               backgroundColor: colorScheme.primaryContainer,
               child: Icon(
@@ -350,75 +417,6 @@ class MapView extends StatelessWidget {
                 color: colorScheme.onPrimaryContainer,
               ),
               tooltip: '현재 위치로 이동',
-            ),
-            const SizedBox(width: 16),
-            // 추적 시작/중지 버튼
-            Obx(() {
-              return FloatingActionButton(
-                heroTag: 'trackingButton',
-                onPressed: () {
-                  if (locationService.isTracking.value) {
-                    locationService.stopTracking();
-                  } else {
-                    locationService.startTracking();
-                  }
-                },
-                backgroundColor: locationService.isTracking.value
-                    ? colorScheme.errorContainer
-                    : colorScheme.primaryContainer,
-                child: Icon(
-                  locationService.isTracking.value
-                      ? Icons.stop_circle
-                      : Icons.play_circle,
-                  color: locationService.isTracking.value
-                      ? colorScheme.onErrorContainer
-                      : colorScheme.onPrimaryContainer,
-                ),
-                tooltip: locationService.isTracking.value ? '추적 중지' : '추적 시작',
-              );
-            }),
-            const SizedBox(width: 16),
-            // 확대/축소 버튼
-            FloatingActionButton(
-              heroTag: 'zoomButton',
-              mini: true,
-              onPressed: () {
-                // 확대/축소 컨트롤 표시 기능 구현
-                Get.bottomSheet(
-                  Container(
-                    color: colorScheme.surface,
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ListTile(
-                          leading: Icon(Icons.add, color: colorScheme.primary),
-                          title: Text('확대', style: theme.textTheme.titleMedium),
-                          onTap: () {
-                            // 확대 기능 구현
-                            Get.back();
-                          },
-                        ),
-                        ListTile(
-                          leading:
-                              Icon(Icons.remove, color: colorScheme.primary),
-                          title: Text('축소', style: theme.textTheme.titleMedium),
-                          onTap: () {
-                            // 축소 기능 구현
-                            Get.back();
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-              backgroundColor: colorScheme.primaryContainer,
-              child: Icon(
-                Icons.zoom_in_map,
-                color: colorScheme.onPrimaryContainer,
-              ),
-              tooltip: '지도 확대/축소',
             ),
           ],
         ),
