@@ -64,6 +64,25 @@ class MapView extends StatelessWidget {
               );
             }
           }),
+          // 경로가 있을 때만 취소 버튼 표시
+          Obx(() {
+            if (locationService.polylineCoordinates.isNotEmpty) {
+              return IconButton(
+                icon: Icon(Icons.close, color: colorScheme.error),
+                onPressed: () {
+                  locationService.cancelDirections();
+                  Get.snackbar(
+                    '안내',
+                    '경로 안내가 취소되었습니다',
+                    snackPosition: SnackPosition.BOTTOM,
+                  );
+                },
+                tooltip: '경로 취소',
+              );
+            } else {
+              return const SizedBox.shrink();
+            }
+          }),
           IconButton(
             icon: Icon(Icons.refresh, color: colorScheme.primary),
             onPressed: () => locationService.resetMap(),
@@ -245,22 +264,52 @@ class MapView extends StatelessWidget {
                         const SizedBox(height: 8),
                         SizedBox(
                           width: double.infinity,
-                          child: ElevatedButton.icon(
-                            icon: const Icon(Icons.directions),
-                            label: const Text('경로 안내 시작'),
-                            onPressed: () {
-                              // 경로 안내 시작 기능 구현
-                              Get.snackbar(
-                                '안내',
-                                '경로 안내를 시작합니다',
-                                snackPosition: SnackPosition.BOTTOM,
-                              );
-                              locationService.startTracking();
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: colorScheme.primary,
-                              foregroundColor: colorScheme.onPrimary,
-                            ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 2,
+                                child: ElevatedButton.icon(
+                                  icon: const Icon(Icons.directions),
+                                  label: const Text('경로 안내 시작'),
+                                  onPressed: () {
+                                    // 경로 안내 시작 기능 구현
+                                    Get.snackbar(
+                                      '안내',
+                                      '경로 안내를 시작합니다',
+                                      snackPosition: SnackPosition.BOTTOM,
+                                    );
+                                    locationService.startTracking();
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: colorScheme.primary,
+                                    foregroundColor: colorScheme.onPrimary,
+                                  ),
+                                ),
+                              ),
+                              // 경로가 있을 때만 취소 버튼 표시
+                              if (locationService.routeDistance.value > 0) ...[
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  flex: 1,
+                                  child: ElevatedButton.icon(
+                                    label: const Text('취소'),
+                                    onPressed: () {
+                                      // 경로 안내 취소
+                                      locationService.cancelDirections();
+                                      Get.snackbar(
+                                        '안내',
+                                        '경로 안내가 취소되었습니다',
+                                        snackPosition: SnackPosition.BOTTOM,
+                                      );
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: colorScheme.error,
+                                      foregroundColor: colorScheme.onError,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
                       ],

@@ -552,6 +552,27 @@ class LocationService extends GetxController {
     debugPrint('📍 경로에 맞게 지도 화면 조정 완료');
   }
 
+  // 경로 안내 취소 - 경로 표시 제거
+  void cancelDirections() {
+    // 경로 정보 초기화
+    polylineCoordinates.clear();
+    polylines.removeWhere(
+        (polyline) => polyline.polylineId.value.startsWith('polyline_'));
+    polylines
+        .removeWhere((polyline) => polyline.polylineId.value == 'direction');
+
+    // 목적지 정보 유지하면서 경로만 제거
+    routeDistance.value = 0.0;
+    routeDuration.value = 0;
+
+    // 추적 중이면 추적 중지
+    if (isTracking.value) {
+      stopTracking();
+    }
+
+    debugPrint('📍 경로 안내 취소됨');
+  }
+
   // 지도 초기화 - 모든 마커와 경로 지우기
   void resetMap() {
     currentLocation.value = null;
