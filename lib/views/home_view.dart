@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import 'emergency_contacts_view.dart';
 import 'emergency_guide_view.dart';
 import 'settings/settings_view.dart';
+import 'sos_view.dart';
 
 class HomeView extends StatelessWidget {
   const HomeView({Key? key}) : super(key: key);
@@ -113,6 +114,7 @@ class HomeView extends StatelessWidget {
                       Colors.red.shade100,
                       () {
                         // SOS 화면으로 이동
+                        Get.to(() => const SOSView());
                       },
                     ),
                     // ********************************************
