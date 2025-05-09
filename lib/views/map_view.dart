@@ -198,9 +198,9 @@ class MapView extends StatelessWidget {
             if (locationService.destinationAddress.value.isNotEmpty &&
                 !locationService.isLoading.value) {
               return Positioned(
-                bottom: 130,
+                bottom: 66,
                 left: 0,
-                right: 72, // 오른쪽 여백 추가하여 플로팅 버튼과 겹치지 않도록 함
+                right: 72,
                 child: Card(
                   margin: const EdgeInsets.symmetric(horizontal: 16),
                   color: colorScheme.surface.withOpacity(0.95),
@@ -375,7 +375,7 @@ class MapView extends StatelessWidget {
       // 하단 컨트롤 버튼 그룹
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 16.0, right: 8.0),
+        padding: const EdgeInsets.only(bottom: 20.0, right: 8.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.end,
           crossAxisAlignment: CrossAxisAlignment.end,
