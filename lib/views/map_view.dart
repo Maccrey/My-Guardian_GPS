@@ -200,13 +200,15 @@ class MapView extends StatelessWidget {
               return Positioned(
                 bottom: 130,
                 left: 0,
-                right: 0,
+                right: 72, // 오른쪽 여백 추가하여 플로팅 버튼과 겹치지 않도록 함
                 child: Card(
                   margin: const EdgeInsets.symmetric(horizontal: 16),
-                  color: colorScheme.surface.withOpacity(0.9),
-                  elevation: 4,
+                  color: colorScheme.surface.withOpacity(0.95),
+                  elevation: 6,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(
+                        color: colorScheme.primary.withOpacity(0.2), width: 1),
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
@@ -272,7 +274,9 @@ class MapView extends StatelessWidget {
                                   flex: 2,
                                   child: ElevatedButton.icon(
                                     icon: const Icon(Icons.navigation),
-                                    label: const Text('경로 안내 시작'),
+                                    label: const Text('경로 안내 시작',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold)),
                                     onPressed: () {
                                       // 경로 안내 시작 기능 구현
                                       Get.snackbar(
@@ -287,6 +291,9 @@ class MapView extends StatelessWidget {
                                       foregroundColor: colorScheme.onPrimary,
                                       padding: const EdgeInsets.symmetric(
                                           vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -296,7 +303,9 @@ class MapView extends StatelessWidget {
                                   flex: 2,
                                   child: ElevatedButton.icon(
                                     icon: const Icon(Icons.stop_circle),
-                                    label: const Text('추적 중지'),
+                                    label: const Text('추적 중지',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold)),
                                     onPressed: () {
                                       locationService.stopTracking();
                                       Get.snackbar(
@@ -312,6 +321,9 @@ class MapView extends StatelessWidget {
                                           colorScheme.onPrimaryContainer,
                                       padding: const EdgeInsets.symmetric(
                                           vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -320,9 +332,10 @@ class MapView extends StatelessWidget {
                                 const SizedBox(width: 8),
                                 Expanded(
                                   flex: 1,
-                                  child: ElevatedButton.icon(
-                                    icon: const Icon(Icons.close),
-                                    label: const Text('취소'),
+                                  child: ElevatedButton(
+                                    child: const Text('취소',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold)),
                                     onPressed: () {
                                       // 경로 안내 취소 - 완전히 초기화하도록 수정
                                       locationService.cancelDirections();
@@ -337,6 +350,9 @@ class MapView extends StatelessWidget {
                                       foregroundColor: colorScheme.onError,
                                       padding: const EdgeInsets.symmetric(
                                           vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -359,64 +375,116 @@ class MapView extends StatelessWidget {
       // 하단 컨트롤 버튼 그룹
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 16.0),
+        padding: const EdgeInsets.only(bottom: 16.0, right: 8.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             // 확대/축소 버튼 그룹
             Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 // 확대 버튼
-                FloatingActionButton(
-                  heroTag: 'zoomInButton',
-                  mini: true,
-                  onPressed: () {
-                    if (locationService.mapController.value != null) {
-                      locationService.mapController.value!.animateCamera(
-                        CameraUpdate.zoomIn(),
-                      );
-                    }
-                  },
-                  backgroundColor: colorScheme.primaryContainer,
-                  child: Icon(
-                    Icons.add,
-                    color: colorScheme.onPrimaryContainer,
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        spreadRadius: 1,
+                        blurRadius: 3,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
                   ),
-                  tooltip: '지도 확대',
+                  child: FloatingActionButton(
+                    heroTag: 'zoomInButton',
+                    mini: true,
+                    onPressed: () {
+                      if (locationService.mapController.value != null) {
+                        locationService.mapController.value!.animateCamera(
+                          CameraUpdate.zoomIn(),
+                        );
+                      }
+                    },
+                    backgroundColor: colorScheme.surface,
+                    foregroundColor: colorScheme.primary,
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.add,
+                      size: 22,
+                    ),
+                    tooltip: '지도 확대',
+                  ),
                 ),
-                const SizedBox(height: 8),
                 // 축소 버튼
-                FloatingActionButton(
-                  heroTag: 'zoomOutButton',
-                  mini: true,
-                  onPressed: () {
-                    if (locationService.mapController.value != null) {
-                      locationService.mapController.value!.animateCamera(
-                        CameraUpdate.zoomOut(),
-                      );
-                    }
-                  },
-                  backgroundColor: colorScheme.primaryContainer,
-                  child: Icon(
-                    Icons.remove,
-                    color: colorScheme.onPrimaryContainer,
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        spreadRadius: 1,
+                        blurRadius: 3,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
                   ),
-                  tooltip: '지도 축소',
+                  child: FloatingActionButton(
+                    heroTag: 'zoomOutButton',
+                    mini: true,
+                    onPressed: () {
+                      if (locationService.mapController.value != null) {
+                        locationService.mapController.value!.animateCamera(
+                          CameraUpdate.zoomOut(),
+                        );
+                      }
+                    },
+                    backgroundColor: colorScheme.surface,
+                    foregroundColor: colorScheme.primary,
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.remove,
+                      size: 22,
+                    ),
+                    tooltip: '지도 축소',
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 24),
             // 현재 위치 이동 버튼
-            FloatingActionButton(
-              heroTag: 'locationButton',
-              onPressed: () => locationService.getCurrentLocation(),
-              backgroundColor: colorScheme.primaryContainer,
-              child: Icon(
-                Icons.my_location,
-                color: colorScheme.onPrimaryContainer,
+            Container(
+              decoration: BoxDecoration(
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    spreadRadius: 1,
+                    blurRadius: 3,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
               ),
-              tooltip: '현재 위치로 이동',
+              child: FloatingActionButton(
+                heroTag: 'locationButton',
+                onPressed: () => locationService.getCurrentLocation(),
+                backgroundColor: colorScheme.primary,
+                foregroundColor: colorScheme.onPrimary,
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.my_location,
+                  size: 26,
+                ),
+                tooltip: '현재 위치로 이동',
+              ),
             ),
           ],
         ),
