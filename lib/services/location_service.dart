@@ -10,6 +10,7 @@ import 'package:geocoding/geocoding.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../constants/api_keys.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // 검색 결과 항목 클래스
 class SearchResult {
@@ -88,9 +89,13 @@ class LocationService extends GetxController {
   // 지도 경계 제한 설정
   LatLngBounds? _mapBounds;
 
+  // 위치 서비스 활성화 상태 (설정 화면과 연동)
+  final RxBool isLocationServiceEnabled = true.obs;
+
   @override
   void onInit() {
     super.onInit();
+
     // .env 파일에서 API 키 로드
     try {
       final envApiKey = dotenv.env['GOOGLE_MAPS_API_KEY'];
@@ -108,78 +113,57 @@ class LocationService extends GetxController {
       debugPrint('❌ Google Maps API 키 로드 실패: $e - 기본값을 사용합니다.');
     }
 
+    // 초기 위치 서비스 상태 확인
+    _checkInitialLocationServiceState();
+
     // 초기화 시 위치 권한 체크 및 현재 위치 가져오기
-    _checkLocationPermission();
-  }
-
-  // IMPORTANT: 지도 컨트롤러 설정 - 이 부분을 변경하지 마세요
-  // 지도 초기화 및 제한 설정을 담당하는 중요 함수입니다
-  void setMapController(GoogleMapController controller) {
-    mapController.value = controller;
-
-    // 카메라 이동 완료 리스너 추가
-    if (currentLocation.value != null) {
-      // 현재 위치를 중심으로 지도 경계 설정 (약 5km 반경)
-      _setMapBounds(currentLocation.value!);
-    }
-
-    debugPrint('✅ 구글 맵 컨트롤러 설정 완료');
-  }
-
-  // IMPORTANT: 지도 경계 설정 - 이 부분을 변경하지 마세요
-  // 지도가 표시할 수 있는 영역의 한계를 설정하는 함수입니다
-  void _setMapBounds(LatLng center) {
-    // 위도 1도 = 약 111km, 경도 1도 = 약 111km * cos(위도)
-    // 약 20km 반경의 경계 설정 (더 넓게 조정)
-    final double latPadding = 0.18; // 약 20km
-    final double lngPadding =
-        0.18 / cos(center.latitude * pi / 180); // 위도에 따른 경도 보정
-
-    _mapBounds = LatLngBounds(
-      southwest:
-          LatLng(center.latitude - latPadding, center.longitude - lngPadding),
-      northeast:
-          LatLng(center.latitude + latPadding, center.longitude + lngPadding),
-    );
-
-    debugPrint('✅ 지도 경계 설정 완료: $_mapBounds');
-  }
-
-  // IMPORTANT: 검색 위치로 지도 이동 - 이 부분을 변경하지 마세요
-  // 지도 이동을 안전하게 처리하는 함수입니다
-  void moveToLocation(LatLng location, {double zoom = 15.0}) {
-    if (mapController.value != null) {
-      // 경계 내부로 제한된 위치 계산
-      LatLng boundedLocation = _constrainToMapBounds(location);
-
-      mapController.value!.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(target: boundedLocation, zoom: zoom),
-        ),
-      );
+    if (isLocationServiceEnabled.value) {
+      _checkLocationPermission();
     }
   }
 
-  // IMPORTANT: 위치 제한 함수 - 이 부분을 변경하지 마세요
-  // 지도 이동 시 경계를 벗어나지 않도록 제한하는 함수입니다
-  LatLng _constrainToMapBounds(LatLng location) {
-    if (_mapBounds == null) return location;
+  // 초기 위치 서비스 상태 확인
+  Future<void> _checkInitialLocationServiceState() async {
+    try {
+      // SharedPreferences에서 위치 서비스 설정 확인
+      final prefs = await SharedPreferences.getInstance();
+      isLocationServiceEnabled.value =
+          prefs.getBool('isLocationEnabled') ?? true;
 
-    // 경계를 벗어나면 경계 내부로 조정
-    double lat = location.latitude;
-    double lng = location.longitude;
+      // 위치 서비스 상태에 따라 지도 기능 초기화
+      debugPrint(
+          '✅ 위치 서비스 초기 상태: ${isLocationServiceEnabled.value ? "활성화" : "비활성화"}');
+    } catch (e) {
+      debugPrint('⚠️ 위치 서비스 상태 확인 오류: $e');
+      isLocationServiceEnabled.value = true; // 오류 시 기본적으로 활성화
+    }
+  }
 
-    lat = max(_mapBounds!.southwest.latitude, lat);
-    lat = min(_mapBounds!.northeast.latitude, lat);
+  // 위치 서비스 활성화/비활성화 설정
+  void setLocationServiceEnabled(bool enabled) {
+    isLocationServiceEnabled.value = enabled;
 
-    lng = max(_mapBounds!.southwest.longitude, lng);
-    lng = min(_mapBounds!.northeast.longitude, lng);
-
-    return LatLng(lat, lng);
+    if (enabled) {
+      // 위치 서비스 활성화 시 권한 확인 및 위치 가져오기
+      _checkLocationPermission();
+      getCurrentLocation();
+      debugPrint('✅ 위치 서비스 활성화됨');
+    } else {
+      // 위치 서비스 비활성화 시 추적 중지 및 기존 데이터 정리
+      stopTracking();
+      errorMsg.value = '위치 서비스가 설정에서 비활성화되었습니다.';
+      debugPrint('✅ 위치 서비스 비활성화됨');
+    }
   }
 
   // 위치 권한 확인 및 요청
   Future<bool> _checkLocationPermission() async {
+    // 앱 내 위치 서비스가 비활성화된 경우, 권한 확인 생략
+    if (!isLocationServiceEnabled.value) {
+      errorMsg.value = '위치 서비스가 설정에서 비활성화되었습니다.';
+      return false;
+    }
+
     bool serviceEnabled;
     LocationPermission permission;
 
@@ -706,6 +690,72 @@ class LocationService extends GetxController {
 
     // 현재 위치만 다시 가져오기
     getCurrentLocation();
+  }
+
+  // IMPORTANT: 지도 컨트롤러 설정 - 이 부분을 변경하지 마세요
+  // 지도 초기화 및 제한 설정을 담당하는 중요 함수입니다
+  void setMapController(GoogleMapController controller) {
+    mapController.value = controller;
+
+    // 카메라 이동 완료 리스너 추가
+    if (currentLocation.value != null) {
+      // 현재 위치를 중심으로 지도 경계 설정 (약 5km 반경)
+      _setMapBounds(currentLocation.value!);
+    }
+
+    debugPrint('✅ 구글 맵 컨트롤러 설정 완료');
+  }
+
+  // IMPORTANT: 지도 경계 설정 - 이 부분을 변경하지 마세요
+  // 지도가 표시할 수 있는 영역의 한계를 설정하는 함수입니다
+  void _setMapBounds(LatLng center) {
+    // 위도 1도 = 약 111km, 경도 1도 = 약 111km * cos(위도)
+    // 약 20km 반경의 경계 설정 (더 넓게 조정)
+    final double latPadding = 0.18; // 약 20km
+    final double lngPadding =
+        0.18 / cos(center.latitude * pi / 180); // 위도에 따른 경도 보정
+
+    _mapBounds = LatLngBounds(
+      southwest:
+          LatLng(center.latitude - latPadding, center.longitude - lngPadding),
+      northeast:
+          LatLng(center.latitude + latPadding, center.longitude + lngPadding),
+    );
+
+    debugPrint('✅ 지도 경계 설정 완료: $_mapBounds');
+  }
+
+  // IMPORTANT: 검색 위치로 지도 이동 - 이 부분을 변경하지 마세요
+  // 지도 이동을 안전하게 처리하는 함수입니다
+  void moveToLocation(LatLng location, {double zoom = 15.0}) {
+    if (mapController.value != null) {
+      // 경계 내부로 제한된 위치 계산
+      LatLng boundedLocation = _constrainToMapBounds(location);
+
+      mapController.value!.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(target: boundedLocation, zoom: zoom),
+        ),
+      );
+    }
+  }
+
+  // IMPORTANT: 위치 제한 함수 - 이 부분을 변경하지 마세요
+  // 지도 이동 시 경계를 벗어나지 않도록 제한하는 함수입니다
+  LatLng _constrainToMapBounds(LatLng location) {
+    if (_mapBounds == null) return location;
+
+    // 경계를 벗어나면 경계 내부로 조정
+    double lat = location.latitude;
+    double lng = location.longitude;
+
+    lat = max(_mapBounds!.southwest.latitude, lat);
+    lat = min(_mapBounds!.northeast.latitude, lat);
+
+    lng = max(_mapBounds!.southwest.longitude, lng);
+    lng = min(_mapBounds!.northeast.longitude, lng);
+
+    return LatLng(lat, lng);
   }
 
   @override

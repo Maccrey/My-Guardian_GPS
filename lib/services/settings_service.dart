@@ -1,5 +1,7 @@
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/material.dart';
+import 'location_service.dart';
 
 class SettingsService extends GetxController {
   // 설정 상태 변수
@@ -8,6 +10,9 @@ class SettingsService extends GetxController {
   final RxBool isNotificationEnabled = true.obs;
   final RxBool isBiometricEnabled = false.obs;
   final RxBool isDataSavingEnabled = false.obs;
+
+  // LocationService 인스턴스 - nullable로 변경
+  LocationService? _locationService;
 
   // 설정 키 상수
   static const String _darkModeKey = 'isDarkMode';
@@ -22,9 +27,25 @@ class SettingsService extends GetxController {
   static Future<SettingsService> getInstance() async {
     if (_instance == null) {
       _instance = SettingsService();
-      await _instance!.loadSettings();
+      await _instance!._init();
     }
     return _instance!;
+  }
+
+  // 초기화 함수
+  Future<void> _init() async {
+    try {
+      // LocationService 인스턴스 가져오기
+      if (Get.isRegistered<LocationService>()) {
+        _locationService = Get.find<LocationService>();
+      }
+    } catch (e) {
+      debugPrint('⚠️ LocationService를 찾을 수 없습니다: $e');
+      _locationService = null;
+    }
+
+    // 설정 불러오기
+    await loadSettings();
   }
 
   // 설정 불러오기
@@ -38,6 +59,12 @@ class SettingsService extends GetxController {
           prefs.getBool(_notificationEnabledKey) ?? true;
       isBiometricEnabled.value = prefs.getBool(_biometricEnabledKey) ?? false;
       isDataSavingEnabled.value = prefs.getBool(_dataSavingEnabledKey) ?? false;
+
+      // 테마 설정 적용
+      _applyTheme();
+
+      // 위치 서비스 설정 적용
+      _applyLocationServiceSettings();
 
       print('✅ 설정 불러오기 완료');
     } catch (e) {
@@ -56,9 +83,42 @@ class SettingsService extends GetxController {
       await prefs.setBool(_biometricEnabledKey, isBiometricEnabled.value);
       await prefs.setBool(_dataSavingEnabledKey, isDataSavingEnabled.value);
 
+      // 위치 서비스 설정 적용
+      _applyLocationServiceSettings();
+
       print('✅ 설정 저장 완료');
     } catch (e) {
       print('⚠️ 설정 저장 오류: $e');
+    }
+  }
+
+  // 테마 토글 기능
+  Future<void> toggleTheme() async {
+    isDarkMode.value = !isDarkMode.value;
+    await saveSettings();
+    _applyTheme();
+  }
+
+  // 현재 테마 적용 함수
+  void _applyTheme() {
+    if (isDarkMode.value) {
+      Get.changeThemeMode(ThemeMode.dark);
+    } else {
+      Get.changeThemeMode(ThemeMode.light);
+    }
+  }
+
+  // 위치 서비스 설정 적용
+  void _applyLocationServiceSettings() {
+    try {
+      // LocationService가 초기화되어 있는지 확인
+      if (_locationService != null) {
+        _locationService!.setLocationServiceEnabled(isLocationEnabled.value);
+        debugPrint(
+            '✅ 위치 서비스 설정 적용됨: ${isLocationEnabled.value ? "활성화" : "비활성화"}');
+      }
+    } catch (e) {
+      debugPrint('⚠️ 위치 서비스 설정 적용 오류: $e');
     }
   }
 
@@ -89,6 +149,8 @@ class SettingsService extends GetxController {
     }
 
     await saveSettings();
+    // 테마 설정 적용
+    _applyTheme();
     print('✅ $settingType 추천 설정 적용 완료');
   }
 
@@ -101,6 +163,8 @@ class SettingsService extends GetxController {
     isDataSavingEnabled.value = false;
 
     await saveSettings();
+    // 테마 설정 적용
+    _applyTheme();
     print('✅ 설정 초기화 완료');
   }
 }

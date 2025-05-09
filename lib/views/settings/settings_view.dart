@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../services/settings_service.dart';
+import '../../services/location_service.dart';
+import '../../services/notification_service.dart';
 
 class SettingsView extends StatefulWidget {
   const SettingsView({Key? key}) : super(key: key);
@@ -11,26 +13,103 @@ class SettingsView extends StatefulWidget {
 
 class _SettingsViewState extends State<SettingsView> {
   late SettingsService settingsService;
+  LocationService? locationService;
+  NotificationService? notificationService;
   final RxBool _isLoading = true.obs;
 
   @override
   void initState() {
     super.initState();
-    _initSettingsService();
+    _initServices();
   }
 
-  Future<void> _initSettingsService() async {
+  Future<void> _initServices() async {
     settingsService = await SettingsService.getInstance();
+
+    try {
+      // LocationService는 선택적으로 가져옴 (없을 수도 있음)
+      if (Get.isRegistered<LocationService>()) {
+        locationService = Get.find<LocationService>();
+        debugPrint('✅ LocationService 찾음');
+      } else {
+        debugPrint('⚠️ LocationService를 찾을 수 없음');
+      }
+
+      // NotificationService 가져오기
+      if (Get.isRegistered<NotificationService>()) {
+        notificationService = Get.find<NotificationService>();
+        debugPrint('✅ NotificationService 찾음');
+      } else {
+        // 등록되지 않은 경우 초기화
+        notificationService = await NotificationService.getInstance();
+        Get.put(notificationService!);
+        debugPrint('✅ NotificationService 등록 완료');
+      }
+    } catch (e) {
+      debugPrint('⚠️ 서비스 로드 오류: $e');
+    }
+
     _isLoading.value = false;
   }
 
   void _applyRecommendedSettings(String settingType) async {
     await settingsService.applyRecommendedSettings(settingType);
+
+    // 위치 서비스 설정 변경 시 LocationService에도 반영
+    if (locationService != null) {
+      locationService!
+          .setLocationServiceEnabled(settingsService.isLocationEnabled.value);
+    }
+
+    // 알림 설정 변경 시 NotificationService에도 반영
+    if (notificationService != null) {
+      await notificationService!
+          .setNotificationEnabled(settingsService.isNotificationEnabled.value);
+    }
+
     Get.snackbar(
       '설정 적용됨',
       '$settingType 추천 설정이 적용되었습니다',
       snackPosition: SnackPosition.BOTTOM,
       backgroundColor: Colors.green.shade100,
+      duration: const Duration(seconds: 2),
+    );
+  }
+
+  // 위치 서비스 토글 메서드
+  void _toggleLocationService(bool value) {
+    settingsService.isLocationEnabled.value = value;
+    settingsService.saveSettings();
+
+    // LocationService에도 상태 반영 (있는 경우에만)
+    if (locationService != null) {
+      locationService!.setLocationServiceEnabled(value);
+    }
+
+    Get.snackbar(
+      '위치 서비스 ${value ? '활성화' : '비활성화'}됨',
+      value ? '지도 및 위치 기능이 활성화되었습니다' : '지도 및 위치 기능이 비활성화되었습니다',
+      snackPosition: SnackPosition.BOTTOM,
+      duration: const Duration(seconds: 2),
+    );
+  }
+
+  // 알림 토글 메서드
+  void _toggleNotification(bool value) async {
+    settingsService.isNotificationEnabled.value = value;
+    settingsService.saveSettings();
+
+    // NotificationService에 상태 반영 (있는 경우에만)
+    if (notificationService != null) {
+      await notificationService!.setNotificationEnabled(value);
+    } else {
+      debugPrint('⚠️ NotificationService가 초기화되지 않아 알림 설정을 적용할 수 없습니다.');
+    }
+
+    Get.snackbar(
+      '알림 ${value ? '활성화' : '비활성화'}됨',
+      value ? '앱 알림이 활성화되었습니다' : '앱 알림이 비활성화되었습니다',
+      snackPosition: SnackPosition.BOTTOM,
       duration: const Duration(seconds: 2),
     );
   }
@@ -87,11 +166,29 @@ class _SettingsViewState extends State<SettingsView> {
                   title: const Text('다크 모드'),
                   subtitle: const Text('어두운 테마로 사용합니다'),
                   value: settingsService.isDarkMode.value,
-                  onChanged: (value) {
-                    settingsService.isDarkMode.value = value;
-                    settingsService.saveSettings();
+                  onChanged: (value) async {
+                    await settingsService.toggleTheme();
+                    Get.snackbar(
+                      '테마 변경됨',
+                      settingsService.isDarkMode.value
+                          ? '다크 모드가 활성화되었습니다'
+                          : '라이트 모드가 활성화되었습니다',
+                      snackPosition: SnackPosition.BOTTOM,
+                      duration: const Duration(seconds: 1),
+                      backgroundColor: Get.isDarkMode
+                          ? Colors.grey.shade800
+                          : Colors.grey.shade200,
+                      colorText: Get.isDarkMode ? Colors.white : Colors.black,
+                    );
                   },
-                  secondary: const Icon(Icons.dark_mode),
+                  secondary: Icon(
+                    settingsService.isDarkMode.value
+                        ? Icons.dark_mode
+                        : Icons.light_mode,
+                    color: settingsService.isDarkMode.value
+                        ? Colors.amber
+                        : Colors.blue,
+                  ),
                 )),
             const Divider(),
 
@@ -101,21 +198,25 @@ class _SettingsViewState extends State<SettingsView> {
                   title: const Text('위치 서비스'),
                   subtitle: const Text('지도 및 위치 기능을 사용합니다'),
                   value: settingsService.isLocationEnabled.value,
-                  onChanged: (value) {
-                    settingsService.isLocationEnabled.value = value;
-                    settingsService.saveSettings();
-                  },
-                  secondary: const Icon(Icons.location_on),
+                  onChanged: _toggleLocationService,
+                  secondary: Icon(
+                    Icons.location_on,
+                    color: settingsService.isLocationEnabled.value
+                        ? Colors.blue
+                        : Colors.grey,
+                  ),
                 )),
             Obx(() => SwitchListTile(
                   title: const Text('알림'),
                   subtitle: const Text('앱 알림을 허용합니다'),
                   value: settingsService.isNotificationEnabled.value,
-                  onChanged: (value) {
-                    settingsService.isNotificationEnabled.value = value;
-                    settingsService.saveSettings();
-                  },
-                  secondary: const Icon(Icons.notifications),
+                  onChanged: _toggleNotification,
+                  secondary: Icon(
+                    Icons.notifications,
+                    color: settingsService.isNotificationEnabled.value
+                        ? Colors.blue
+                        : Colors.grey,
+                  ),
                 )),
             Obx(() => SwitchListTile(
                   title: const Text('생체 인증'),
@@ -185,8 +286,21 @@ class _SettingsViewState extends State<SettingsView> {
                           child: const Text('취소'),
                         ),
                         TextButton(
-                          onPressed: () {
+                          onPressed: () async {
                             settingsService.resetSettings();
+
+                            // LocationService에도 상태 반영 (있는 경우에만)
+                            if (locationService != null) {
+                              locationService!.setLocationServiceEnabled(
+                                  settingsService.isLocationEnabled.value);
+                            }
+
+                            // NotificationService에도 상태 반영 (있는 경우에만)
+                            if (notificationService != null) {
+                              await notificationService!.setNotificationEnabled(
+                                  settingsService.isNotificationEnabled.value);
+                            }
+
                             Navigator.of(context).pop();
                             Get.snackbar(
                               '설정 초기화됨',

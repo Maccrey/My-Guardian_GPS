@@ -13,6 +13,7 @@ import 'views/emergency_guide_view.dart';
 import 'views/emergency_contacts_view.dart';
 import 'services/emergency_contact_service.dart';
 import 'services/location_service.dart';
+import 'services/notification_service.dart';
 import 'views/map_view.dart';
 import 'views/settings/settings_view.dart';
 import 'services/settings_service.dart';
@@ -84,10 +85,30 @@ class MyApp extends StatelessWidget {
       useMemoryOnly: !isSharedPreferencesAvailable,
       prefs: prefsInstance,
     ));
-    // 위치 서비스 초기화
-    // IMPORTANT: LocationService는 지도 기능의 핵심 컴포넌트입니다.
-    // 이 서비스를 변경하거나 제거하면 지도 기능이 작동하지 않습니다.
-    Get.put(LocationService());
+
+    // 위치 서비스 초기화 - 안전하게 초기화
+    try {
+      // 이미 등록되어 있지 않은 경우에만 등록
+      if (!Get.isRegistered<LocationService>()) {
+        Get.put(LocationService());
+        debugPrint('✅ LocationService 초기화 성공');
+      }
+    } catch (e) {
+      debugPrint('⚠️ LocationService 초기화 실패: $e');
+    }
+
+    // 알림 서비스 초기화
+    try {
+      // NotificationService 초기화
+      NotificationService.getInstance().then((service) {
+        if (!Get.isRegistered<NotificationService>()) {
+          Get.put(service);
+        }
+        debugPrint('✅ NotificationService 초기화 성공');
+      });
+    } catch (e) {
+      debugPrint('⚠️ NotificationService 초기화 실패: $e');
+    }
 
     return GetMaterialApp(
       title: '모던 로그인',
@@ -95,7 +116,17 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
+        brightness: Brightness.light,
       ),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.blue,
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+        brightness: Brightness.dark,
+      ),
+      themeMode: ThemeMode.system, // 시스템 설정 기본값
       initialRoute: '/',
       getPages: [
         GetPage(name: '/', page: () => const LoginView()),
