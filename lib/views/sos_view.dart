@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
-import '../services/emergency_contact_service.dart'; // 다시 불러옴
+import '../services/emergency_contact_service.dart';
 
 class SOSController extends GetxController {
   final RxBool isSOSActive = false.obs;
@@ -122,16 +122,23 @@ class SOSController extends GetxController {
   }
 
   Future<void> callEmergencyNumber(String number) async {
-    final Uri url = Uri(scheme: 'tel', path: number);
+    debugPrint('📞 긴급 전화 걸기 시도: $number');
+
+    final Uri phoneUri = Uri(scheme: 'tel', path: number);
     try {
-      await launchUrl(url);
+      bool launched = await launchUrl(phoneUri);
+      if (launched) {
+        debugPrint('✅ 전화 걸기 성공: $number');
+      } else {
+        throw Exception('전화를 걸 수 없습니다: $phoneUri');
+      }
     } catch (e) {
       debugPrint('⚠️ 전화 걸기 실패: $e');
       Get.snackbar(
         '전화 걸기 실패',
-        '긴급 전화를 걸 수 없습니다.',
+        '긴급 전화를 걸 수 없습니다. 직접 119로 전화해주세요.',
         backgroundColor: Colors.red.shade200,
-        duration: const Duration(seconds: 3),
+        duration: const Duration(seconds: 5),
         snackPosition: SnackPosition.BOTTOM,
       );
     }
@@ -293,14 +300,20 @@ class SOSView extends StatelessWidget {
               const SizedBox(height: 16),
 
               // 직접 119 전화 버튼
-              OutlinedButton.icon(
+              ElevatedButton.icon(
                 onPressed: () => controller.callEmergencyNumber('119'),
-                icon: const Icon(Icons.phone),
-                label: const Text('119 직접 전화하기'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red,
-                  side: BorderSide(color: Colors.red.shade300),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                icon: const Icon(Icons.phone, size: 24),
+                label: const Text('119 직접 전화하기',
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  backgroundColor: Colors.red.shade600,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  elevation: 3,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
               ),
             ],
