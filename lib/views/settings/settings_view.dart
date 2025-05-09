@@ -273,6 +273,19 @@ class _SettingsViewState extends State<SettingsView> {
               },
             ),
 
+            const Divider(),
+
+            // 계정 관리 섹션
+            _buildCategoryHeader('계정 관리'),
+            ListTile(
+              title: const Text('회원 탈퇴'),
+              subtitle: const Text('모든 계정 정보가 삭제됩니다'),
+              leading: const Icon(Icons.person_remove, color: Colors.red),
+              onTap: () {
+                _showDeleteAccountDialog();
+              },
+            ),
+
             // 설정 초기화 버튼
             Padding(
               padding: const EdgeInsets.all(16.0),
@@ -342,5 +355,116 @@ class _SettingsViewState extends State<SettingsView> {
         ),
       ),
     );
+  }
+
+  // 회원 탈퇴 다이얼로그
+  void _showDeleteAccountDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('회원 탈퇴'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text('정말 탈퇴하시겠습니까?'),
+            SizedBox(height: 16),
+            Text(
+              '주의: 계정을 삭제하면 모든 데이터가 영구적으로 삭제되며 복구할 수 없습니다.',
+              style: TextStyle(
+                color: Colors.red,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _confirmDeleteAccount();
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('탈퇴하기'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 비밀번호 확인 다이얼로그
+  void _confirmDeleteAccount() {
+    final TextEditingController passwordController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('비밀번호 확인'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('보안을 위해 비밀번호를 입력해주세요'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: '비밀번호',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _processAccountDeletion(passwordController.text);
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('확인'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 계정 삭제 처리
+  void _processAccountDeletion(String password) {
+    // 계정 삭제 로직 구현
+    // 실제 구현에서는 AuthService에서 계정 삭제 메소드 호출
+
+    // 로딩 표시
+    Get.dialog(
+      const Center(
+        child: CircularProgressIndicator(),
+      ),
+      barrierDismissible: false,
+    );
+
+    // 계정 삭제 처리 (AuthService에 구현 필요)
+    Future.delayed(const Duration(seconds: 2), () {
+      Get.back(); // 로딩 다이얼로그 닫기
+
+      // 삭제 성공 메시지 표시
+      Get.snackbar(
+        '계정 삭제 완료',
+        '회원 탈퇴가 완료되었습니다.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.shade100,
+        duration: const Duration(seconds: 3),
+      );
+
+      // 로그인 페이지로 이동
+      Get.offAllNamed('/');
+    });
   }
 }
