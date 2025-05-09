@@ -2,18 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
-// import '../services/emergency_contact_service.dart';  // 사용하지 않으므로 주석 처리
+import '../services/emergency_contact_service.dart'; // 다시 불러옴
 
 class SOSController extends GetxController {
   final RxBool isSOSActive = false.obs;
-  final RxInt countdown = 30.obs; // 30초 카운트다운
+  final RxInt countdown = 10.obs; // 10초 카운트다운으로 수정
   Timer? _timer;
 
-  // 고정된 긴급 연락처
-  final List<Map<String, String>> fixedEmergencyContacts = [
-    {'name': '소방청', 'phoneNumber': '119'},
-    {'name': '긴급 연락처', 'phoneNumber': '010-7163-0214'}
+  // 기본 긴급 번호 리스트 (알림을 보내지 않을 번호들)
+  final List<String> excludedNumbers = [
+    '112',
+    '122',
+    '1301',
+    '044-205-1542',
+    '119',
+    '044205-1542',
+    '0442051542' // 하이픈 없는 형태도 추가
   ];
+
+  // 고정된 긴급 연락처 제거
 
   void activateSOS() {
     isSOSActive.value = true;
@@ -23,7 +30,7 @@ class SOSController extends GetxController {
   void cancelSOS() {
     isSOSActive.value = false;
     _stopCountdown();
-    countdown.value = 30; // 카운트다운 리셋
+    countdown.value = 10; // 카운트다운 리셋값 수정
   }
 
   void _startCountdown() {
@@ -53,19 +60,51 @@ class SOSController extends GetxController {
 
   Future<void> _sendEmergencyNotifications() async {
     try {
+      // EmergencyContactService에서 긴급 연락처 가져오기
+      final emergencyContactService = Get.find<EmergencyContactService>();
+      final allContacts = emergencyContactService.contacts;
+
+      // 제외할 번호 목록에 없는 연락처만 필터링 (강화된 필터링)
+      final filteredContacts = allContacts.where((contact) {
+        // 번호에서 모든 하이픈, 공백 제거
+        String cleanNumber =
+            contact.phoneNumber.replaceAll(RegExp(r'[-\s]'), '').trim();
+
+        // 제외 목록의 각 번호도 정리하여 비교
+        for (var excluded in excludedNumbers) {
+          String cleanExcluded =
+              excluded.replaceAll(RegExp(r'[-\s]'), '').trim();
+          if (cleanNumber == cleanExcluded) {
+            return false; // 제외 목록에 있으면 필터링
+          }
+        }
+        return true; // 제외 목록에 없으면 포함
+      }).toList();
+
       // 실제 알림 전송 로직은 향후 구현
       // 현재는 로그 출력으로 대체
       debugPrint('⚠️ 긴급 알림 전송 중...');
 
-      // 고정된 긴급 연락처로 알림 전송
-      for (var contact in fixedEmergencyContacts) {
-        debugPrint('  - ${contact['name']}에게 알림 전송: ${contact['phoneNumber']}');
+      if (filteredContacts.isEmpty) {
+        debugPrint('⚠️ 전송할 개인 긴급 연락처가 없습니다.');
+        Get.snackbar(
+          '알림 전송 실패',
+          '전송할 개인 긴급 연락처가 없습니다. 설정 메뉴에서 긴급 연락처를 추가해주세요.',
+          backgroundColor: Colors.yellow.shade100,
+          duration: const Duration(seconds: 3),
+          snackPosition: SnackPosition.BOTTOM,
+        );
+        return;
+      }
+
+      for (var contact in filteredContacts) {
+        debugPrint('  - ${contact.name}에게 알림 전송: ${contact.phoneNumber}');
       }
 
       // 알림 전송 성공 토스트 메시지
       Get.snackbar(
         '긴급 알림 전송',
-        '119 및 지정된 긴급 연락처로 SOS 알림이 전송되었습니다.',
+        '개인 긴급 연락처로 SOS 알림이 전송되었습니다.',
         backgroundColor: Colors.red.shade100,
         duration: const Duration(seconds: 3),
         snackPosition: SnackPosition.BOTTOM,
@@ -137,7 +176,7 @@ class SOSView extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               const Text(
-                '버튼을 누르면 30초 후 자동으로 119 및 지정된 연락처에 알림이 전송되고 119로 연결됩니다.',
+                '버튼을 누르면 10초 후 자동으로 개인 긴급 연락처에 알림이 전송되고 119로 연결됩니다.',
                 style: TextStyle(fontSize: 14),
                 textAlign: TextAlign.center,
               ),
@@ -162,7 +201,7 @@ class SOSView extends StatelessWidget {
                           ),
                           const SizedBox(height: 24),
                           const Text(
-                            '초 후 자동으로 119 및 지정된 연락처에 알림이 전송됩니다',
+                            '초 후 자동으로 개인 긴급 연락처에 알림이 전송됩니다',
                             style: TextStyle(fontSize: 16),
                             textAlign: TextAlign.center,
                           ),
@@ -246,8 +285,8 @@ class SOSView extends StatelessWidget {
                     ),
                     SizedBox(height: 8),
                     Text('• 실제 긴급 상황에만 사용해주세요'),
-                    Text('• 119 및 지정된 번호로 긴급 알림이 전송됩니다'),
-                    Text('• 오작동 시 30초 내에 취소 버튼을 눌러주세요'),
+                    Text('• 등록된 개인 긴급 연락처에만 알림이 전송됩니다'),
+                    Text('• 오작동 시 10초 내에 취소 버튼을 눌러주세요'),
                   ],
                 ),
               ),
