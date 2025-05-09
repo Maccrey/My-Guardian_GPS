@@ -1,0 +1,11 @@
+# 이 파일은 지도 관련 파일의 변경에 대한 승인을 제한합니다
+# 자세한 내용은 다음 링크를 참고하세요: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# 지도 관련 파일
+lib/views/map_view.dart @admin
+lib/services/location_service.dart @admin
+lib/main.dart @admin
+
+# 설정 파일도 보호
+.gitattributes @admin
+.github/CODEOWNERS @admin 

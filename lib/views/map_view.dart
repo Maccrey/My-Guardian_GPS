@@ -109,6 +109,9 @@ class MapView extends StatelessWidget {
                 ),
               );
             } else {
+              // IMPORTANT: 지도 관련 설정 - 이 부분을 변경하지 마세요
+              // 이 설정들은 지도의 제한 범위와 작동 방식을 제어합니다
+              // 변경 시 지도 기능이 비정상적으로 작동할 수 있습니다
               return GoogleMap(
                 initialCameraPosition: CameraPosition(
                   target: locationService.currentLocation.value!,
@@ -134,6 +137,7 @@ class MapView extends StatelessWidget {
                   locationService.setMapController(controller);
                 },
               );
+              // END IMPORTANT: 지도 관련 설정 끝
             }
           }),
 

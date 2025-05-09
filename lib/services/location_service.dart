@@ -20,6 +20,7 @@ class SearchResult {
 }
 
 /// 위치 관련 서비스 클래스 - 위치 추적 및 경로 안내 기능 제공
+/// IMPORTANT: 지도 기능의 핵심 클래스입니다. 무분별한 수정 시 앱 기능이 손상될 수 있습니다.
 class LocationService extends GetxController {
   // 현재 위치
   final Rx<LatLng?> currentLocation = Rx<LatLng?>(null);
@@ -111,7 +112,8 @@ class LocationService extends GetxController {
     _checkLocationPermission();
   }
 
-  // 지도 컨트롤러 설정
+  // IMPORTANT: 지도 컨트롤러 설정 - 이 부분을 변경하지 마세요
+  // 지도 초기화 및 제한 설정을 담당하는 중요 함수입니다
   void setMapController(GoogleMapController controller) {
     mapController.value = controller;
 
@@ -124,7 +126,8 @@ class LocationService extends GetxController {
     debugPrint('✅ 구글 맵 컨트롤러 설정 완료');
   }
 
-  // 지도 경계 설정
+  // IMPORTANT: 지도 경계 설정 - 이 부분을 변경하지 마세요
+  // 지도가 표시할 수 있는 영역의 한계를 설정하는 함수입니다
   void _setMapBounds(LatLng center) {
     // 위도 1도 = 약 111km, 경도 1도 = 약 111km * cos(위도)
     // 약 20km 반경의 경계 설정 (더 넓게 조정)
@@ -142,7 +145,8 @@ class LocationService extends GetxController {
     debugPrint('✅ 지도 경계 설정 완료: $_mapBounds');
   }
 
-  // 검색 위치로 지도 이동 - 경계 제한 추가
+  // IMPORTANT: 검색 위치로 지도 이동 - 이 부분을 변경하지 마세요
+  // 지도 이동을 안전하게 처리하는 함수입니다
   void moveToLocation(LatLng location, {double zoom = 15.0}) {
     if (mapController.value != null) {
       // 경계 내부로 제한된 위치 계산
@@ -156,7 +160,8 @@ class LocationService extends GetxController {
     }
   }
 
-  // 위치를 지도 경계 내부로 제한
+  // IMPORTANT: 위치 제한 함수 - 이 부분을 변경하지 마세요
+  // 지도 이동 시 경계를 벗어나지 않도록 제한하는 함수입니다
   LatLng _constrainToMapBounds(LatLng location) {
     if (_mapBounds == null) return location;
 
@@ -390,7 +395,8 @@ class LocationService extends GetxController {
     }
   }
 
-  // 목적지 설정
+  // IMPORTANT: 목적지 설정 함수 - 이 부분을 변경하지 마세요
+  // 경로 안내의 핵심 기능을 담당하는 중요 함수입니다
   void setDestination(LatLng destination, String address) {
     // 경계 제한 일시적 비활성화 또는 확장
     if (_mapBounds != null) {
@@ -432,7 +438,7 @@ class LocationService extends GetxController {
     debugPrint('✅ 목적지 설정: $address, 좌표: $destination');
   }
 
-  // 위치가 경계 내에 있는지 확인
+  // IMPORTANT: 경계 확인 함수 - 이 부분을 변경하지 마세요
   bool _isLocationWithinBounds(LatLng location) {
     if (_mapBounds == null) return true;
 
@@ -442,7 +448,7 @@ class LocationService extends GetxController {
         location.longitude <= _mapBounds!.northeast.longitude;
   }
 
-  // 경계를 확장하여 위치를 포함
+  // IMPORTANT: 경계 확장 함수 - 이 부분을 변경하지 마세요
   void _expandBoundsToIncludeLocation(LatLng location) {
     if (_mapBounds == null) return;
 
@@ -464,7 +470,8 @@ class LocationService extends GetxController {
     debugPrint('✅ 경계 확장: $_mapBounds');
   }
 
-  // 두 지점 간의 경로 가져오기
+  // IMPORTANT: 경로 가져오기 함수 - 이 부분을 변경하지 마세요
+  // 경로 계산의 핵심 로직을 담당하는 중요 함수입니다
   Future<void> getDirections(LatLng origin, LatLng destination) async {
     try {
       isLoading.value = true;

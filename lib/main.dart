@@ -80,6 +80,8 @@ class MyApp extends StatelessWidget {
       prefs: prefsInstance,
     ));
     // 위치 서비스 초기화
+    // IMPORTANT: LocationService는 지도 기능의 핵심 컴포넌트입니다.
+    // 이 서비스를 변경하거나 제거하면 지도 기능이 작동하지 않습니다.
     Get.put(LocationService());
 
     return GetMaterialApp(
@@ -101,6 +103,8 @@ class MyApp extends StatelessWidget {
         GetPage(
             name: '/emergency-contacts',
             page: () => const EmergencyContactsView()),
+        // IMPORTANT: MapView는 지도 화면을 담당하는 중요 컴포넌트입니다.
+        // 경로를 변경하거나 다른 구성으로 변경하지 마세요.
         GetPage(name: '/map', page: () => MapView()),
       ],
     );
