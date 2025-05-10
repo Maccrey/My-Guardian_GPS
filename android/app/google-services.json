@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1071355933777",
+    "project_id": "watch-over-55c0a",
+    "storage_bucket": "watch-over-55c0a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1071355933777:android:7ac41bc5ce954cf3b3b470",
+        "android_client_info": {
+          "package_name": "com.example.gps_seach"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBV8rJGjP6gqrT7Yki7ifJTXyXY40cdGV8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

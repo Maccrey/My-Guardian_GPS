@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -23,13 +24,33 @@ import 'views/map_view.dart';
 import 'views/settings/settings_view.dart';
 import 'services/settings_service.dart';
 
-// SharedPreferences가 초기화되지 않은 경우에도 앱이 작동하도록 기본값으로 사용할 플래그
+import 'firebase_options.dart';
+
+// SharedPreferences 초기화 상태를 추적하는 플래그
 bool isSharedPreferencesAvailable = false;
 // 전역 SharedPreferences 인스턴스 - 앱 전체에서 접근 가능
 SharedPreferences? prefsInstance;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Firebase 초기화
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    debugPrint('✅ Firebase 초기화 성공');
+  } catch (e) {
+    debugPrint('❌ Firebase 초기화 실패: $e');
+    FlutterError.dumpErrorToConsole(
+      FlutterErrorDetails(
+        exception: e,
+        stack: StackTrace.current,
+        library: 'main.dart',
+        context: ErrorDescription('Firebase 초기화 중 오류'),
+      ),
+    );
+  }
 
   // 백그라운드 오디오 초기화
   try {
