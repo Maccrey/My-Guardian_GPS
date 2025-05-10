@@ -10,7 +10,7 @@ import 'package:volume_controller/volume_controller.dart';
 
 class SOSController extends GetxController {
   final RxBool isSOSActive = false.obs;
-  final RxInt countdown = 10.obs; // 10초 카운트다운
+  final RxInt countdown = 30.obs; // 30초 카운트다운으로 변경
   final RxBool isAudioPlaying = false.obs;
   Timer? _timer;
   AudioPlayer? _audioPlayer;
@@ -215,6 +215,13 @@ class SOSController extends GetxController {
     // 개인 긴급 연락처 확인
     bool hasContacts = await hasPersonalEmergencyContacts();
 
+    void startSOS() async {
+      isSOSActive.value = true;
+      countdown.value = 30; // 항상 30초로 초기화
+      await _playSiren(); // SOS 시작 시 싸이렌 즉시 울림
+      _startCountdown();
+    }
+
     if (!hasContacts) {
       // 개인 긴급 연락처가 없는 경우 경고 다이얼로그 표시
       Get.dialog(
@@ -237,9 +244,7 @@ class SOSController extends GetxController {
             TextButton(
               onPressed: () {
                 Get.back(); // 현재 다이얼로그 닫기
-                // 연락처 없이 진행
-                isSOSActive.value = true;
-                _startCountdown();
+                startSOS(); // 연락처 없이 진행
               },
               style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('그래도 진행'),
@@ -250,8 +255,7 @@ class SOSController extends GetxController {
       );
     } else {
       // 개인 긴급 연락처가 있는 경우 정상 진행
-      isSOSActive.value = true;
-      _startCountdown();
+      startSOS();
     }
   }
 
@@ -259,39 +263,32 @@ class SOSController extends GetxController {
     isSOSActive.value = false;
     _stopCountdown();
     _stopSiren(); // 사이렌 소리 정지
-    countdown.value = 10; // 카운트다운 리셋값 수정
+    countdown.value = 30; // 카운트다운 리셋값 수정
   }
 
   void _startCountdown() {
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (countdown.value > 0) {
         countdown.value--;
       } else {
         // 카운트다운 완료, SOS 동작 실행
-        _executeSOSAction();
-        // SOS 상태는 유지하고, 카운트다운만 중지 (사이렌이 계속 재생되도록)
+        await _onSOSConfirmed();
         _stopCountdown();
       }
     });
   }
 
-  void _stopCountdown() {
-    _timer?.cancel();
+  Future<void> _onSOSConfirmed() async {
+    // 싸이렌 정지 전에 알림 전송
+    await _sendEmergencyNotifications();
+    await _stopSiren();
+    await callEmergencyNumber('119');
+    isSOSActive.value = false;
   }
 
-  Future<void> _executeSOSAction() async {
-    // 사이렌 소리 재생
-    await _playSiren();
-
-    // 진동 알림 (추가적인 주의 효과)
-    HapticFeedback.heavyImpact();
-
-    // 긴급 연락처에 알림 전송
-    await _sendEmergencyNotifications();
-
-    // 119로 전화 걸기
-    await callEmergencyNumber('119');
+  void _stopCountdown() {
+    _timer?.cancel();
   }
 
   Future<void> _sendEmergencyNotifications() async {
