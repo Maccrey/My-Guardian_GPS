@@ -51,7 +51,7 @@ dependencies:
 
   # Firebase 관련 패키지 - 테스트를 위해 임시 주석 처리
   firebase_core: ^3.13.0
-  # firebase_auth: ^5.5.3
+  firebase_auth: ^5.5.3
   # cloud_firestore: ^5.6.7
   # firebase_storage: ^12.4.5
 
