@@ -27,11 +27,12 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 
 flutter_ios_podfile_setup
 
-target 'Runner' do
-  use_frameworks!
-  use_modular_headers!
+# 정적 라이브러리 사용
+use_modular_headers!
 
+target 'Runner' do
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  pod 'GoogleMaps'
   target 'RunnerTests' do
     inherit! :search_paths
   end
@@ -40,5 +41,50 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    
+    # 모든 타겟에 대해 아키텍처 설정
+    target.build_configurations.each do |config|
+      # 시뮬레이터용 arm64 제외
+      if config.build_settings['SDKROOT'] == 'iphonesimulator'
+        config.build_settings['EXCLUDED_ARCHS'] = 'arm64'
+      end
+      
+      # Swift 버전 설정
+      config.build_settings['SWIFT_VERSION'] = '5.0'
+      
+      # 호환성 설정
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
+    end
   end
+  
+  # gRPC 모듈맵 파일 생성
+  grpc_public_headers = File.join(Dir.pwd, 'Pods', 'Headers', 'Public', 'gRPC-Core')
+  grpc_private_headers = File.join(Dir.pwd, 'Pods', 'Headers', 'Private', 'grpc')
+  
+  FileUtils.mkdir_p(grpc_public_headers)
+  FileUtils.mkdir_p(grpc_private_headers)
+  
+  grpc_public_modulemap = File.join(grpc_public_headers, 'gRPC-Core.modulemap')
+  grpc_private_modulemap = File.join(grpc_private_headers, 'gRPC-Core.modulemap')
+  
+  # 모듈맵 파일 내용
+  modulemap_content = <<~MAP
+    module gRPC_Core {
+      umbrella header "grpc.h"
+      export *
+      module * { export * }
+    }
+  MAP
+  
+  # 모듈맵 파일 생성
+  File.open(grpc_public_modulemap, 'w') do |f|
+    f.puts modulemap_content
+  end
+  
+  # 프라이빗 폴더에도 복사
+  File.open(grpc_private_modulemap, 'w') do |f|
+    f.puts modulemap_content
+  end
+  
+  puts "✅ gRPC-Core.modulemap 수동 생성 완료"
 end

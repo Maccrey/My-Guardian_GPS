@@ -6,7 +6,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:flutter/services.dart';
 import '../services/emergency_contact_service.dart';
-import 'package:volume_controller/volume_controller.dart';
+// import 'package:volume_controller/volume_controller.dart'; // 제거됨 - iOS 빌드 문제
 
 class SOSController extends GetxController {
   final RxBool isSOSActive = false.obs;
@@ -15,28 +15,29 @@ class SOSController extends GetxController {
   Timer? _timer;
   AudioPlayer? _audioPlayer;
   bool _isAudioInitialized = false;
-  final RxDouble currentVolume = 0.0.obs;
-  final VolumeController _volumeController = VolumeController();
+  final RxDouble currentVolume = 1.0.obs; // 기본값 최대로 설정
+  // final VolumeController _volumeController =
+  //     VolumeController(); // 제거됨 - iOS 빌드 문제
 
   @override
   void onInit() {
     super.onInit();
     _initAudioPlayer();
-    _initVolumeController();
+    // _initVolumeController(); // 제거됨 - iOS 빌드 문제
   }
 
   void _initVolumeController() {
     // 볼륨 컨트롤러 초기화 및 리스너 설정
-    _volumeController.listener((volume) {
-      currentVolume.value = volume;
-      debugPrint('현재 볼륨 레벨: $volume');
-    });
+    // _volumeController.listener((volume) {
+    //   currentVolume.value = volume;
+    //   debugPrint('현재 볼륨 레벨: $volume');
+    // });
 
-    // 초기 볼륨 수준 가져오기
-    _volumeController.getVolume().then((volume) {
-      currentVolume.value = volume;
-      debugPrint('초기 볼륨 레벨: $volume');
-    });
+    // // 초기 볼륨 수준 가져오기
+    // _volumeController.getVolume().then((volume) {
+    //   currentVolume.value = volume;
+    //   debugPrint('초기 볼륨 레벨: $volume');
+    // });
   }
 
   Future<void> _initAudioPlayer() async {
@@ -67,15 +68,15 @@ class SOSController extends GetxController {
       // 사용자에게 볼륨이 최대로 올라간다는 메시지 표시
       Get.snackbar(
         '긴급 알림',
-        '볼륨이 최대로 증가합니다. 긴급 상황에서는 소리가 잘 들리도록 합니다.',
+        '볼륨을 최대로 높이세요. 긴급 상황에서는 소리가 잘 들리도록 합니다.',
         backgroundColor: Colors.red.shade100,
         duration: const Duration(seconds: 2),
         snackPosition: SnackPosition.TOP,
       );
 
-      // 시스템 볼륨을 최대로 설정
-      _volumeController.setVolume(1.0, showSystemUI: false);
-      debugPrint('🔊 시스템 볼륨 최대로 설정됨');
+      // 시스템 볼륨을 최대로 설정 - 제거됨
+      // _volumeController.setVolume(1.0, showSystemUI: false);
+      // debugPrint('🔊 시스템 볼륨 최대로 설정됨');
 
       // 플레이어 볼륨도 최대로 설정
       await _audioPlayer!.setVolume(1.0);
@@ -108,8 +109,8 @@ class SOSController extends GetxController {
         isAudioPlaying.value = true;
         debugPrint('✅ 사이렌 소리 재생 시작');
 
-        // 30초마다 볼륨이 낮아지지 않도록 볼륨 유지
-        _startVolumeKeeper();
+        // 볼륨 유지 기능 제거
+        // _startVolumeKeeper();
       } catch (e) {
         debugPrint('⚠️ 사이렌 소리 설정 중 오류: $e');
 
@@ -128,7 +129,7 @@ class SOSController extends GetxController {
     }
   }
 
-  // 볼륨을 최대로 유지하는 타이머
+  // 볼륨을 최대로 유지하는 타이머 - 제거됨
   Timer? _volumeKeeper;
 
   void _startVolumeKeeper() {
@@ -137,11 +138,11 @@ class SOSController extends GetxController {
       if (isAudioPlaying.value) {
         try {
           // 주기적으로 볼륨이 최대인지 확인하고 아니면 다시 최대로 설정
-          double currentVol = await _volumeController.getVolume();
-          if (currentVol < 0.9) {
-            _volumeController.setVolume(1.0, showSystemUI: false);
-            debugPrint('🔊 볼륨 다시 최대로 설정됨 (이전: $currentVol)');
-          }
+          // double currentVol = await _volumeController.getVolume();
+          // if (currentVol < 0.9) {
+          //   _volumeController.setVolume(1.0, showSystemUI: false);
+          //   debugPrint('🔊 볼륨 다시 최대로 설정됨 (이전: $currentVol)');
+          // }
 
           // 오디오 플레이어 볼륨도 확인
           if (_audioPlayer != null && _audioPlayer!.volume < 0.9) {
@@ -160,7 +161,7 @@ class SOSController extends GetxController {
   Future<void> _stopSiren() async {
     try {
       // 볼륨 유지 타이머 취소
-      _volumeKeeper?.cancel();
+      _volumeKeeper?.cancel(); // 제거됨
 
       if (_audioPlayer != null && _audioPlayer!.playing) {
         await _audioPlayer!.stop();
@@ -394,7 +395,7 @@ class SOSController extends GetxController {
 
   @override
   void onClose() {
-    _volumeKeeper?.cancel();
+    // _volumeKeeper?.cancel(); // 제거됨
     _stopSiren();
     _timer?.cancel();
     _audioPlayer?.dispose();
