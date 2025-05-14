@@ -29,8 +29,15 @@ flutter_ios_podfile_setup
 
 # 정적 라이브러리 사용
 use_modular_headers!
+# use_frameworks!
 
 target 'Runner' do
+  # Firestore 프리컴파일된 바이너리 사용
+  pod 'FirebaseFirestore', :git => 'https://github.com/invertase/firestore-ios-sdk-frameworks.git', :tag => '10.25.0'
+  
+  # Firebase Storage 문제 해결을 위한 설정
+  # pod 'FirebaseStorage', :modular_headers => true
+  
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   pod 'GoogleMaps'
   target 'RunnerTests' do
@@ -57,15 +64,15 @@ post_install do |installer|
     end
   end
   
-  # gRPC 모듈맵 파일 생성
-  grpc_public_headers = File.join(Dir.pwd, 'Pods', 'Headers', 'Public', 'gRPC-Core')
-  grpc_private_headers = File.join(Dir.pwd, 'Pods', 'Headers', 'Private', 'grpc')
-  
-  FileUtils.mkdir_p(grpc_public_headers)
-  FileUtils.mkdir_p(grpc_private_headers)
-  
-  grpc_public_modulemap = File.join(grpc_public_headers, 'gRPC-Core.modulemap')
-  grpc_private_modulemap = File.join(grpc_private_headers, 'gRPC-Core.modulemap')
+  # gRPC 모듈맵 파일 생성 - 강화된 버전
+  grpc_dirs = [
+    { public: File.join(Dir.pwd, 'Pods', 'Headers', 'Public', 'gRPC-Core'), 
+      private: File.join(Dir.pwd, 'Pods', 'Headers', 'Private', 'grpc') },
+    { public: File.join(Dir.pwd, 'Pods', 'gRPC-Core', 'include'), 
+      private: File.join(Dir.pwd, 'Pods', 'Headers', 'Private', 'grpc') },
+    { public: File.join(Dir.pwd, 'Pods', 'Headers', 'Public', 'grpc'), 
+      private: File.join(Dir.pwd, 'Pods', 'Headers', 'Private', 'grpc') }
+  ]
   
   # 모듈맵 파일 내용
   modulemap_content = <<~MAP
@@ -76,14 +83,104 @@ post_install do |installer|
     }
   MAP
   
-  # 모듈맵 파일 생성
-  File.open(grpc_public_modulemap, 'w') do |f|
-    f.puts modulemap_content
+  # 여러 경로에 모듈맵 파일 생성 시도
+  grpc_dirs.each do |dirs|
+    FileUtils.mkdir_p(dirs[:public])
+    FileUtils.mkdir_p(dirs[:private])
+    
+    grpc_public_modulemap = File.join(dirs[:public], 'gRPC-Core.modulemap')
+    grpc_private_modulemap = File.join(dirs[:private], 'gRPC-Core.modulemap')
+    
+    # 모듈맵 파일 생성
+    File.open(grpc_public_modulemap, 'w') do |f|
+      f.puts modulemap_content
+    end
+    
+    # 프라이빗 폴더에도 복사
+    File.open(grpc_private_modulemap, 'w') do |f|
+      f.puts modulemap_content
+    end
+    
+    # 셸 명령어로도 직접 생성 시도
+    system("mkdir -p #{dirs[:private]}")
+    system("echo '#{modulemap_content}' > #{grpc_private_modulemap}")
+    
+    puts "✅ gRPC-Core.modulemap 생성 시도: #{dirs[:private]}"
   end
   
-  # 프라이빗 폴더에도 복사
-  File.open(grpc_private_modulemap, 'w') do |f|
-    f.puts modulemap_content
+  # 빌드 설정에 gRPC 관련 설정 추가
+  installer.pods_project.targets.each do |target|
+    if target.name == 'gRPC-Core'
+      target.build_configurations.each do |config|
+        # 모듈맵 파일 경로 설정
+        config.build_settings['MODULEMAP_FILE'] = File.join(Dir.pwd, 'Pods', 'Headers', 'Private', 'grpc', 'gRPC-Core.modulemap')
+        # 헤더 검색 경로 추가
+        if config.build_settings['HEADER_SEARCH_PATHS'].nil?
+          config.build_settings['HEADER_SEARCH_PATHS'] = ['$(inherited)', "#{Dir.pwd}/Pods/Headers/Private/grpc"]
+        else
+          config.build_settings['HEADER_SEARCH_PATHS'] << "#{Dir.pwd}/Pods/Headers/Private/grpc"
+        end
+      end
+    end
+  end
+  
+  # 시스템 명령어로 모듈맵 파일 확인
+  system("ls -la #{File.join(Dir.pwd, 'Pods', 'Headers', 'Private', 'grpc')}")
+  
+  # Firestore 관련 설정 추가
+  firestore_internal_headers = File.join(Dir.pwd, 'Pods', 'FirebaseFirestoreInternal')
+  if Dir.exist?(firestore_internal_headers)
+    puts "✅ FirebaseFirestoreInternal 폴더 존재함"
+    
+    # FirebaseFirestoreInternal 모듈맵 파일 생성
+    firestore_internal_modulemap = File.join(Dir.pwd, 'Pods', 'Headers', 'Private', 'FirebaseFirestoreInternal', 'FirebaseFirestoreInternal.modulemap')
+    firestore_internal_modulemap_dir = File.join(Dir.pwd, 'Pods', 'Headers', 'Private', 'FirebaseFirestoreInternal')
+    
+    # 디렉토리 생성
+    FileUtils.mkdir_p(firestore_internal_modulemap_dir)
+    
+    # 모듈맵 내용
+    firestore_modulemap_content = <<~MAP
+      framework module FirebaseFirestoreInternal {
+        umbrella header "FirebaseFirestoreInternal-umbrella.h"
+        export *
+        module * { export * }
+      }
+    MAP
+    
+    # 모듈맵 파일 생성
+    File.open(firestore_internal_modulemap, 'w') do |f|
+      f.puts firestore_modulemap_content
+    end
+    
+    # 원본 모듈맵 파일 경로
+    source_modulemap = File.join(Dir.pwd, 'Pods', 'Target Support Files', 'FirebaseFirestoreInternal', 'FirebaseFirestoreInternal.modulemap')
+    
+    # 원본 모듈맵 파일이 있는지 확인하고 복사
+    if File.exist?(source_modulemap)
+      FileUtils.cp(source_modulemap, firestore_internal_modulemap)
+      puts "✅ FirebaseFirestoreInternal.modulemap 파일 복사됨"
+    end
+    
+    # 빌드 설정 수정
+    installer.pods_project.targets.each do |target|
+      if target.name == 'FirebaseFirestoreInternal'
+        target.build_configurations.each do |config|
+          # 모듈맵 파일 경로 설정
+          config.build_settings['MODULEMAP_FILE'] = firestore_internal_modulemap
+          # 헤더 검색 경로 추가
+          if config.build_settings['HEADER_SEARCH_PATHS'].nil?
+            config.build_settings['HEADER_SEARCH_PATHS'] = ['$(inherited)', "#{Dir.pwd}/Pods/Headers/Private/FirebaseFirestoreInternal"]
+          else
+            config.build_settings['HEADER_SEARCH_PATHS'] << "#{Dir.pwd}/Pods/Headers/Private/FirebaseFirestoreInternal"
+          end
+        end
+      end
+    end
+    
+    puts "✅ FirebaseFirestoreInternal 설정 완료"
+  else
+    puts "⚠️ FirebaseFirestoreInternal 폴더가 없음"
   end
   
   puts "✅ gRPC-Core.modulemap 수동 생성 완료"
