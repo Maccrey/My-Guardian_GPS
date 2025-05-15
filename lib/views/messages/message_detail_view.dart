@@ -25,16 +25,53 @@ class _MessageDetailViewState extends State<MessageDetailView> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
+  // 스캐폴드 키를 저장할 변수 - dispose에서 안전하게 액세스하기 위함
+  ScaffoldMessengerState? _scaffoldMessenger;
+
   @override
   void initState() {
     super.initState();
 
+    // 로깅 추가
+    debugPrint('🔄 MessageDetailView initState 시작: ${widget.userId}');
+
     // 화면이 로드되면 읽지 않은 메시지를 읽음 상태로 변경
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 위젯 생성 직후에만 실행되도록 보장
+      if (!mounted) {
+        debugPrint('⚠️ 위젯이 이미 dispose되어 초기화를 중단합니다.');
+        return;
+      }
+
       try {
-        if (mounted) {
-          _markMessagesAsRead();
-          _scrollToBottom();
+        debugPrint('🔄 메시지 화면 초기화 - 대화 상대 ID: ${widget.userId}');
+
+        // 비어있는 대화인지 확인
+        List<Message> conversation = [];
+
+        // 안전한 메시지 가져오기 시도
+        try {
+          conversation = _messageService.getConversationWith(widget.userId);
+          debugPrint('🔄 대화 목록 불러오기 성공: ${conversation.length}개 메시지');
+        } catch (e) {
+          debugPrint('⚠️ 대화 목록 불러오기 오류: $e');
+          conversation = [];
+        }
+
+        if (conversation.isEmpty) {
+          debugPrint('⚠️ 대화가 비어있습니다. 테스트 메시지 생성합니다.');
+          // 대화가 비어있으면 테스트 메시지 자동 생성
+          if (mounted) {
+            _createTestMessages();
+          }
+        } else {
+          debugPrint('✅ 대화 ${conversation.length}개 메시지 로드됨.');
+          // 읽음 상태로 변경 (내부에서 mounted 체크)
+          if (mounted) {
+            _markMessagesAsRead();
+            // 스크롤 이동 (내부에서 mounted 체크)
+            _safelyScrollToBottom();
+          }
         }
       } catch (e) {
         debugPrint('⚠️ 초기화 중 오류 발생: $e');
@@ -43,20 +80,47 @@ class _MessageDetailViewState extends State<MessageDetailView> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // 현재 스캐폴드 메신저 저장 - dispose에서 안전하게 접근 가능
+    try {
+      _scaffoldMessenger = ScaffoldMessenger.of(context);
+      debugPrint('✅ ScaffoldMessenger 참조 저장 성공');
+    } catch (e) {
+      debugPrint('⚠️ ScaffoldMessenger 참조 저장 실패: $e');
+    }
+  }
+
+  @override
   void dispose() {
-    // 메모리 누수 방지를 위해 컨트롤러 정리
-    _messageController.dispose();
-    _scrollController.dispose();
+    debugPrint('🧹 MessageDetailView dispose 시작: ${widget.userId}');
 
-    // 여기서 상태 업데이트 시도 금지
-    // _messageService나 _authService에 접근하지 않음
+    // mounted 상태 확인 없이 직접 컨트롤러 정리
+    try {
+      // dispose 메서드에서 BuildContext나 State에 의존하는 코드 제거
+      // context나 widget에 접근하지 않음
+      _messageController.dispose();
+      _scrollController.dispose();
 
+      debugPrint('✅ 컨트롤러 정리 완료');
+    } catch (e) {
+      debugPrint('⚠️ 컨트롤러 정리 중 오류: $e');
+    }
+
+    // 상위 dispose 호출
     super.dispose();
+
+    debugPrint('🧹 MessageDetailView dispose 완료: ${widget.userId}');
   }
 
   // 메시지 전송
   Future<void> _sendMessage() async {
-    if (!mounted) return; // mounted 체크 추가
+    // 먼저 mounted 체크
+    if (!mounted) {
+      debugPrint('⚠️ 위젯이 이미 dispose되어 메시지 전송을 중단합니다.');
+      return;
+    }
 
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
@@ -66,94 +130,192 @@ class _MessageDetailViewState extends State<MessageDetailView> {
     debugPrint('👤 현재 사용자 UID: ${_authService.uid}');
     debugPrint('👥 수신자 ID: ${widget.userId}');
 
-    // 로그인되지 않은 경우 테스트 로그인 시도 (개발용)
-    if (_authService.uid == null || _authService.uid!.isEmpty) {
-      debugPrint('⚠️ 로그인되지 않음 - 테스트 계정으로 자동 로그인 시도');
-      await _authService.login('test@example.com', 'Password1!');
-      if (!mounted) return; // 비동기 작업 후 mounted 체크
-      debugPrint('✅ 테스트 로그인 완료, 새 UID: ${_authService.uid}');
-    }
+    // 메시지 컨트롤러의 텍스트를 임시 저장 (비동기 작업 후에도 사용 가능하도록)
+    final messageText = text;
 
-    final success = await _messageService.sendMessage(
-      receiverId: widget.userId,
-      content: text,
-    );
-
-    if (!mounted) return; // 비동기 작업 후 mounted 체크
-
-    debugPrint(success ? '✅ 메시지 전송 성공' : '❌ 메시지 전송 실패');
-
-    if (success) {
-      _messageController.clear();
-
-      // 스크롤을 맨 아래로 이동
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted) {
-          // mounted 체크 추가
-          _scrollToBottom();
-        }
-      });
-    } else {
-      // 전송 실패 시 사용자에게 알림
+    try {
+      // 전송 중 상태 표시
       if (mounted) {
-        // mounted 체크 추가
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('메시지 전송에 실패했습니다.'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        setState(() {
+          // 필요하면 UI에 전송 중 표시
+        });
+      }
+
+      // 로그인되지 않은 경우 테스트 로그인 시도 (개발용)
+      if (_authService.uid == null || _authService.uid!.isEmpty) {
+        debugPrint('⚠️ 로그인되지 않음 - 테스트 계정으로 자동 로그인 시도');
+        await _authService.login('test@example.com', 'Password1!');
+
+        // 로그인 후 mounted 체크
+        if (!mounted) {
+          debugPrint('⚠️ 로그인 후 위젯이 dispose되어 중단');
+          return;
+        }
+
+        debugPrint('✅ 테스트 로그인 완료, 새 UID: ${_authService.uid}');
+      }
+
+      // 전송 전 현재 메시지 수 확인
+      final beforeCount =
+          _messageService.getConversationWith(widget.userId).length;
+      debugPrint('📊 전송 전 메시지 수: $beforeCount');
+
+      // 메시지 전송
+      final success = await _messageService.sendMessage(
+        receiverId: widget.userId,
+        content: messageText, // 임시 저장한 텍스트 사용
+      );
+
+      // 전송 후 위젯 상태 체크
+      if (!mounted) {
+        debugPrint('⚠️ 메시지 전송 후 위젯이 dispose되어 UI 업데이트를 중단합니다.');
+        return;
+      }
+
+      // 전송 후 메시지 수 확인
+      final afterCount =
+          _messageService.getConversationWith(widget.userId).length;
+      debugPrint('📊 전송 후 메시지 수: $afterCount');
+      debugPrint(
+          '📱 메시지 ${success ? "전송 성공" : "전송 실패"} ($beforeCount → $afterCount)');
+
+      if (success) {
+        // 텍스트 필드 비우기
+        if (mounted && _messageController.text == messageText) {
+          _messageController.clear();
+        }
+
+        // 스크롤을 맨 아래로 이동 - 별도 메서드로 추출하여 mounted 체크와 함께 호출
+        _safelyScrollToBottom();
+      } else if (mounted) {
+        // 전송 실패 시 사용자에게 알림
+        _showErrorSnackBar('메시지 전송에 실패했습니다.');
+      }
+    } catch (e) {
+      debugPrint('⚠️ 메시지 전송 중 예외 발생: $e');
+      if (mounted) {
+        _showErrorSnackBar('메시지 전송 중 오류가 발생했습니다.');
       }
     }
   }
 
-  // 위치 공유 요청 보내기
-  Future<void> _sendLocationRequest() async {
-    if (!mounted) return; // mounted 체크 추가
+  // 안전하게 스크롤을 아래로 이동하는 메서드 (mounted 확인 포함)
+  void _safelyScrollToBottom() {
+    if (!mounted) return;
 
-    // 로그인되지 않은 경우 테스트 로그인 시도 (개발용)
-    if (_authService.uid == null || _authService.uid!.isEmpty) {
-      debugPrint('⚠️ 로그인되지 않음 - 테스트 계정으로 자동 로그인 시도');
-      await _authService.login('test@example.com', 'Password1!');
-      if (!mounted) return; // 비동기 작업 후 mounted 체크
-      debugPrint('✅ 테스트 로그인 완료, 새 UID: ${_authService.uid}');
+    // 약간의 딜레이 후 스크롤 (메시지 렌더링 시간 확보)
+    Future.delayed(const Duration(milliseconds: 300), () {
+      // 딜레이 후 다시 mounted 체크
+      if (!mounted) {
+        debugPrint('⚠️ 스크롤 시도 시 위젯이 dispose되어 중단');
+        return;
+      }
+
+      debugPrint('🔄 스크롤 맨 아래로 이동 시도');
+      _scrollToBottom();
+    });
+  }
+
+  // 에러 스낵바 표시 헬퍼 메서드
+  void _showErrorSnackBar(String message) {
+    if (!mounted) {
+      debugPrint('⚠️ 위젯이 mounted 상태가 아니라 스낵바를 표시할 수 없습니다: $message');
+      return;
     }
 
-    final success = await _messageService.sendLocationRequest(
-      receiverId: widget.userId,
+    // 일반 ScaffoldMessenger.of(context) 대신 Get.snackbar 사용 - context 의존성 제거
+    Get.snackbar(
+      '알림',
+      message,
+      backgroundColor: Colors.red.withOpacity(0.8),
+      colorText: Colors.white,
+      snackPosition: SnackPosition.BOTTOM,
+      duration: const Duration(seconds: 3),
     );
+  }
 
-    if (!mounted) return; // 비동기 작업 후 mounted 체크
+  // 위치 공유 요청 보내기
+  Future<void> _sendLocationRequest() async {
+    // 먼저 mounted 체크
+    if (!mounted) {
+      debugPrint('⚠️ 위젯이 이미 dispose되어 위치 공유 요청을 중단합니다.');
+      return;
+    }
 
-    if (!success) {
-      // 전송 실패 시 사용자에게 알림
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('위치 공유 요청 전송에 실패했습니다.'),
-          backgroundColor: Colors.red,
-        ),
+    try {
+      // 로그인되지 않은 경우 테스트 로그인 시도 (개발용)
+      if (_authService.uid == null || _authService.uid!.isEmpty) {
+        debugPrint('⚠️ 로그인되지 않음 - 테스트 계정으로 자동 로그인 시도');
+        await _authService.login('test@example.com', 'Password1!');
+
+        // 로그인 후 mounted 체크
+        if (!mounted) {
+          debugPrint('⚠️ 로그인 후 위젯이 dispose되어 중단');
+          return;
+        }
+
+        debugPrint('✅ 테스트 로그인 완료, 새 UID: ${_authService.uid}');
+      }
+
+      // 위치 공유 요청 전송
+      final success = await _messageService.sendLocationRequest(
+        receiverId: widget.userId,
       );
+
+      // 전송 후 위젯 상태 체크
+      if (!mounted) {
+        debugPrint('⚠️ 위치 공유 요청 후 위젯이 dispose되어 UI 업데이트를 중단합니다.');
+        return;
+      }
+
+      if (!success && mounted) {
+        // 전송 실패 시 사용자에게 알림
+        _showErrorSnackBar('위치 공유 요청 전송에 실패했습니다.');
+      } else if (success) {
+        // 성공한 경우 스크롤 이동
+        _safelyScrollToBottom();
+      }
+    } catch (e) {
+      debugPrint('⚠️ 위치 공유 요청 중 예외 발생: $e');
+      if (mounted) {
+        _showErrorSnackBar('위치 공유 요청 중 오류가 발생했습니다.');
+      }
     }
   }
 
   // 읽지 않은 메시지를 읽음 상태로 변경
   Future<void> _markMessagesAsRead() async {
-    if (!mounted) return; // mounted 체크 추가
+    if (!mounted) {
+      debugPrint('⚠️ 위젯이 이미 dispose되어 읽음 상태 변경을 중단합니다.');
+      return;
+    }
 
-    final conversation = _messageService.getConversationWith(widget.userId);
-    final currentUserId = _authService.uid;
+    try {
+      final conversation = _messageService.getConversationWith(widget.userId);
+      final currentUserId = _authService.uid;
 
-    if (currentUserId == null) return;
+      if (currentUserId == null || currentUserId.isEmpty) {
+        debugPrint('⚠️ 현재 로그인된 사용자가 없어 읽음 상태 변경을 중단합니다.');
+        return;
+      }
 
-    // 읽지 않은 메시지만 필터링 (수신한 메시지만)
-    final unreadMessageIds = conversation
-        .where((m) => !m.isRead && m.receiverId == currentUserId)
-        .map((m) => m.id)
-        .toList();
+      // 읽지 않은 메시지만 필터링 (수신한 메시지만)
+      final unreadMessageIds = conversation
+          .where((m) => !m.isRead && m.receiverId == currentUserId)
+          .map((m) => m.id)
+          .toList();
 
-    if (unreadMessageIds.isNotEmpty) {
+      if (unreadMessageIds.isEmpty) {
+        debugPrint('✅ 읽지 않은 메시지가 없습니다.');
+        return;
+      }
+
+      debugPrint('🔄 ${unreadMessageIds.length}개의 메시지를 읽음 상태로 변경합니다.');
       await _messageService.markMultipleMessagesAsRead(unreadMessageIds);
-      // 비동기 작업 후 mounted 체크는 필요 없음 - 결과를 사용하지 않음
+
+      // 읽음 처리 후 위젯 상태 확인은 필요 없음 - UI가 자동으로 갱신됨
+    } catch (e) {
+      debugPrint('⚠️ 메시지 읽음 상태 변경 중 오류 발생: $e');
     }
   }
 
@@ -195,14 +357,52 @@ class _MessageDetailViewState extends State<MessageDetailView> {
   void _scrollToBottom() {
     try {
       if (_scrollController.hasClients) {
+        final maxScroll = _scrollController.position.maxScrollExtent;
+        debugPrint('🔄 스크롤 이동: maxScrollExtent=$maxScroll');
+
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
+          maxScroll,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
+      } else {
+        debugPrint('⚠️ 스크롤 컨트롤러에 클라이언트 없음');
       }
     } catch (e) {
       debugPrint('⚠️ 스크롤 이동 중 오류 발생: $e');
+    }
+  }
+
+  // 테스트 메시지 생성
+  Future<void> _createTestMessages() async {
+    if (!mounted) {
+      debugPrint('⚠️ 위젯이 이미 dispose되어 테스트 메시지 생성을 중단합니다.');
+      return;
+    }
+
+    try {
+      debugPrint('🧪 테스트 메시지 생성 시도: ${widget.userId}');
+      _messageService.createTestMessagesForUser(widget.userId);
+
+      // 메시지 생성 후 스크롤 이동
+      _safelyScrollToBottom();
+
+      if (mounted) {
+        // ScaffoldMessenger 대신 Get.snackbar 사용
+        Get.snackbar(
+          '알림',
+          '테스트 메시지가 생성되었습니다',
+          backgroundColor: Colors.green.withOpacity(0.8),
+          colorText: Colors.white,
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 3),
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ 테스트 메시지 생성 중 오류: $e');
+      if (mounted) {
+        _showErrorSnackBar('테스트 메시지 생성 중 오류가 발생했습니다.');
+      }
     }
   }
 
@@ -212,6 +412,44 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       appBar: AppBar(
         title: Text(_getRecipientName(widget.userId)),
         actions: [
+          // 테스트 메시지 생성 버튼 (개발용)
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _createTestMessages,
+            tooltip: '테스트 메시지 생성',
+          ),
+          // 로컬 스토리지 디버깅 버튼 (개발용)
+          IconButton(
+            icon: const Icon(Icons.bug_report),
+            onPressed: () async {
+              await _messageService.debugLocalStorage();
+              if (mounted) {
+                Get.snackbar(
+                  '로컬 스토리지 디버깅',
+                  '로그를 확인하세요',
+                  snackPosition: SnackPosition.BOTTOM,
+                  duration: const Duration(seconds: 2),
+                );
+              }
+            },
+            tooltip: '스토리지 디버깅',
+          ),
+          // 모든 메시지 삭제 버튼 (개발용)
+          IconButton(
+            icon: const Icon(Icons.delete_forever),
+            onPressed: () async {
+              await _messageService.clearAllMessages();
+              if (mounted) {
+                Get.snackbar(
+                  '메시지 삭제',
+                  '모든 메시지가 삭제되었습니다',
+                  snackPosition: SnackPosition.BOTTOM,
+                  duration: const Duration(seconds: 2),
+                );
+              }
+            },
+            tooltip: '모든 메시지 삭제',
+          ),
           IconButton(
             icon: const Icon(Icons.location_on),
             onPressed: _sendLocationRequest,
@@ -224,12 +462,43 @@ class _MessageDetailViewState extends State<MessageDetailView> {
           // 메시지 목록
           Expanded(
             child: Obx(() {
-              final conversation =
-                  _messageService.getConversationWith(widget.userId);
+              List<Message> conversation = [];
+
+              try {
+                conversation =
+                    _messageService.getConversationWith(widget.userId);
+                debugPrint('🔄 UI 갱신: 대화 목록 ${conversation.length}개');
+              } catch (e) {
+                debugPrint('⚠️ 대화 목록 가져오기 오류: $e');
+                // 오류 발생 시 빈 목록 사용
+                conversation = [];
+              }
 
               if (conversation.isEmpty) {
-                return const Center(
-                  child: Text('대화를 시작해보세요!'),
+                debugPrint('⚠️ 대화 목록이 비어 있습니다. 시작 메시지 표시');
+
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text('대화를 시작해보세요!'),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          _messageController.text = '안녕하세요!';
+                          _sendMessage();
+                        },
+                        icon: const Icon(Icons.message),
+                        label: const Text('첫 메시지 보내기'),
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: _createTestMessages,
+                        icon: const Icon(Icons.add_comment),
+                        label: const Text('테스트 메시지 생성'),
+                      ),
+                    ],
+                  ),
                 );
               }
 
@@ -245,13 +514,29 @@ class _MessageDetailViewState extends State<MessageDetailView> {
 
                   final message = conversation[index];
                   if (message == null) {
+                    debugPrint('⚠️ 대화 목록 인덱스 $index에 메시지가 null입니다');
                     return const SizedBox.shrink();
                   }
 
-                  // AuthService UID null 체크
-                  final String? currentUserUid = _authService.uid;
-                  final isCurrentUserSender = currentUserUid != null &&
-                      message.senderId == currentUserUid;
+                  // 메시지 정보 로깅 (문제 발생 시 확인용)
+                  if (index == 0) {
+                    try {
+                      debugPrint(
+                          '🔍 첫 번째 메시지: ID=${message.id.substring(0, 6)}... | 보낸이=${message.senderId} | 받는이=${message.receiverId}');
+                    } catch (e) {
+                      debugPrint('⚠️ 메시지 로깅 오류: $e');
+                    }
+                  }
+
+                  // 안전하게 발신자 확인
+                  bool isCurrentUserSender = false;
+                  try {
+                    isCurrentUserSender =
+                        message.senderId == _authService.uid ||
+                            message.senderId.startsWith('test-');
+                  } catch (e) {
+                    debugPrint('⚠️ 발신자 확인 오류: $e');
+                  }
 
                   Widget messageContent;
 
