@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../services/auth_service.dart';
+import '../services/message_service.dart';
 import 'emergency_contacts_view.dart';
 import 'emergency_guide_view.dart';
 import 'settings/settings_view.dart';
 import 'sos_view.dart';
+import 'messages/messages_list_view.dart';
 
 class HomeView extends StatelessWidget {
   const HomeView({Key? key}) : super(key: key);
@@ -106,6 +108,20 @@ class HomeView extends StatelessWidget {
                       Colors.orange.shade100,
                       () {
                         // 메시지 화면으로 이동
+                        try {
+                          Get.to(() => const MessagesListView());
+                        } catch (e) {
+                          debugPrint('⚠️ 메시지 화면으로 이동 중 오류: $e');
+
+                          // 스낵바 표시 (context 참조 없음)
+                          Get.snackbar(
+                            '오류',
+                            '메시지 화면을 열 수 없습니다',
+                            backgroundColor: Colors.red.withOpacity(0.8),
+                            colorText: Colors.white,
+                            snackPosition: SnackPosition.BOTTOM,
+                          );
+                        }
                       },
                     ),
                     _buildFeatureCard(
@@ -159,7 +175,22 @@ class HomeView extends StatelessWidget {
             label: '지도',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.message),
+            icon: Obx(() {
+              try {
+                final messageService = Get.find<MessageService>();
+                final unreadCount = messageService.unreadMessageCount.value;
+
+                return Badge(
+                  isLabelVisible: unreadCount > 0,
+                  label: Text('$unreadCount'),
+                  child: Icon(Icons.message),
+                );
+              } catch (e) {
+                // 에러 발생 시 기본 아이콘 표시
+                debugPrint('⚠️ 메시지 배지 표시 중 오류: $e');
+                return const Icon(Icons.message);
+              }
+            }),
             label: '메시지',
           ),
           BottomNavigationBarItem(
@@ -174,13 +205,47 @@ class HomeView extends StatelessWidget {
               // 이미 홈 화면에 있으므로 아무 작업 안함
               break;
             case 1: // 지도
-              Get.toNamed('/map');
+              try {
+                Get.toNamed('/map');
+              } catch (e) {
+                debugPrint('⚠️ 지도 화면으로 이동 중 오류: $e');
+                Get.snackbar(
+                  '오류',
+                  '지도 화면을 열 수 없습니다',
+                  backgroundColor: Colors.red.withOpacity(0.8),
+                  colorText: Colors.white,
+                  snackPosition: SnackPosition.BOTTOM,
+                );
+              }
               break;
             case 2: // 메시지
-              // 아직 구현되지 않음
+              // 메시지 화면으로 이동
+              try {
+                Get.to(() => const MessagesListView());
+              } catch (e) {
+                debugPrint('⚠️ 메시지 화면으로 이동 중 오류: $e');
+                Get.snackbar(
+                  '오류',
+                  '메시지 화면을 열 수 없습니다',
+                  backgroundColor: Colors.red.withOpacity(0.8),
+                  colorText: Colors.white,
+                  snackPosition: SnackPosition.BOTTOM,
+                );
+              }
               break;
             case 3: // 설정
-              Get.to(() => const SettingsView());
+              try {
+                Get.to(() => const SettingsView());
+              } catch (e) {
+                debugPrint('⚠️ 설정 화면으로 이동 중 오류: $e');
+                Get.snackbar(
+                  '오류',
+                  '설정 화면을 열 수 없습니다',
+                  backgroundColor: Colors.red.withOpacity(0.8),
+                  colorText: Colors.white,
+                  snackPosition: SnackPosition.BOTTOM,
+                );
+              }
               break;
           }
         },

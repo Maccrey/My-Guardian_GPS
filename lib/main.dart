@@ -7,6 +7,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 
 import 'services/auth_service.dart';
+import 'services/message_service.dart';
 import 'views/login_view.dart';
 import 'views/register_view.dart';
 import 'views/forgot_password_view.dart';
@@ -106,12 +107,40 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 서비스 초기화
-    Get.put(AuthService());
+    // 먼저 AuthService 초기화해야 다른 서비스에서 사용 가능
+    try {
+      if (!Get.isRegistered<AuthService>()) {
+        Get.put(AuthService(), permanent: true);
+        debugPrint('✅ AuthService 초기화 성공');
+      }
+    } catch (e) {
+      debugPrint('⚠️ AuthService 초기화 오류: $e');
+    }
+
+    // 메시지 서비스 초기화
+    try {
+      if (!Get.isRegistered<MessageService>()) {
+        Get.put(MessageService(), permanent: true);
+        debugPrint('✅ MessageService 초기화 성공');
+      }
+    } catch (e) {
+      debugPrint('⚠️ MessageService 초기화 오류: $e');
+    }
+
     // 긴급 연락처 서비스 초기화 - SharedPreferences 상태에 따라 메모리 모드 설정
-    Get.put(EmergencyContactService(
-      useMemoryOnly: !isSharedPreferencesAvailable,
-      prefs: prefsInstance,
-    ));
+    try {
+      if (!Get.isRegistered<EmergencyContactService>()) {
+        Get.put(
+            EmergencyContactService(
+              useMemoryOnly: !isSharedPreferencesAvailable,
+              prefs: prefsInstance,
+            ),
+            permanent: true);
+        debugPrint('✅ EmergencyContactService 초기화 성공');
+      }
+    } catch (e) {
+      debugPrint('⚠️ EmergencyContactService 초기화 오류: $e');
+    }
 
     // 위치 서비스 초기화 - 안전하게 초기화
     try {

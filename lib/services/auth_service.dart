@@ -8,11 +8,18 @@ class AuthService extends GetxController {
   final RxBool _isLoading = false.obs;
   final Rx<String?> _error = Rx<String?>(null);
 
+  // Firebase 사용자 ID (임시 구현)
+  final Rx<String?> _uid = Rx<String?>(null);
+
   // Getters
   bool get isAuthenticated => _isAuthenticated.value;
   UserModel? get currentUser => _currentUser.value;
   bool get isLoading => _isLoading.value;
   String? get error => _error.value;
+  String? get uid => _uid.value;
+
+  // 로그인 상태 게터
+  bool get isLoggedIn => _isAuthenticated.value && _currentUser.value != null;
 
   // Login 메소드
   Future<bool> login(String email, String password) async {
@@ -25,9 +32,13 @@ class AuthService extends GetxController {
 
       // 테스트용 로그인 검증
       if (email == 'test@example.com' && password == 'Password1!') {
+        // 테스트용 uid 생성 (실제로는 Firebase Auth에서 제공)
+        _uid.value = 'test-user-${DateTime.now().millisecondsSinceEpoch}';
+
         _currentUser.value = UserModel(
           email: email,
           nickname: '테스트유저',
+          uid: _uid.value,
         );
         _isAuthenticated.value = true;
         setLoading(false);
@@ -77,6 +88,7 @@ class AuthService extends GetxController {
 
       _currentUser.value = null;
       _isAuthenticated.value = false;
+      _uid.value = null; // uid 초기화
       setLoading(false);
     } catch (e) {
       setError('로그아웃 중 오류가 발생했습니다: ${e.toString()}');
