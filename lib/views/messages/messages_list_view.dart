@@ -723,6 +723,9 @@ class _MessagesListViewState extends State<MessagesListView> {
     final searchController = TextEditingController();
     final scrollController = ScrollController();
 
+    // 다이얼로그가 닫힐 때 컨트롤러를 dispose하기 위한 플래그
+    bool isDialogActive = true;
+
     showDialog(
       context: context,
       builder: (context) {
@@ -745,7 +748,12 @@ class _MessagesListViewState extends State<MessagesListView> {
                 IconButton(
                   icon: const Icon(Icons.close),
                   color: Colors.grey.shade600,
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () {
+                    isDialogActive = false;
+                    searchController.dispose();
+                    scrollController.dispose();
+                    Navigator.of(context).pop();
+                  },
                 ),
               ],
             ),
@@ -987,6 +995,10 @@ class _MessagesListViewState extends State<MessagesListView> {
                                 ),
                               ),
                               onTap: () {
+                                // 컨트롤러 dispose 후 다이얼로그 닫기
+                                isDialogActive = false;
+                                searchController.dispose();
+                                scrollController.dispose();
                                 Navigator.of(context).pop();
                                 _startNewConversation(user);
                               },
@@ -1024,7 +1036,13 @@ class _MessagesListViewState extends State<MessagesListView> {
           );
         });
       },
-    );
+    ).then((_) {
+      // 다이얼로그가 닫히면 컨트롤러 dispose
+      if (isDialogActive) {
+        searchController.dispose();
+        scrollController.dispose();
+      }
+    });
   }
 
   // 새 대화 시작

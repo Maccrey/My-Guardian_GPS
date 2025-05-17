@@ -704,12 +704,12 @@ class _MessageDetailViewState extends State<MessageDetailView> {
         ),
         actions: [
           // 이미지 공유 버튼 추가
-          IconButton(
-            icon: const Icon(Icons.image),
-            color: Colors.purple.shade400,
-            onPressed: _sendImageMessage,
-            tooltip: '이미지 공유',
-          ),
+          // IconButton(
+          //   icon: const Icon(Icons.image),
+          //   color: Colors.purple.shade400,
+          //   onPressed: _sendImageMessage,
+          //   tooltip: '이미지 공유',
+          // ),
           // 위치 공유 버튼
           IconButton(
             icon: const Icon(Icons.location_on),
@@ -735,60 +735,6 @@ class _MessageDetailViewState extends State<MessageDetailView> {
             onSelected: (value) {
               if (value == 'clear') {
                 _showClearConversationDialog();
-              } else if (value == 'debug') {
-                // 디버그 기능
-                if (mounted) {
-                  try {
-                    final currentUserId = _authService.uid ?? 'empty UID';
-                    final messageCount = _messageService.messages.length;
-                    final filteredCount = _messageService
-                        .getConversationWith(widget.userId)
-                        .length;
-
-                    // 메시지 디버깅을 위한 정보 표시
-                    Get.snackbar(
-                      '메시지 디버깅',
-                      '대화 상대: ${widget.userId}\n'
-                          '현재 사용자: $currentUserId\n'
-                          '총 메시지: $messageCount개\n'
-                          '필터링된 메시지: $filteredCount개',
-                      snackPosition: SnackPosition.BOTTOM,
-                      duration: const Duration(seconds: 4),
-                    );
-
-                    // 상세 로그 출력
-                    debugPrint('===== 메시지 디버깅 정보 =====');
-                    debugPrint('🔍 대화 상대 ID: ${widget.userId}');
-                    debugPrint('👤 현재 사용자 ID: $currentUserId');
-                    debugPrint('📊 총 메시지 수: $messageCount');
-                    debugPrint('🔎 필터링된 메시지 수: $filteredCount');
-
-                    // 모든 메시지 로그
-                    if (_messageService.messages.isNotEmpty) {
-                      debugPrint(
-                          '📝 첫 번째 메시지: ${_messageService.messages.first}');
-
-                      // 관련 메시지만 로그
-                      final List<Message> related = _messageService.messages
-                          .where((m) =>
-                              m.senderId == widget.userId ||
-                              m.receiverId == widget.userId ||
-                              m.senderId == currentUserId ||
-                              m.receiverId == currentUserId)
-                          .toList();
-
-                      for (var i = 0; i < related.length && i < 5; i++) {
-                        debugPrint('📄 관련 메시지 #$i: ${related[i]}');
-                      }
-                    } else {
-                      debugPrint('⚠️ 메시지가 없습니다.');
-                    }
-                    debugPrint('============================');
-                  } catch (e) {
-                    debugPrint('⚠️ 디버깅 중 오류: $e');
-                    Get.snackbar('오류', '디버깅 정보 수집 중 오류 발생: $e');
-                  }
-                }
               }
             },
             itemBuilder: (context) => [
@@ -799,16 +745,6 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                     Icon(Icons.delete_outline, color: Colors.red),
                     SizedBox(width: 8),
                     Text('대화 삭제'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: 'debug',
-                child: Row(
-                  children: [
-                    Icon(Icons.bug_report, color: Colors.grey),
-                    SizedBox(width: 8),
-                    Text('디버그 정보'),
                   ],
                 ),
               ),
@@ -2019,223 +1955,208 @@ class _MessageDetailViewState extends State<MessageDetailView> {
 
   // 대화 내용 검색 다이얼로그
   void _showSearchDialog() {
-    final TextEditingController searchController = TextEditingController();
-    List<Message> searchResults = [];
+    if (!mounted) return;
+
+    // 시작할 때 현재 대화 메시지 목록 미리 가져오기
+    final List<Message> messagesSnapshot =
+        List.from(_messageService.getConversationWith(widget.userId));
+
+    // 간단한 문자열 변수만 사용
     String searchQuery = '';
 
-    if (!mounted) return;
+    // 지역 변수로 선언하여 dialog가 닫힐 때 자동으로 정리되도록 함
+    List<Message> filteredMessages = [];
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            title: const Text('대화 검색'),
-            content: Container(
-              width: 300,
-              height: 400,
-              child: Column(
-                children: [
-                  // 검색창
-                  TextField(
-                    controller: searchController,
-                    decoration: InputDecoration(
-                      hintText: '검색어 입력...',
-                      prefixIcon:
-                          Icon(Icons.search, color: Colors.blue.shade700),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                          color: Colors.blue.shade200,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) {
+            // 검색 실행하는 함수
+            void performSearch(String query) {
+              searchQuery = query.trim().toLowerCase();
+              if (searchQuery.isEmpty) {
+                setDialogState(() {
+                  filteredMessages = [];
+                });
+                return;
+              }
+
+              // 미리 가져온 메시지 목록에서 필터링
+              setDialogState(() {
+                filteredMessages = messagesSnapshot
+                    .where((msg) =>
+                        msg.content.toLowerCase().contains(searchQuery))
+                    .toList();
+              });
+            }
+
+            return AlertDialog(
+              title: const Text('대화 검색', style: TextStyle(fontSize: 18)),
+              content: SizedBox(
+                width: 300,
+                height: 400,
+                child: Column(
+                  children: [
+                    // 검색창 - controller 없이 onChanged만 사용
+                    TextField(
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: '검색어 입력...',
+                        prefixIcon:
+                            Icon(Icons.search, color: Colors.blue.shade700),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
+                        filled: true,
+                        fillColor: Colors.grey.shade50,
                       ),
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
+                      // controller를 사용하지 않고 직접 값 처리
+                      onChanged: performSearch,
                     ),
-                    onChanged: (value) {
-                      if (value.trim().isNotEmpty) {
-                        setState(() {
-                          searchQuery = value.trim().toLowerCase();
-                          searchResults = _messageService
-                              .getConversationWith(widget.userId)
-                              .where((msg) => msg.content
-                                  .toLowerCase()
-                                  .contains(searchQuery))
-                              .toList();
-                        });
-                      } else {
-                        setState(() {
-                          searchResults = [];
-                        });
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
-                  // 검색 결과
-                  Expanded(
-                    child: searchQuery.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.search,
-                                  size: 48,
-                                  color: Colors.grey.shade400,
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  '검색어를 입력하세요',
-                                  style: TextStyle(
-                                    color: Colors.grey.shade600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        : searchResults.isEmpty
-                            ? Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.search_off,
-                                      size: 48,
-                                      color: Colors.grey.shade400,
-                                    ),
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      '검색 결과가 없습니다',
+                    // 검색 결과
+                    Expanded(
+                      child: searchQuery.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.search,
+                                      size: 48, color: Colors.grey.shade400),
+                                  const SizedBox(height: 16),
+                                  Text('검색어를 입력하세요',
                                       style: TextStyle(
-                                        color: Colors.grey.shade600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            : ListView.builder(
-                                itemCount: searchResults.length,
-                                itemBuilder: (context, index) {
-                                  final message = searchResults[index];
-                                  final isFromMe =
-                                      message.senderId == _authService.uid;
+                                          color: Colors.grey.shade600)),
+                                ],
+                              ),
+                            )
+                          : filteredMessages.isEmpty
+                              ? Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.search_off,
+                                          size: 48,
+                                          color: Colors.grey.shade400),
+                                      const SizedBox(height: 16),
+                                      Text('검색 결과가 없습니다',
+                                          style: TextStyle(
+                                              color: Colors.grey.shade600)),
+                                    ],
+                                  ),
+                                )
+                              : ListView.builder(
+                                  itemCount: filteredMessages.length,
+                                  itemBuilder: (context, index) {
+                                    final message = filteredMessages[index];
+                                    final isFromMe =
+                                        message.senderId == _authService.uid;
 
-                                  // 검색된 텍스트 강조 처리
-                                  final String highlightedText =
-                                      message.content;
-
-                                  return ListTile(
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    leading: CircleAvatar(
-                                      backgroundColor: isFromMe
-                                          ? Colors.blue.shade100
-                                          : Colors.grey.shade200,
-                                      radius: 16,
-                                      child: Text(
-                                        isFromMe
-                                            ? '나'
-                                            : _getRecipientName(
-                                                    widget.userId)[0]
-                                                .toUpperCase(),
-                                        style: TextStyle(
-                                          color: isFromMe
-                                              ? Colors.blue.shade800
-                                              : Colors.grey.shade800,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
+                                    // 결과 항목
+                                    return ListTile(
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 4),
+                                      leading: CircleAvatar(
+                                        backgroundColor: isFromMe
+                                            ? Colors.blue.shade100
+                                            : Colors.grey.shade200,
+                                        radius: 16,
+                                        child: Text(
+                                          isFromMe
+                                              ? '나'
+                                              : _getRecipientName(
+                                                      widget.userId)[0]
+                                                  .toUpperCase(),
+                                          style: TextStyle(
+                                            color: isFromMe
+                                                ? Colors.blue.shade800
+                                                : Colors.grey.shade800,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    title: Text(
-                                      highlightedText,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    subtitle: Text(
-                                      _formatMessageTime(message.timestamp),
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                    onTap: () {
-                                      Navigator.pop(context);
-                                      _scrollToMessage(message);
-                                    },
-                                  );
-                                },
-                              ),
-                  ),
-                ],
+                                      title: Text(message.content,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis),
+                                      subtitle: Text(
+                                          _formatMessageTime(message.timestamp),
+                                          style: const TextStyle(fontSize: 12)),
+                                      onTap: () {
+                                        // messageId만 저장하고 dialog 닫기
+                                        final messageId = message.id;
+                                        Navigator.of(context).pop();
+
+                                        // 메시지 ID로 스크롤
+                                        _scrollToMessageById(messageId);
+                                      },
+                                    );
+                                  },
+                                ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('닫기'),
-              ),
-            ],
-          );
-        },
-      ),
-    ).then((_) {
-      // 다이얼로그가 닫힐 때 컨트롤러 해제
-      searchController.dispose();
-    });
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('닫기'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
-  // 특정 메시지로 스크롤
-  void _scrollToMessage(Message message) {
+  // ID로 메시지 찾아서 스크롤하는 함수
+  void _scrollToMessageById(String messageId) {
+    if (!mounted) return;
+
     try {
       final messages = _messageService.getConversationWith(widget.userId);
-      final index = messages.indexWhere((m) => m.id == message.id);
+      final index = messages.indexWhere((m) => m.id == messageId);
 
-      if (index != -1 && mounted) {
-        // 역방향 리스트이므로 인덱스 계산 필요
-        final reverseIndex = messages.length - 1 - index;
-
-        // UI 갱신을 위해 약간의 딜레이 후 스크롤
+      if (index != -1) {
+        // 메시지 위치로 스크롤하기 위한 지연
         Future.delayed(const Duration(milliseconds: 100), () {
-          if (_scrollController.hasClients && mounted) {
-            try {
-              // 스크롤 위치로 이동
-              _scrollController.animateTo(
-                index * 100.0, // 대략적인 메시지 높이
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-              );
+          if (!mounted || !_scrollController.hasClients) return;
 
-              // 메시지 하이라이트 처리는 생략
-            } catch (e) {
-              debugPrint('⚠️ 스크롤 오류: $e');
-            }
+          try {
+            _scrollController.animateTo(
+              index * 100.0, // 대략적인 메시지 높이
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+            );
+
+            // 메시지 찾았다고 알려주기
+            Get.snackbar(
+              '메시지 찾음',
+              '${index + 1}/${messages.length}번째 메시지를 표시합니다',
+              snackPosition: SnackPosition.BOTTOM,
+              duration: const Duration(seconds: 2),
+              backgroundColor: Colors.blue.shade700,
+              colorText: Colors.white,
+            );
+          } catch (e) {
+            debugPrint('⚠️ 스크롤 오류: $e');
           }
         });
-
-        // 메시지 위치를 알려주는 토스트 표시
-        Get.snackbar(
-          '메시지 찾음',
-          '${index + 1}/${messages.length} 번째 메시지를 표시합니다',
-          snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 2),
-        );
       } else {
         Get.snackbar(
-          '메시지 찾기 실패',
+          '메시지 찾기 오류',
           '해당 메시지를 찾을 수 없습니다',
           snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 2),
+          backgroundColor: Colors.red.shade400,
+          colorText: Colors.white,
         );
       }
     } catch (e) {
-      debugPrint('⚠️ 메시지 스크롤 오류: $e');
-      Get.snackbar(
-        '오류',
-        '메시지로 이동하는 중 오류가 발생했습니다',
-        snackPosition: SnackPosition.BOTTOM,
-        duration: const Duration(seconds: 2),
-      );
+      debugPrint('⚠️ 메시지 ID로 스크롤 오류: $e');
     }
   }
 
