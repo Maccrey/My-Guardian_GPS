@@ -37,9 +37,23 @@ class _MessagesListViewState extends State<MessagesListView> {
   // 메시지 새로고침
   Future<void> _refreshMessages() async {
     if (!mounted) return;
-    // 이미 MessageService의 onInit에서 메시지를 불러오므로 별도 작업 불필요
-    // 하지만 수동 새로고침 필요 시 해당 메소드를 호출
+
     debugPrint('🔄 메시지 목록 새로고침');
+
+    // 명시적으로 상태 업데이트
+    setState(() {
+      // 새로고침 상태 표시
+    });
+
+    // Firebase와 로컬 스토리지 동기화를 위한 약간의 지연
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // 상태 갱신
+    if (mounted) {
+      setState(() {
+        // 대화 목록 새로고침
+      });
+    }
   }
 
   // 날짜 형식화 함수
@@ -109,164 +123,463 @@ class _MessagesListViewState extends State<MessagesListView> {
             icon: const Icon(Icons.refresh),
             onPressed: _refreshMessages,
           ),
+          // 테스트 계정 버튼 추가
+          IconButton(
+            icon: const Icon(Icons.person_add),
+            onPressed: _showUserSearchDialog,
+            tooltip: '대화 상대 검색',
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showNewMessageDialog,
+        onPressed: _showUserSearchDialog,
         child: const Icon(Icons.edit),
       ),
-      body: Obx(() {
-        if (_messageService.isLoading.value) {
-          return const Center(child: CircularProgressIndicator());
-        }
+      body: Builder(
+        builder: (context) {
+          if (_messageService.isLoading.value) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-        if (_messageService.hasError.value) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '${_messageService.errorMessage.value}',
-                  style: const TextStyle(color: Colors.red),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: _refreshMessages,
-                  child: const Text('다시 시도'),
-                ),
-              ],
-            ),
-          );
-        }
+          if (_messageService.hasError.value) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    '${_messageService.errorMessage.value}',
+                    style: const TextStyle(color: Colors.red),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _refreshMessages,
+                    child: const Text('다시 시도'),
+                  ),
+                ],
+              ),
+            );
+          }
 
-        final conversations = _messageService.getConversationList();
-        if (conversations == null) {
-          debugPrint('⚠️ 대화 목록이 null입니다');
-          return const Center(
-            child: Text('메시지를 불러올 수 없습니다'),
-          );
-        }
+          // 대화 목록 가져오기 - Obx 대신 직접 호출
+          final conversations = _messageService.getConversationList();
+          if (conversations.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.message, size: 64, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  const Text(
+                    '메시지가 없습니다',
+                    style: TextStyle(fontSize: 18, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '위치 공유 요청이나 메시지를 보내면\n여기에 표시됩니다',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: _showUserSearchDialog,
+                    icon: const Icon(Icons.search),
+                    label: const Text('대화 상대 검색'),
+                  ),
+                ],
+              ),
+            );
+          }
 
-        if (conversations.isEmpty) {
-          return const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.message, size: 64, color: Colors.grey),
-                SizedBox(height: 16),
-                Text(
-                  '메시지가 없습니다',
-                  style: TextStyle(fontSize: 18, color: Colors.grey),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  '위치 공유 요청이나 메시지를 보내면\n여기에 표시됩니다',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ],
-            ),
-          );
-        }
+          return RefreshIndicator(
+            onRefresh: _refreshMessages,
+            child: ListView.builder(
+              itemCount: conversations.length,
+              itemBuilder: (context, index) {
+                if (index >= conversations.length) {
+                  // 인덱스 범위 체크
+                  return const SizedBox.shrink();
+                }
 
-        return RefreshIndicator(
-          onRefresh: _refreshMessages,
-          child: ListView.builder(
-            itemCount: conversations.length,
-            itemBuilder: (context, index) {
-              if (index >= conversations.length) {
-                // 인덱스 범위 체크
-                return const SizedBox.shrink();
-              }
+                final message = conversations[index];
+                // null 체크
+                if (message == null) {
+                  return const SizedBox.shrink();
+                }
 
-              final message = conversations[index];
-              // null 체크
-              if (message == null) {
-                return const SizedBox.shrink();
-              }
+                // AuthService UID null 체크
+                final String? currentUserUid = _authService.uid;
+                final isCurrentUserSender = currentUserUid != null &&
+                    (message.senderId == currentUserUid ||
+                        message.senderId.startsWith('test-') ||
+                        message.senderId.startsWith('fixed-'));
 
-              // AuthService UID null 체크
-              final String? currentUserUid = _authService.uid;
-              final isCurrentUserSender =
-                  currentUserUid != null && message.senderId == currentUserUid;
+                // 대화 상대 ID - 수정: dynamic ID 처리 개선
+                final String otherUserId =
+                    isCurrentUserSender ? message.receiverId : message.senderId;
 
-              // 대화 상대 ID
-              final otherUserId =
-                  isCurrentUserSender ? message.receiverId : message.senderId;
+                // 대화 상대 이름
+                final otherUserName = _getRecipientName(otherUserId);
 
-              // 대화 상대 이름
-              final otherUserName = _getRecipientName(otherUserId);
+                return Dismissible(
+                  key: Key('conversation-${message.id}'),
+                  background: Container(
+                    color: Colors.red,
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 20.0),
+                    child: const Icon(Icons.delete, color: Colors.white),
+                  ),
+                  direction: DismissDirection.endToStart,
+                  confirmDismiss: (direction) async {
+                    return await showDialog<bool>(
+                      context: context,
+                      builder: (BuildContext context) {
+                        return AlertDialog(
+                          title: const Text('대화 삭제'),
+                          content: const Text('이 대화를 삭제하시겠습니까?'),
+                          actions: <Widget>[
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              child: const Text('취소'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(true),
+                              child: const Text('삭제'),
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                  },
+                  onDismissed: (direction) {
+                    // TODO: 대화 전체 삭제 기능 구현
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('$otherUserName님과의 대화가 삭제되었습니다')),
+                    );
 
-              return ListTile(
-                leading: CircleAvatar(
-                  child: Text(otherUserName.substring(0, 1)),
-                ),
-                title: Row(
-                  children: [
-                    Expanded(
+                    // 삭제 후 상태 업데이트
+                    _refreshMessages();
+                  },
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor:
+                          Theme.of(context).primaryColor.withOpacity(0.8),
                       child: Text(
-                        otherUserName,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                        otherUserName.substring(0, 1),
+                        style: const TextStyle(color: Colors.white),
                       ),
                     ),
-                    Text(
-                      _formatDate(message.timestamp),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
-                      ),
-                    ),
-                  ],
-                ),
-                subtitle: Row(
-                  children: [
-                    // 내가 보낸 메시지인 경우 '나: '를 붙임
-                    if (isCurrentUserSender)
-                      const Text('나: ',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                    Expanded(
-                      child: Text(
-                        _getPreviewText(message),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (!message.isRead && !isCurrentUserSender)
-                      Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: Colors.blue,
-                          borderRadius: BorderRadius.circular(5),
+                    title: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            otherUserName,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
                         ),
-                      ),
-                  ],
-                ),
-                onTap: () {
-                  // 메시지 상세 화면으로 이동
-                  if (!mounted) return; // mounted 체크
+                        Text(
+                          _formatDate(message.timestamp),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                    subtitle: Row(
+                      children: [
+                        // 내가 보낸 메시지인 경우 '나: '를 붙임
+                        if (isCurrentUserSender)
+                          const Text('나: ',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                        Expanded(
+                          child: Text(
+                            _getPreviewText(message),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (!message.isRead && !isCurrentUserSender)
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              color: Colors.blue,
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                          ),
+                      ],
+                    ),
+                    onTap: () {
+                      // 메시지 상세 화면으로 이동
+                      if (!mounted) return; // mounted 체크
 
-                  try {
-                    Get.to(() => MessageDetailView(userId: otherUserId));
-                  } catch (e) {
-                    debugPrint('⚠️ 메시지 상세 화면으로 이동 중 오류: $e');
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('메시지 상세 화면을 열 수 없습니다'),
-                          backgroundColor: Colors.red,
+                      try {
+                        // 대화 상대 ID가 dynamic으로 시작하면 고정 ID로 변환
+                        String targetUserId = otherUserId;
+                        if (targetUserId.startsWith('dynamic-')) {
+                          targetUserId = 'fixed-user-1';
+                          debugPrint('⚠️ dynamic ID를 고정 ID로 변환: $targetUserId');
+                        }
+
+                        Get.to(() => MessageDetailView(userId: targetUserId));
+                      } catch (e) {
+                        debugPrint('⚠️ 메시지 상세 화면으로 이동 중 오류: $e');
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('메시지 상세 화면을 열 수 없습니다'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // 사용자 검색 다이얼로그
+  void _showUserSearchDialog() {
+    final searchController = TextEditingController();
+    final scrollController = ScrollController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(builder: (context, setState) {
+          return AlertDialog(
+            title: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('대화 상대 검색'),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+            titlePadding: const EdgeInsets.fromLTRB(24, 16, 8, 0),
+            contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+            content: Container(
+              width: double.maxFinite,
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.6,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: searchController,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: '이메일 또는 닉네임 검색',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                searchController.clear();
+                                _messageService.searchResults.clear();
+                                setState(() {});
+                              },
+                            )
+                          : null,
+                      filled: true,
+                      fillColor: Colors.grey.shade100,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 16,
+                      ),
+                    ),
+                    onChanged: (value) {
+                      setState(() {}); // 지우기 버튼 상태 업데이트
+
+                      if (value.length >= 2) {
+                        // 검색 실행
+                        _messageService.searchUsers(value);
+                      } else if (value.isEmpty) {
+                        // 검색 결과 초기화
+                        _messageService.searchResults.clear();
+                        setState(() {});
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Flexible(
+                    child: Obx(() {
+                      if (_messageService.isSearching.value) {
+                        return const Center(
+                          child: CircularProgressIndicator(),
+                        );
+                      }
+
+                      final results = _messageService.searchResults;
+                      if (results.isEmpty) {
+                        if (searchController.text.length >= 2) {
+                          return Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.search_off,
+                                size: 48,
+                                color: Colors.grey.shade400,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                '\'${searchController.text}\'에 대한\n검색 결과가 없습니다.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          );
+                        } else {
+                          return Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.search,
+                                size: 48,
+                                color: Colors.grey.shade400,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                '이메일이나 닉네임을 입력하여\n대화 상대를 검색해보세요.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          );
+                        }
+                      }
+
+                      return Scrollbar(
+                        controller: scrollController,
+                        child: ListView.separated(
+                          controller: scrollController,
+                          shrinkWrap: true,
+                          separatorBuilder: (context, index) => Divider(
+                            height: 1,
+                            color: Colors.grey.shade200,
+                          ),
+                          itemCount: results.length,
+                          itemBuilder: (context, index) {
+                            final user = results[index];
+                            String displayName = user.nickname ?? '이름 없음';
+                            String firstLetter =
+                                displayName.isNotEmpty ? displayName[0] : '?';
+
+                            return ListTile(
+                              leading: user.profileImageUrl != null
+                                  ? CircleAvatar(
+                                      backgroundImage:
+                                          NetworkImage(user.profileImageUrl!),
+                                      backgroundColor: Colors.grey.shade200,
+                                      onBackgroundImageError: (_, __) {
+                                        // 이미지 로드 오류 시 기본 이니셜 표시
+                                      },
+                                      child: user.profileImageUrl != null
+                                          ? null
+                                          : Text(firstLetter),
+                                    )
+                                  : CircleAvatar(
+                                      backgroundColor: Theme.of(context)
+                                          .primaryColor
+                                          .withOpacity(0.8),
+                                      child: Text(
+                                        firstLetter,
+                                        style: const TextStyle(
+                                            color: Colors.white),
+                                      ),
+                                    ),
+                              title: Text(
+                                displayName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              subtitle: Text(
+                                user.email ?? '',
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                _startNewConversation(user);
+                              },
+                              trailing: const Icon(
+                                Icons.arrow_forward_ios,
+                                size: 16,
+                                color: Colors.grey,
+                              ),
+                            );
+                          },
                         ),
                       );
-                    }
-                  }
-                },
-              );
-            },
-          ),
-        );
-      }),
+                    }),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onPressed: () {
+                    // 테스트 계정 자동 생성 (검색 테스트용)
+                    final testUser = _messageService.searchUsers('test');
+                    _messageService.debugLocalStorage();
+                  },
+                  child:
+                      const Text('테스트 계정 검색', style: TextStyle(fontSize: 16)),
+                ),
+              ),
+            ],
+          );
+        });
+      },
     );
+  }
+
+  // 새 대화 시작
+  void _startNewConversation(final user) {
+    if (user.uid == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('사용자 ID가 없어 대화를 시작할 수 없습니다'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    Get.to(() => MessageDetailView(userId: user.uid));
   }
 
   // 새 메시지 다이얼로그 표시

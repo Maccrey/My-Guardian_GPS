@@ -8,6 +8,7 @@ class Message {
   final DateTime timestamp;
   final bool isRead;
   final String messageType; // 'text', 'location_request', 'location_share' 등
+  final String? replyToMessageId; // 답장 메시지 ID
 
   Message({
     required this.id,
@@ -17,6 +18,7 @@ class Message {
     required this.timestamp,
     this.isRead = false,
     this.messageType = 'text',
+    this.replyToMessageId,
   });
 
   // JSON으로 변환
@@ -29,6 +31,7 @@ class Message {
       'timestamp': timestamp.millisecondsSinceEpoch,
       'isRead': isRead,
       'messageType': messageType,
+      'replyToMessageId': replyToMessageId,
     };
   }
 
@@ -72,6 +75,7 @@ class Message {
         timestamp: timestamp,
         isRead: json['isRead'] ?? false,
         messageType: json['messageType'] ?? 'text',
+        replyToMessageId: json['replyToMessageId'],
       );
     } catch (e) {
       // 포맷 오류시 예외 발생
@@ -107,6 +111,7 @@ class Message {
         timestamp: timestamp,
         isRead: data['isRead'] ?? false,
         messageType: data['messageType'] ?? 'text',
+        replyToMessageId: data['replyToMessageId'],
       );
     } catch (e) {
       // 포맷 오류시 예외 발생
@@ -123,6 +128,7 @@ class Message {
     DateTime? timestamp,
     bool? isRead,
     String? messageType,
+    String? replyToMessageId,
   }) {
     return Message(
       id: id ?? this.id,
@@ -132,12 +138,13 @@ class Message {
       timestamp: timestamp ?? this.timestamp,
       isRead: isRead ?? this.isRead,
       messageType: messageType ?? this.messageType,
+      replyToMessageId: replyToMessageId ?? this.replyToMessageId,
     );
   }
 
   // 디버깅용 문자열 표현
   @override
   String toString() {
-    return 'Message{id: $id, senderId: $senderId, receiverId: $receiverId, content: ${content.length > 20 ? content.substring(0, 20) + "..." : content}, timestamp: $timestamp, isRead: $isRead, messageType: $messageType}';
+    return 'Message{id: $id, senderId: $senderId, receiverId: $receiverId, content: ${content.length > 20 ? content.substring(0, 20) + "..." : content}, timestamp: $timestamp, isRead: $isRead, messageType: $messageType, replyToMessageId: $replyToMessageId}';
   }
 }
