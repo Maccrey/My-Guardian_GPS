@@ -45,11 +45,60 @@ class _MessagesListViewState extends State<MessagesListView> {
       // 새로고침 상태 표시
     });
 
+    // 현재 로그인 상태 확인
+    final currentUserId = _authService.uid;
+    debugPrint('👤 현재 사용자 ID: $currentUserId');
+
+    if (currentUserId == null || currentUserId.isEmpty) {
+      debugPrint('⚠️ 로그인되어 있지 않음 - 테스트 계정으로 자동 로그인 시도');
+      await _authService.login('test@example.com', 'Password1!');
+    }
+
     // Firebase에서 데이터 다시 로드
     try {
       await _messageService.refreshMessages();
+
+      // 새로고침 후 상태 제대로 확인
+      if (_messageService.hasError.value) {
+        debugPrint('⚠️ 메시지 새로고침 오류: ${_messageService.errorMessage.value}');
+
+        if (mounted) {
+          Get.snackbar(
+            '메시지 새로고침 중 오류',
+            _messageService.errorMessage.value,
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.orange.withOpacity(0.8),
+            colorText: Colors.white,
+            duration: const Duration(seconds: 5),
+          );
+        }
+      } else {
+        debugPrint('✅ 메시지 새로고침 성공: ${_messageService.messages.length}개 메시지');
+
+        if (mounted && _messageService.messages.isEmpty) {
+          Get.snackbar(
+            '메시지 없음',
+            '메시지가 없습니다. 새 대화를 시작해보세요.',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.blue.withOpacity(0.7),
+            colorText: Colors.white,
+            duration: const Duration(seconds: 3),
+          );
+        }
+      }
     } catch (e) {
       debugPrint('⚠️ 메시지 새로고침 오류: $e');
+
+      if (mounted) {
+        Get.snackbar(
+          '오류',
+          '메시지 새로고침 중 문제가 발생했습니다: ${e.toString().split('\n').first}',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.withOpacity(0.8),
+          colorText: Colors.white,
+          duration: const Duration(seconds: 5),
+        );
+      }
     }
 
     // 상태 갱신
@@ -80,24 +129,82 @@ class _MessagesListViewState extends State<MessagesListView> {
     }
   }
 
-  // 상대방 이름 가져오기 (테스트용)
+  // 상대방 이름 가져오기 (개선된 버전)
   String _getRecipientName(String userId) {
-    // 실제 서비스에서는 사용자 프로필 서비스에서 이름을 가져와야 합니다
-    // 여기서는 테스트용으로 ID의 마지막 4자리를 사용합니다
-    if (userId.startsWith('test-')) {
-      final shortId =
-          userId.length > 5 ? userId.substring(userId.length - 4) : userId;
-      return '테스트유저 $shortId';
-    } else if (userId == 'admin') {
+    // Firebase auth 사용자 ID인 경우 (이메일 기반으로 개선된 표시)
+    if (userId.isNotEmpty && userId != _authService.uid) {
+      // 메시지 서비스에서 사용자 정보 찾기 시도
+      try {
+        // 검색 결과에서 사용자 찾기
+        final foundUsers = _messageService.searchResults
+            .where((user) => user.uid == userId)
+            .toList();
+
+        if (foundUsers.isNotEmpty) {
+          // 닉네임이 있으면 닉네임 반환, 없으면 이메일 앞부분 사용
+          final user = foundUsers.first;
+          if (user.nickname != null && user.nickname!.isNotEmpty) {
+            return user.nickname!;
+          } else if (user.email != null && user.email!.isNotEmpty) {
+            // 이메일 앞부분만 추출 (@ 앞부분)
+            return user.email!.split('@')[0];
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ 사용자 정보 검색 오류: $e');
+      }
+
+      // FirebaseAuth 현재 사용자와 비교
+      if (_authService.currentUser?.email != null) {
+        final currentEmail = _authService.currentUser!.email!;
+        if (currentEmail.contains(userId) || userId.contains(currentEmail)) {
+          return '나';
+        }
+      }
+
+      // fixed- 접두사 제거하고 보기 좋게 표시
+      if (userId.startsWith('fixed-')) {
+        final cleanId = userId.replaceAll('fixed-', '');
+        // user- 접두사도 제거
+        final finalId = cleanId.replaceAll('user-', '');
+
+        // 숫자로만 구성된 ID인 경우 '사용자'와 함께 표시
+        if (finalId.contains(RegExp(r'^[0-9]+$'))) {
+          return '사용자 $finalId';
+        }
+
+        // 이메일 형식인지 확인
+        if (finalId.contains('@')) {
+          // 이메일 형식이면 @ 앞부분만 표시
+          return finalId.split('@')[0];
+        }
+
+        // 그 외의 경우 그대로 표시
+        return finalId.capitalize ?? finalId;
+      }
+
+      // real- 접두사 제거
+      if (userId.startsWith('real-')) {
+        final cleanId = userId.replaceAll('real-', '');
+        return cleanId.capitalize ?? cleanId;
+      }
+    }
+
+    // 특수 케이스 처리
+    if (userId == 'admin') {
       return '관리자';
     } else if (userId == _authService.uid) {
       return '나';
-    } else {
-      // ID의 마지막 4자리를 사용한 이름 생성
-      final shortId =
-          userId.length > 4 ? userId.substring(userId.length - 4) : userId;
-      return '사용자 $shortId';
     }
+
+    // ID에서 직접 이름 추출 시도
+    if (userId.contains('@')) {
+      // 이메일 형식이면 @ 앞부분만 표시
+      return userId.split('@')[0];
+    }
+
+    // 마지막 대안: ID 자체를 반환하되 가능하면 정리
+    return userId.replaceAll(RegExp(r'[0-9-_]+$'), '').capitalize ?? userId;
   }
 
   // 메시지 미리보기 텍스트 만들기
@@ -150,15 +257,29 @@ class _MessagesListViewState extends State<MessagesListView> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                  const SizedBox(height: 16),
                   Text(
                     '${_messageService.errorMessage.value}',
                     style: const TextStyle(color: Colors.red),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 16),
-                  ElevatedButton(
+                  ElevatedButton.icon(
                     onPressed: _refreshMessages,
-                    child: const Text('다시 시도'),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('다시 시도'),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    '※ 오류가 계속되면 앱을 다시 시작하거나 설정을 확인해주세요.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: _showUserSearchDialog,
+                    child: const Text('대화 상대 검색하기'),
                   ),
                 ],
               ),

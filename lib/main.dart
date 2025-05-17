@@ -36,9 +36,35 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Firebase 초기화
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    debugPrint('✅ Firebase 초기화 성공');
+
+    // Firebase 인스턴스 확인 (테스트용)
+    final firebaseApp = Firebase.app();
+    debugPrint('✅ Firebase 앱 이름: ${firebaseApp.name}');
+    debugPrint('✅ Firebase 프로젝트 ID: ${firebaseApp.options.projectId}');
+
+    // Firestore와 Auth 연결 테스트
+    debugPrint('📡 Firebase 서비스 연결 테스트 중...');
+  } catch (e) {
+    debugPrint('❌ Firebase 초기화 오류: $e');
+    debugPrint('❌ Firebase 오류 스택: ${StackTrace.current}');
+
+    // 오류 상세 정보 출력
+    FlutterError.dumpErrorToConsole(
+      FlutterErrorDetails(
+        exception: e,
+        stack: StackTrace.current,
+        library: 'main.dart',
+        context: ErrorDescription('Firebase 초기화 중 오류'),
+      ),
+    );
+
+    debugPrint('⚠️ Firebase가 초기화되지 않았습니다. 일부 기능이 제한될 수 있습니다.');
+  }
   // Firebase 초기화 코드 제거 - 테스트를 위해
 
   // 백그라운드 오디오 초기화
@@ -111,21 +137,42 @@ class MyApp extends StatelessWidget {
     // 먼저 AuthService 초기화해야 다른 서비스에서 사용 가능
     try {
       if (!Get.isRegistered<AuthService>()) {
-        Get.put(AuthService(), permanent: true);
-        debugPrint('✅ AuthService 초기화 성공');
+        debugPrint('🔑 AuthService 초기화 시작...');
+        final authService = AuthService();
+        Get.put(authService, permanent: true);
+
+        // 초기화 확인
+        final uid = authService.uid;
+        final user = authService.currentUser;
+        debugPrint('✅ AuthService 초기화 성공 - 현재 UID: ${uid ?? '로그인되지 않음'}');
+        debugPrint('👤 현재 사용자: ${user != null ? '로그인됨' : '로그인되지 않음'}');
       }
     } catch (e) {
       debugPrint('⚠️ AuthService 초기화 오류: $e');
+      debugPrint('⚠️ 오류 스택: ${StackTrace.current}');
     }
 
     // 메시지 서비스 초기화
     try {
       if (!Get.isRegistered<MessageService>()) {
-        Get.put(MessageService(), permanent: true);
+        debugPrint('💬 MessageService 초기화 시작...');
+        final messageService = MessageService();
+        Get.put(messageService, permanent: true);
+
+        // 초기화 확인
         debugPrint('✅ MessageService 초기화 성공');
+        messageService.refreshMessages().then((_) {
+          debugPrint('✅ 초기 메시지 로드 완료: ${messageService.messages.length}개 메시지');
+          if (messageService.hasError.value) {
+            debugPrint('⚠️ 메시지 로드 오류: ${messageService.errorMessage.value}');
+          }
+        }).catchError((e) {
+          debugPrint('⚠️ 초기 메시지 로드 실패: $e');
+        });
       }
     } catch (e) {
       debugPrint('⚠️ MessageService 초기화 오류: $e');
+      debugPrint('⚠️ 오류 스택: ${StackTrace.current}');
     }
 
     // 긴급 연락처 서비스 초기화 - SharedPreferences 상태에 따라 메모리 모드 설정
