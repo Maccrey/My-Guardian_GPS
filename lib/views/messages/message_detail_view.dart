@@ -46,7 +46,7 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       try {
         debugPrint('🔄 메시지 화면 초기화 - 대화 상대 ID: ${widget.userId}');
 
-        // 비어있는 대화인지 확인
+        // 대화 목록 가져오기
         List<Message> conversation = [];
 
         // 안전한 메시지 가져오기 시도
@@ -58,20 +58,11 @@ class _MessageDetailViewState extends State<MessageDetailView> {
           conversation = [];
         }
 
-        if (conversation.isEmpty) {
-          debugPrint('⚠️ 대화가 비어있습니다. 테스트 메시지 생성합니다.');
-          // 대화가 비어있으면 테스트 메시지 자동 생성
-          if (mounted) {
-            _createTestMessages();
-          }
-        } else {
-          debugPrint('✅ 대화 ${conversation.length}개 메시지 로드됨.');
-          // 읽음 상태로 변경 (내부에서 mounted 체크)
-          if (mounted) {
-            _markMessagesAsRead();
-            // 스크롤 이동 (내부에서 mounted 체크)
-            _safelyScrollToBottom();
-          }
+        // 읽음 상태로 변경 (내부에서 mounted 체크)
+        if (mounted) {
+          _markMessagesAsRead();
+          // 스크롤 이동 (내부에서 mounted 체크)
+          _safelyScrollToBottom();
         }
       } catch (e) {
         debugPrint('⚠️ 초기화 중 오류 발생: $e');
@@ -197,9 +188,11 @@ class _MessageDetailViewState extends State<MessageDetailView> {
         }
 
         // 새로운 대화 목록 가져오기 강제 - 새 메시지가 표시되도록
-        setState(() {
-          // 상태 갱신하여 대화 목록 다시 불러오기
-        });
+        if (mounted) {
+          setState(() {
+            // 상태 갱신하여 대화 목록 다시 불러오기
+          });
+        }
 
         // 스크롤을 맨 아래로 이동 - 별도 메서드로 추출하여 mounted 체크와 함께 호출
         _safelyScrollToBottom();
@@ -389,82 +382,38 @@ class _MessageDetailViewState extends State<MessageDetailView> {
     }
   }
 
-  // 테스트 메시지 생성
-  Future<void> _createTestMessages() async {
-    if (!mounted) {
-      debugPrint('⚠️ 위젯이 이미 dispose되어 테스트 메시지 생성을 중단합니다.');
-      return;
-    }
-
-    try {
-      debugPrint('🧪 테스트 메시지 생성 시도: ${widget.userId}');
-      _messageService.createTestMessagesForUser(widget.userId);
-
-      // 메시지 생성 후 스크롤 이동
-      _safelyScrollToBottom();
-
-      if (mounted) {
-        // ScaffoldMessenger 대신 Get.snackbar 사용
-        Get.snackbar(
-          '알림',
-          '테스트 메시지가 생성되었습니다',
-          backgroundColor: Colors.green.withOpacity(0.8),
-          colorText: Colors.white,
-          snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 3),
-        );
-      }
-    } catch (e) {
-      debugPrint('⚠️ 테스트 메시지 생성 중 오류: $e');
-      if (mounted) {
-        _showErrorSnackBar('테스트 메시지 생성 중 오류가 발생했습니다.');
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(_getRecipientName(widget.userId)),
         actions: [
-          // 테스트 메시지 생성 버튼 (개발용)
+          // 새로고침 버튼
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _createTestMessages,
-            tooltip: '테스트 메시지 생성',
+            onPressed: () async {
+              // Firebase에서 메시지 다시 로드
+              await _messageService.refreshMessages();
+              if (mounted) {
+                setState(() {});
+              }
+            },
+            tooltip: '메시지 새로고침',
           ),
-          // 로컬 스토리지 디버깅 버튼 (개발용)
+          // 디버그 버튼 (개발용)
           IconButton(
             icon: const Icon(Icons.bug_report),
-            onPressed: () async {
-              await _messageService.debugLocalStorage();
+            onPressed: () {
               if (mounted) {
                 Get.snackbar(
-                  '로컬 스토리지 디버깅',
-                  '로그를 확인하세요',
+                  '메시지 디버깅',
+                  '대화 상대: ${widget.userId}',
                   snackPosition: SnackPosition.BOTTOM,
                   duration: const Duration(seconds: 2),
                 );
               }
             },
-            tooltip: '스토리지 디버깅',
-          ),
-          // 모든 메시지 삭제 버튼 (개발용)
-          IconButton(
-            icon: const Icon(Icons.delete_forever),
-            onPressed: () async {
-              await _messageService.clearAllMessages();
-              if (mounted) {
-                Get.snackbar(
-                  '메시지 삭제',
-                  '모든 메시지가 삭제되었습니다',
-                  snackPosition: SnackPosition.BOTTOM,
-                  duration: const Duration(seconds: 2),
-                );
-              }
-            },
-            tooltip: '모든 메시지 삭제',
+            tooltip: '메시지 디버깅',
           ),
           IconButton(
             icon: const Icon(Icons.location_on),
@@ -475,21 +424,14 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       ),
       body: Column(
         children: [
-          // 답장 UI 표시
+          // 답장 UI 표시 - 별도 Obx 위젯으로 분리
           Obx(() => _messageService.replyToMessage.value != null
               ? _buildReplyPreview()
               : const SizedBox.shrink()),
 
-          // 메시지 목록 - Obx 대신 StatefulBuilder 사용
+          // 메시지 목록 - Obx 중첩 제거, StatefulBuilder만 사용
           Expanded(
-            child: StatefulBuilder(builder: (context, setState) {
-              // 상태 업데이트를 위한 별도 함수
-              void refreshConversation() {
-                setState(() {
-                  // 상태 갱신 - StatefulBuilder의 setState 사용
-                });
-              }
-
+            child: Builder(builder: (context) {
               // 대화 새로고침 버튼 추가
               List<Message> conversation = [];
 
@@ -511,29 +453,20 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text('대화를 시작해보세요!'),
+                      const Text('대화가 없습니다'),
                       const SizedBox(height: 16),
+                      const Text(
+                        '아직 이 사용자와 대화한 기록이 없습니다.',
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
                       ElevatedButton.icon(
                         onPressed: () {
                           _messageController.text = '안녕하세요!';
                           _sendMessage();
-                          // 메시지 전송 후 상태 업데이트
-                          Future.delayed(const Duration(milliseconds: 500),
-                              refreshConversation);
                         },
                         icon: const Icon(Icons.message),
                         label: const Text('첫 메시지 보내기'),
-                      ),
-                      const SizedBox(height: 8),
-                      TextButton.icon(
-                        onPressed: () {
-                          _createTestMessages();
-                          // 메시지 생성 후 상태 업데이트
-                          Future.delayed(const Duration(milliseconds: 500),
-                              refreshConversation);
-                        },
-                        icon: const Icon(Icons.add_comment),
-                        label: const Text('테스트 메시지 생성'),
                       ),
                     ],
                   ),
@@ -542,9 +475,13 @@ class _MessageDetailViewState extends State<MessageDetailView> {
 
               return RefreshIndicator(
                 onRefresh: () async {
-                  // 새로고침 시 상태 업데이트
-                  refreshConversation();
-                  return Future.delayed(const Duration(milliseconds: 300));
+                  // 새로 고침 시 Firebase에서 메시지 다시 로드
+                  await _messageService.refreshMessages();
+                  // 수동 상태 갱신
+                  if (mounted) {
+                    setState(() {});
+                  }
+                  return;
                 },
                 child: ListView.builder(
                   controller: _scrollController,
@@ -566,9 +503,7 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                     bool isCurrentUserSender = false;
                     try {
                       final currentUserId = _authService.uid ?? '';
-                      isCurrentUserSender = message.senderId == currentUserId ||
-                          message.senderId.startsWith('test-') ||
-                          message.senderId.startsWith('fixed-');
+                      isCurrentUserSender = message.senderId == currentUserId;
                     } catch (e) {
                       debugPrint('⚠️ 발신자 확인 오류: $e');
                     }
@@ -615,8 +550,10 @@ class _MessageDetailViewState extends State<MessageDetailView> {
 
                           if (result == true) {
                             await _messageService.deleteMessage(message.id);
-                            // 삭제 후 상태 업데이트
-                            refreshConversation();
+                            // 삭제 후 수동 갱신
+                            if (mounted) {
+                              setState(() {});
+                            }
                           }
                           return false; // 삭제 후 Dismissible 효과는 보이지 않도록
                         } else if (direction == DismissDirection.startToEnd) {

@@ -45,8 +45,12 @@ class _MessagesListViewState extends State<MessagesListView> {
       // 새로고침 상태 표시
     });
 
-    // Firebase와 로컬 스토리지 동기화를 위한 약간의 지연
-    await Future.delayed(const Duration(milliseconds: 500));
+    // Firebase에서 데이터 다시 로드
+    try {
+      await _messageService.refreshMessages();
+    } catch (e) {
+      debugPrint('⚠️ 메시지 새로고침 오류: $e');
+    }
 
     // 상태 갱신
     if (mounted) {
@@ -161,7 +165,7 @@ class _MessagesListViewState extends State<MessagesListView> {
             );
           }
 
-          // 대화 목록 가져오기 - Obx 대신 직접 호출
+          // 대화 목록 가져오기
           final conversations = _messageService.getConversationList();
           if (conversations.isEmpty) {
             return Center(
@@ -251,14 +255,37 @@ class _MessagesListViewState extends State<MessagesListView> {
                       },
                     );
                   },
-                  onDismissed: (direction) {
-                    // TODO: 대화 전체 삭제 기능 구현
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('$otherUserName님과의 대화가 삭제되었습니다')),
-                    );
+                  onDismissed: (direction) async {
+                    // 대화 삭제 기능 구현
+                    try {
+                      // 해당 대화에 속한 모든 메시지 삭제
+                      final conversation =
+                          _messageService.getConversationWith(otherUserId);
 
-                    // 삭제 후 상태 업데이트
-                    _refreshMessages();
+                      // 메시지가 있으면 모두 삭제
+                      if (conversation.isNotEmpty) {
+                        for (var msg in conversation) {
+                          await _messageService.deleteMessage(msg.id);
+                        }
+                        debugPrint('✅ ${conversation.length}개 메시지가 삭제되었습니다.');
+                      }
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                            content: Text('$otherUserName님과의 대화가 삭제되었습니다')),
+                      );
+
+                      // 데이터 변경 후 메시지 목록을 갱신하기 위해 인위적으로 새로고침
+                      _refreshMessages();
+                    } catch (e) {
+                      debugPrint('⚠️ 대화 삭제 오류: $e');
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('대화 삭제 중 오류가 발생했습니다'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
                   },
                   child: ListTile(
                     leading: CircleAvatar(
@@ -539,28 +566,6 @@ class _MessagesListViewState extends State<MessagesListView> {
                 ],
               ),
             ),
-            actions: [
-              Container(
-                width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  onPressed: () {
-                    // 테스트 계정 자동 생성 (검색 테스트용)
-                    final testUser = _messageService.searchUsers('test');
-                    _messageService.debugLocalStorage();
-                  },
-                  child:
-                      const Text('테스트 계정 검색', style: TextStyle(fontSize: 16)),
-                ),
-              ),
-            ],
           );
         });
       },
