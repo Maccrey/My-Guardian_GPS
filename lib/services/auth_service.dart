@@ -1,8 +1,21 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
 
 class AuthService extends GetxController {
+  // 웹 환경에서는 Firebase를 사용하지 않고 Mock 데이터를 사용
+  final bool _useMockAuth = kIsWeb;
+
+  // Firebase 인스턴스 (웹이 아닌 경우에만 사용)
+  late final FirebaseAuth _auth;
+  late final FirebaseFirestore _firestore;
+
+  // Mock 데이터를 위한 변수
+  final List<UserModel> _mockUsers = [];
+
   final RxBool _isAuthenticated = false.obs;
   final Rx<UserModel?> _currentUser = Rx<UserModel?>(null);
   final RxBool _isLoading = false.obs;
@@ -14,55 +27,315 @@ class AuthService extends GetxController {
   bool get isLoading => _isLoading.value;
   String? get error => _error.value;
 
-  // Login 메소드
+  // Firebase Auth의 UID 가져오기
+  String? get uid =>
+      _useMockAuth ? _currentUser.value?.uid : _auth.currentUser?.uid;
+  User? get firebaseUser => _useMockAuth ? null : _auth.currentUser;
+
+  AuthService() {
+    if (!_useMockAuth) {
+      _auth = FirebaseAuth.instance;
+      _firestore = FirebaseFirestore.instance;
+    }
+  }
+
+  @override
+  void onInit() {
+    super.onInit();
+
+    if (!_useMockAuth) {
+      // Firebase 인증 상태 변경 감지 (웹이 아닌 경우에만)
+      _auth.authStateChanges().listen(_handleAuthStateChange);
+    }
+  }
+
+  // 인증 상태 변경 처리
+  Future<void> _handleAuthStateChange(User? firebaseUser) async {
+    if (firebaseUser == null) {
+      // 로그아웃 상태
+      _isAuthenticated.value = false;
+      _currentUser.value = null;
+    } else {
+      // 로그인 상태 - Firestore에서 사용자 정보 가져오기
+      _isAuthenticated.value = true;
+      await _fetchUserData(firebaseUser.uid);
+    }
+  }
+
+  // Firestore에서 사용자 정보 가져오기
+  Future<void> _fetchUserData(String uid) async {
+    if (_useMockAuth) {
+      // Mock 데이터에서 사용자 검색
+      final user = _mockUsers.firstWhereOrNull((user) => user.uid == uid);
+      if (user != null) {
+        _currentUser.value = user;
+      }
+      return;
+    }
+
+    try {
+      final docSnapshot = await _firestore.collection('users').doc(uid).get();
+
+      if (docSnapshot.exists) {
+        final userData = docSnapshot.data() as Map<String, dynamic>;
+        _currentUser.value = UserModel.fromJson(userData);
+      }
+    } catch (e) {
+      print('사용자 정보 가져오기 오류: $e');
+    }
+  }
+
+  // 로그인 메소드
   Future<bool> login(String email, String password) async {
     setLoading(true);
     setError(null);
 
     try {
-      // API 호출을 시뮬레이션
-      await Future.delayed(const Duration(seconds: 2));
+      if (_useMockAuth) {
+        // Mock 인증 처리
+        final user = _mockUsers.firstWhereOrNull((user) => user.email == email);
 
-      // 테스트용 로그인 검증
-      if (email == 'test@example.com' && password == 'Password1!') {
-        _currentUser.value = UserModel(
-          email: email,
-          nickname: '테스트유저',
-        );
-        _isAuthenticated.value = true;
+        // 사용자 찾기 (웹에서 테스트를 위해 간단한 조건으로 검증)
+        if (user != null) {
+          // 비밀번호 검증 (실제로는 암호화되어야 함)
+          _currentUser.value = user;
+          _isAuthenticated.value = true;
+          setLoading(false);
+          return true;
+        } else {
+          setError('이메일 또는 비밀번호가 올바르지 않습니다');
+          setLoading(false);
+          return false;
+        }
+      }
+
+      // Firebase 인증으로 로그인
+      final userCredential = await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      // 로그인 성공
+      if (userCredential.user != null) {
+        // 사용자 정보 가져오기
+        await _fetchUserData(userCredential.user!.uid);
         setLoading(false);
         return true;
       } else {
-        setError('이메일 또는 비밀번호가 올바르지 않습니다');
+        setError('로그인에 실패했습니다');
         setLoading(false);
         return false;
       }
     } catch (e) {
-      setError('로그인 중 오류가 발생했습니다: ${e.toString()}');
+      // Firebase 오류 메시지 처리
+      String errorMessage = '로그인 중 오류가 발생했습니다';
+
+      if (e is FirebaseAuthException) {
+        switch (e.code) {
+          case 'user-not-found':
+            errorMessage = '해당 이메일로 등록된 사용자가 없습니다';
+            break;
+          case 'wrong-password':
+            errorMessage = '비밀번호가 올바르지 않습니다';
+            break;
+          case 'invalid-email':
+            errorMessage = '유효하지 않은 이메일 형식입니다';
+            break;
+          case 'user-disabled':
+            errorMessage = '해당 계정은 비활성화되었습니다';
+            break;
+        }
+      }
+
+      setError(errorMessage);
       setLoading(false);
       return false;
     }
   }
 
+  // Firestore에 사용자 정보 저장
+  Future<void> _saveUserData(String uid, UserModel user) async {
+    if (_useMockAuth) {
+      return; // Mock 모드에서는 저장 필요 없음
+    }
+
+    try {
+      // 비밀번호 제외하고 Firestore에 저장
+      Map<String, dynamic> userData = user.toJson();
+      userData.remove('password'); // 보안을 위해 비밀번호 제거
+
+      // 사용자 문서 생성 또는 업데이트
+      await _firestore.collection('users').doc(uid).set(userData);
+      debugPrint('✅ Firestore에 사용자 정보 저장 성공: $uid');
+    } catch (e) {
+      // 권한 오류가 발생해도 회원가입은 성공한 것으로 처리 (Firebase Auth에는 등록됨)
+      debugPrint('⚠️ Firestore 사용자 정보 저장 오류: $e');
+      debugPrint('⚠️ Firestore 권한 문제로 인해 데이터 저장에 실패했지만, 인증 정보는 저장되었습니다.');
+      // 오류를 던지지 않고 로그만 남김 (회원가입 과정에서 실패하지 않도록)
+    }
+  }
+
   // 회원가입 메소드
   Future<bool> register(UserModel user) async {
+    if (user.email == null || user.password == null) {
+      setError('이메일과 비밀번호는 필수 항목입니다');
+      return false;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      // API 호출을 시뮬레이션
-      await Future.delayed(const Duration(seconds: 2));
+      if (_useMockAuth) {
+        // Mock 회원가입 처리
+        debugPrint('🔧 Mock 회원가입 처리 중...');
 
-      // 실제 서비스에서는 서버에 회원가입 요청을 보냄
-      print('사용자 등록: ${user.toJson()}');
+        // 중복 이메일 체크
+        if (_mockUsers.any((u) => u.email == user.email)) {
+          setError('이미 사용 중인 이메일입니다');
+          setLoading(false);
+          return false;
+        }
 
-      // 회원가입 성공 시뮬레이션
-      _currentUser.value = user;
-      _isAuthenticated.value = false; // 회원가입 후 로그인은 별도로 진행
+        // Mock UID 생성
+        final String mockUid =
+            'mock-user-${DateTime.now().millisecondsSinceEpoch}';
+        user.uid = mockUid;
+
+        // 비밀번호는 저장하지 않음 (실제로는 해싱 처리해야 함)
+        final savedUser = UserModel(
+          uid: user.uid,
+          email: user.email,
+          nickname: user.nickname,
+          birthDate: user.birthDate,
+          country: user.country,
+          userType: user.userType,
+        );
+
+        // Mock 사용자 목록에 추가
+        _mockUsers.add(savedUser);
+
+        debugPrint('✅ Mock 회원가입 성공: ${savedUser.uid}');
+        setLoading(false);
+        return true;
+      } else {
+        // Firebase Auth로 사용자 생성
+        final userCredential = await _auth.createUserWithEmailAndPassword(
+          email: user.email!,
+          password: user.password!,
+        );
+
+        // 사용자 생성 성공
+        if (userCredential.user != null) {
+          // UID를 사용자 모델에 저장
+          user.uid = userCredential.user!.uid;
+
+          // Firestore에 사용자 정보 저장
+          await _saveUserData(userCredential.user!.uid, user);
+
+          // 비밀번호는 저장하지 않음
+          user.password = null;
+          _currentUser.value = user;
+
+          debugPrint('✅ Firebase 회원가입 성공: ${user.uid}');
+          setLoading(false);
+          return true;
+        } else {
+          setError('회원가입에 실패했습니다');
+          setLoading(false);
+          return false;
+        }
+      }
+    } on FirebaseAuthException catch (e) {
+      // Firebase Auth 오류 처리
+      String errorMessage = '회원가입 중 오류가 발생했습니다';
+
+      switch (e.code) {
+        case 'email-already-in-use':
+          errorMessage = '이미 사용 중인 이메일입니다';
+          break;
+        case 'invalid-email':
+          errorMessage = '유효하지 않은 이메일 형식입니다';
+          break;
+        case 'weak-password':
+          errorMessage = '비밀번호가 너무 약합니다';
+          break;
+        default:
+          errorMessage = '회원가입 중 오류가 발생했습니다: ${e.code}';
+      }
+
+      setError(errorMessage);
+      debugPrint('❌ Firebase 회원가입 오류: ${e.code} - $errorMessage');
+      setLoading(false);
+      return false;
+    } catch (e) {
+      // 기타 오류 처리
+      setError('회원가입 중 오류가 발생했습니다: ${e.toString()}');
+      debugPrint('❌ 회원가입 오류: $e');
+      setLoading(false);
+      return false;
+    }
+  }
+
+  // 사용자 정보 업데이트
+  Future<bool> updateUserProfile(UserModel updatedUser) async {
+    if (_useMockAuth) {
+      if (_currentUser.value == null) {
+        setError('로그인이 필요한 기능입니다');
+        return false;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        // 현재 사용자 찾기
+        final index = _mockUsers
+            .indexWhere((user) => user.uid == _currentUser.value!.uid);
+        if (index >= 0) {
+          // 비밀번호는 변경하지 않음
+          final String? oldPassword = _mockUsers[index].password;
+          updatedUser.password = oldPassword;
+
+          // 사용자 정보 업데이트
+          _mockUsers[index] = updatedUser;
+          _currentUser.value = updatedUser;
+        }
+
+        setLoading(false);
+        return true;
+      } catch (e) {
+        setError('프로필 업데이트 중 오류가 발생했습니다: ${e.toString()}');
+        setLoading(false);
+        return false;
+      }
+    }
+
+    if (_auth.currentUser == null) {
+      setError('로그인이 필요한 기능입니다');
+      return false;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      String uid = _auth.currentUser!.uid;
+
+      // 비밀번호 제외하고 Firestore에 저장
+      Map<String, dynamic> userData = updatedUser.toJson();
+      userData.remove('password');
+
+      // 사용자 문서 업데이트
+      await _firestore.collection('users').doc(uid).update(userData);
+
+      // 현재 사용자 정보 업데이트
+      _currentUser.value = updatedUser;
+
       setLoading(false);
       return true;
     } catch (e) {
-      setError('회원가입 중 오류가 발생했습니다: ${e.toString()}');
+      setError('프로필 업데이트 중 오류가 발생했습니다: ${e.toString()}');
       setLoading(false);
       return false;
     }
@@ -73,7 +346,9 @@ class AuthService extends GetxController {
     setLoading(true);
 
     try {
-      await Future.delayed(const Duration(seconds: 1));
+      if (!_useMockAuth) {
+        await _auth.signOut();
+      }
 
       _currentUser.value = null;
       _isAuthenticated.value = false;

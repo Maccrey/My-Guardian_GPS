@@ -60,21 +60,42 @@ class HomeView extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // 사용자 환영 메시지
-              const Text(
-                '안녕하세요!',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'GPS Search와 함께 안전한 위치 공유를 시작하세요.',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey,
-                ),
-              ),
+              Obx(() {
+                final user = authService.currentUser;
+                final name = user?.nickname ?? '게스트';
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '안녕하세요, $name님!',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'GPS Search와 함께 안전한 위치 공유를 시작하세요.',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    if (user?.email != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4.0),
+                        child: Text(
+                          '${user!.email}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              }),
               const SizedBox(height: 24),
 
               // 주요 기능 카드

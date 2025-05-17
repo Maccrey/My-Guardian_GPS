@@ -24,7 +24,7 @@ import 'views/map_view.dart';
 import 'views/settings/settings_view.dart';
 import 'services/settings_service.dart';
 
-import 'firebase_options.dart'; // 임시로 주석 처리
+import 'firebase_options.dart'; // Firebase 설정 파일 사용
 
 // SharedPreferences 초기화 상태를 추적하는 플래그
 bool isSharedPreferencesAvailable = false;
@@ -35,10 +35,28 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Firebase 초기화
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  // Firebase 초기화 코드 제거 - 테스트를 위해
+  try {
+    if (!kIsWeb) {
+      // 웹이 아닌 경우에만 Firebase 초기화
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      debugPrint('✅ Firebase 초기화 성공');
+    } else {
+      debugPrint('⚠️ 웹 환경에서는 Firebase를 사용하지 않습니다. 테스트 모드로 실행합니다.');
+    }
+  } catch (e) {
+    debugPrint('❌ Firebase 초기화 실패: $e');
+    // 오류 상세 정보 출력
+    FlutterError.dumpErrorToConsole(
+      FlutterErrorDetails(
+        exception: e,
+        stack: StackTrace.current,
+        library: 'main.dart',
+        context: ErrorDescription('Firebase 초기화 중 오류'),
+      ),
+    );
+  }
 
   // 백그라운드 오디오 초기화
   try {

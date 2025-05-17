@@ -9,8 +9,9 @@ class RegisterView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // GetX 컨트롤러 초기화
-    final controller = Get.put(RegisterViewModel(Get.find<AuthService>()));
+    // GetX 컨트롤러 초기화 - put 대신 lazyPut 사용
+    Get.lazyPut(() => RegisterViewModel(Get.find<AuthService>()));
+    final controller = Get.find<RegisterViewModel>();
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -369,39 +370,37 @@ class RegisterView extends StatelessWidget {
                           onPressed: controller.isLoading
                               ? null
                               : () async {
-                                  if (await controller.register()) {
+                                  debugPrint('회원가입 버튼 클릭됨');
+                                  final success = await controller.register();
+                                  debugPrint('회원가입 결과: $success');
+
+                                  if (success) {
+                                    debugPrint('회원가입 성공 - 로그인 화면으로 이동 시작');
                                     Get.snackbar(
                                       '성공',
-                                      '회원가입이 완료되었습니다!',
+                                      '회원가입이 완료되었습니다! 로그인해주세요.',
                                       snackPosition: SnackPosition.BOTTOM,
+                                      backgroundColor:
+                                          Colors.green.withOpacity(0.7),
+                                      colorText: Colors.white,
+                                      duration: const Duration(seconds: 3),
                                     );
+
+                                    // 잠시 대기 후 로그인 화면으로 이동
                                     Future.delayed(const Duration(seconds: 1),
                                         () {
-                                      Get.back();
+                                      debugPrint('로그인 화면으로 이동 실행');
+                                      Get.offAllNamed(
+                                          '/'); // 모든 화면을 제거하고 로그인 화면으로 이동
                                     });
-                                  } else if (controller.error != null) {
-                                    Get.snackbar(
-                                      '오류',
-                                      controller.error!,
-                                      snackPosition: SnackPosition.BOTTOM,
-                                    );
                                   }
                                 },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                Theme.of(context).colorScheme.primary,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            minimumSize: const Size.fromHeight(56),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
+                            minimumSize: const Size(double.infinity, 50),
                           ),
-                          child: const Text(
-                            '회원가입',
-                            style: TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
+                          child: controller.isLoading
+                              ? const CircularProgressIndicator()
+                              : const Text('회원가입'),
                         )),
 
                     // 개인정보 이용 약관

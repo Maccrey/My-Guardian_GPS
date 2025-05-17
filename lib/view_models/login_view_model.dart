@@ -7,8 +7,8 @@ class LoginViewModel extends GetxController {
   final AuthService _authService;
 
   // 컨트롤러
-  final TextEditingController emailController = TextEditingController();
-  final TextEditingController passwordController = TextEditingController();
+  late TextEditingController emailController;
+  late TextEditingController passwordController;
 
   // UI 상태
   final RxBool isPasswordVisible = false.obs;
@@ -16,6 +16,14 @@ class LoginViewModel extends GetxController {
 
   // 생성자
   LoginViewModel(this._authService);
+
+  @override
+  void onInit() {
+    super.onInit();
+    // 컨트롤러 초기화
+    emailController = TextEditingController();
+    passwordController = TextEditingController();
+  }
 
   // Getters
   bool get isLoading => _authService.isLoading;

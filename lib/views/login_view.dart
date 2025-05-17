@@ -8,8 +8,9 @@ class LoginView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // GetX 컨트롤러 초기화
-    final controller = Get.put(LoginViewModel(Get.find<AuthService>()));
+    // GetX 컨트롤러 초기화 - put 대신 lazyPut을 사용하고 find로 가져오기
+    Get.lazyPut(() => LoginViewModel(Get.find<AuthService>()), fenix: true);
+    final controller = Get.find<LoginViewModel>();
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -147,49 +148,45 @@ class LoginView extends StatelessWidget {
                           const SizedBox(height: 24),
 
                           // 로그인 버튼
-                          ElevatedButton(
-                            onPressed: () {
-                              // TODO: 추후 실제 로그인 기능 구현 시 아래 코드로 대체
-                              // Obx(() => ElevatedButton(
-                              //   onPressed: controller.isLoading
-                              //     ? null
-                              //     : () async {
-                              //         if (await controller.login()) {
-                              //           Get.snackbar(
-                              //             '성공',
-                              //             '로그인 성공!',
-                              //             snackPosition: SnackPosition.BOTTOM,
-                              //           );
-                              //           Get.offAllNamed('/home');
-                              //         } else if (controller.error != null) {
-                              //           Get.snackbar(
-                              //             '오류',
-                              //             controller.error!,
-                              //             snackPosition: SnackPosition.BOTTOM,
-                              //           );
-                              //         }
-                              //       },
-                              // )),
-
-                              // 임시: 바로 홈 화면으로 이동
-                              Get.offAllNamed('/home');
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  Theme.of(context).colorScheme.primary,
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              minimumSize: const Size.fromHeight(56),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: const Text(
-                              '로그인',
-                              style: TextStyle(
-                                  fontSize: 16, fontWeight: FontWeight.bold),
-                            ),
-                          ),
+                          Obx(() => ElevatedButton(
+                                onPressed: controller.isLoading
+                                    ? null
+                                    : () async {
+                                        if (await controller.login()) {
+                                          Get.snackbar(
+                                            '성공',
+                                            '로그인 성공!',
+                                            snackPosition: SnackPosition.BOTTOM,
+                                          );
+                                          Get.offAllNamed('/home');
+                                        } else if (controller.error != null) {
+                                          Get.snackbar(
+                                            '오류',
+                                            controller.error!,
+                                            snackPosition: SnackPosition.BOTTOM,
+                                          );
+                                        }
+                                      },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor:
+                                      Theme.of(context).colorScheme.primary,
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  minimumSize: const Size.fromHeight(56),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: controller.isLoading
+                                    ? const CircularProgressIndicator(
+                                        color: Colors.white)
+                                    : const Text(
+                                        '로그인',
+                                        style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold),
+                                      ),
+                              )),
                           const SizedBox(height: 16),
 
                           // 소셜 로그인 옵션

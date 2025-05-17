@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 모든 사용자 정보는 인증된 사용자만 생성 가능
+    match /users/{userId} {
+      // 사용자는 자신의 정보만 읽고 수정 가능
+      allow read, update, delete: if request.auth != null && request.auth.uid == userId;
+      // 회원가입 시 생성 가능
+      allow create: if request.auth != null;
+    }
+    
+    // 사용자 메시지 관련 규칙
+    match /messages/{messageId} {
+      // 보낸 사람이나 받는 사람만 메시지 읽기 가능
+      allow read: if request.auth != null && 
+        (resource.data.senderId == request.auth.uid || 
+         resource.data.receiverId == request.auth.uid);
+      
+      // 자신이 보내는 메시지만 생성 가능
+      allow create: if request.auth != null && 
+        request.resource.data.senderId == request.auth.uid;
+      
+      // 자신이 보낸 메시지만 수정/삭제 가능
+      allow update, delete: if request.auth != null && 
+        resource.data.senderId == request.auth.uid;
+    }
+    
+    // 사용자 간의 대화 정보
+    match /conversations/{conversationId} {
+      // 대화 참여자만 읽기 가능
+      allow read: if request.auth != null && 
+        (resource.data.participants[request.auth.uid] == true);
+      
+      // 대화 생성 시 참여자로 포함되어야 함
+      allow create: if request.auth != null && 
+        request.resource.data.participants[request.auth.uid] == true;
+      
+      // 대화 참여자만 업데이트 가능
+      allow update: if request.auth != null && 
+        resource.data.participants[request.auth.uid] == true;
+    }
+    
+    // 비상 연락처 정보
+    match /emergency_contacts/{contactId} {
+      // 자신의 비상 연락처만 접근 가능
+      allow read, write: if request.auth != null && 
+        resource.data.userId == request.auth.uid;
+    }
+    
+    // 기본 규칙 - 다른 모든 문서는 접근 불가
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

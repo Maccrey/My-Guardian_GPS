@@ -8,12 +8,11 @@ class RegisterViewModel extends GetxController {
   final AuthService _authService;
 
   // 컨트롤러
-  final TextEditingController nicknameController = TextEditingController();
-  final TextEditingController birthDateController = TextEditingController();
-  final TextEditingController emailController = TextEditingController();
-  final TextEditingController passwordController = TextEditingController();
-  final TextEditingController confirmPasswordController =
-      TextEditingController();
+  late TextEditingController nicknameController;
+  late TextEditingController birthDateController;
+  late TextEditingController emailController;
+  late TextEditingController passwordController;
+  late TextEditingController confirmPasswordController;
 
   // UI 상태
   final RxBool isPasswordVisible = false.obs;
@@ -25,6 +24,17 @@ class RegisterViewModel extends GetxController {
 
   // 생성자
   RegisterViewModel(this._authService);
+
+  @override
+  void onInit() {
+    super.onInit();
+    // 컨트롤러 초기화
+    nicknameController = TextEditingController();
+    birthDateController = TextEditingController();
+    emailController = TextEditingController();
+    passwordController = TextEditingController();
+    confirmPasswordController = TextEditingController();
+  }
 
   // Getters
   bool get isLoading => _authService.isLoading;
@@ -99,6 +109,40 @@ class RegisterViewModel extends GetxController {
 
   // 회원가입 처리
   Future<bool> register() async {
+    _authService.setLoading(true);
+    _authService.setError(null);
+
+    // 입력값 유효성 검사
+    if (!_validateInputs()) {
+      _authService.setLoading(false);
+      return false;
+    }
+
+    // 사용자 모델 생성
+    final user = UserModel(
+      email: emailController.text.trim(),
+      password: passwordController.text,
+      nickname: nicknameController.text.trim(),
+      birthDate: selectedDate.value,
+      country: selectedCountry.value,
+      userType: getUserType(),
+    );
+
+    try {
+      // AuthService를 통해 회원가입 시도
+      final result = await _authService.register(user);
+      debugPrint('회원가입 결과: $result');
+      _authService.setLoading(false);
+      return result;
+    } catch (e) {
+      debugPrint('회원가입 중 오류 발생: $e');
+      _authService.setError('회원가입 중 오류가 발생했습니다: ${e.toString()}');
+      _authService.setLoading(false);
+      return false;
+    }
+  }
+
+  bool _validateInputs() {
     final nickname = nicknameController.text.trim();
     final email = emailController.text.trim();
     final password = passwordController.text;
@@ -130,9 +174,8 @@ class RegisterViewModel extends GetxController {
       return false;
     }
 
-    if (!RegExp(r'^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9])(?=.*?[!@#\$&*~]).{8,}$')
-        .hasMatch(password)) {
-      _authService.setError('비밀번호는 대소문자, 숫자, 특수문자를 포함해야 합니다');
+    if (!RegExp(r'^(?=.*?[0-9])(?=.*?[a-zA-Z]).{8,}$').hasMatch(password)) {
+      _authService.setError('비밀번호는 영문자와 숫자를 포함해야 합니다');
       return false;
     }
 
@@ -141,18 +184,7 @@ class RegisterViewModel extends GetxController {
       return false;
     }
 
-    // 사용자 데이터 생성
-    final user = UserModel(
-      email: email,
-      password: password,
-      nickname: nickname,
-      birthDate: selectedDate.value,
-      country: selectedCountry.value,
-      userType: getUserType(),
-    );
-
-    // 회원가입 요청
-    return await _authService.register(user);
+    return true;
   }
 
   // 이모지 국기 생성
