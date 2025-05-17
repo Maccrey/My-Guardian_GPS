@@ -11,6 +11,8 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../constants/api_keys.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/shared_location_model.dart';
 
 // 검색 결과 항목 클래스
 class SearchResult {
@@ -92,6 +94,13 @@ class LocationService extends GetxController {
   // 위치 서비스 활성화 상태 (설정 화면과 연동)
   final RxBool isLocationServiceEnabled = true.obs;
 
+  // 메시지에서 공유된 위치 저장 목록
+  final RxList<SharedLocationModel> sharedLocations =
+      <SharedLocationModel>[].obs;
+
+  // 공유된 위치를 표시할지 여부
+  final RxBool showSharedLocations = true.obs;
+
   @override
   void onInit() {
     super.onInit();
@@ -120,6 +129,9 @@ class LocationService extends GetxController {
     if (isLocationServiceEnabled.value) {
       _checkLocationPermission();
     }
+
+    // 저장된 공유 위치 불러오기
+    _loadSharedLocations();
   }
 
   // 초기 위치 서비스 상태 확인
@@ -756,6 +768,166 @@ class LocationService extends GetxController {
     lng = min(_mapBounds!.northeast.longitude, lng);
 
     return LatLng(lat, lng);
+  }
+
+  // 공유된 위치 저장
+  Future<bool> saveSharedLocation(SharedLocationModel location) async {
+    try {
+      debugPrint('🔄 공유된 위치 저장 시도: ${location.message}');
+
+      // Firestore에 위치 정보 저장 (옵션)
+      try {
+        final FirebaseFirestore firestore = FirebaseFirestore.instance;
+        await firestore
+            .collection('shared_locations')
+            .doc(location.id)
+            .set(location.toJson());
+        debugPrint('✅ Firestore에 위치 정보 저장 성공');
+      } catch (e) {
+        // Firestore 저장 실패는 로컬 저장에 영향 없음
+        debugPrint('⚠️ Firestore 위치 저장 실패 (무시됨): $e');
+      }
+
+      // 로컬 목록에 추가
+      if (!sharedLocations.any((loc) => loc.id == location.id)) {
+        sharedLocations.add(location);
+
+        // 지도 마커도 추가
+        _updateSharedLocationMarkers();
+
+        debugPrint('✅ 공유 위치 저장 성공: ${location.id}');
+        return true;
+      } else {
+        debugPrint('ℹ️ 이미 저장된 위치입니다: ${location.id}');
+        return true; // 이미 있는 경우도 성공으로 처리
+      }
+    } catch (e) {
+      debugPrint('❌ 공유 위치 저장 실패: $e');
+      return false;
+    }
+  }
+
+  // 메시지에서 공유된 위치 표시 설정
+  void setShowSharedLocations(bool show) {
+    showSharedLocations.value = show;
+
+    // 마커 업데이트
+    _updateSharedLocationMarkers();
+
+    debugPrint('✅ 공유 위치 표시 설정: $show');
+  }
+
+  // 공유된 위치로 이동
+  void moveToSharedLocation(SharedLocationModel location) {
+    if (mapController.value != null) {
+      mapController.value!.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: location.toLatLng(),
+            zoom: 15,
+          ),
+        ),
+      );
+
+      debugPrint('✅ 공유 위치로 이동: ${location.message}');
+    }
+  }
+
+  // 공유된 위치 목록 초기화
+  Future<void> _loadSharedLocations() async {
+    try {
+      debugPrint('🔄 저장된 공유 위치 불러오기 시작');
+      sharedLocations.clear();
+
+      // Firestore에서 공유된 위치 불러오기
+      try {
+        final FirebaseFirestore firestore = FirebaseFirestore.instance;
+        final snapshot = await firestore.collection('shared_locations').get();
+
+        for (var doc in snapshot.docs) {
+          try {
+            final location = SharedLocationModel.fromFirestore(doc);
+            sharedLocations.add(location);
+          } catch (e) {
+            debugPrint('⚠️ 위치 변환 오류 (무시됨): $e');
+          }
+        }
+
+        debugPrint('✅ Firestore에서 ${sharedLocations.length}개의 공유 위치를 불러왔습니다');
+      } catch (e) {
+        // Firestore 로드 실패는 무시
+        debugPrint('⚠️ Firestore 위치 불러오기 실패 (무시됨): $e');
+      }
+
+      // 마커 업데이트
+      _updateSharedLocationMarkers();
+    } catch (e) {
+      debugPrint('❌ 공유 위치 불러오기 실패: $e');
+      // 오류 시 빈 목록 사용
+      sharedLocations.clear();
+    }
+  }
+
+  // 공유된 위치 마커 업데이트
+  void _updateSharedLocationMarkers() {
+    try {
+      // 공유된 위치 표시가 비활성화된 경우 마커 제거
+      if (!showSharedLocations.value) {
+        markers.removeWhere(
+            (marker) => marker.markerId.value.startsWith('shared_'));
+        return;
+      }
+
+      // 기존 공유 위치 마커 제거
+      markers
+          .removeWhere((marker) => marker.markerId.value.startsWith('shared_'));
+
+      // 새 마커 추가
+      for (var location in sharedLocations) {
+        markers.add(
+          Marker(
+            markerId: MarkerId('shared_${location.id}'),
+            position: location.toLatLng(),
+            infoWindow: InfoWindow(
+              title: location.message,
+              snippet: '${location.senderName}님이 공유한 위치',
+            ),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueViolet),
+          ),
+        );
+      }
+
+      debugPrint('✅ 공유 위치 마커 ${sharedLocations.length}개 업데이트 완료');
+    } catch (e) {
+      debugPrint('❌ 공유 위치 마커 업데이트 실패: $e');
+    }
+  }
+
+  // 공유된 위치 삭제
+  Future<bool> removeSharedLocation(String locationId) async {
+    try {
+      // Firestore에서 삭제
+      try {
+        final FirebaseFirestore firestore = FirebaseFirestore.instance;
+        await firestore.collection('shared_locations').doc(locationId).delete();
+        debugPrint('✅ Firestore에서 위치 삭제 성공');
+      } catch (e) {
+        debugPrint('⚠️ Firestore 위치 삭제 실패 (무시됨): $e');
+      }
+
+      // 로컬 목록에서 삭제
+      sharedLocations.removeWhere((location) => location.id == locationId);
+
+      // 마커 업데이트
+      _updateSharedLocationMarkers();
+
+      debugPrint('✅ 공유 위치 삭제 성공: $locationId');
+      return true;
+    } catch (e) {
+      debugPrint('❌ 공유 위치 삭제 실패: $e');
+      return false;
+    }
   }
 
   @override

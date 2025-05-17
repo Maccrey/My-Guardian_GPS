@@ -2,9 +2,14 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:just_audio_background/just_audio_background.dart';
+import 'dart:async';
+import 'package:flutter/services.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:uni_links/uni_links.dart';
 
 import 'services/auth_service.dart';
 import 'services/message_service.dart';
@@ -24,6 +29,8 @@ import 'services/notification_service.dart';
 import 'views/map_view.dart';
 import 'views/settings/settings_view.dart';
 import 'services/settings_service.dart';
+import 'views/messages/shared_location_view.dart';
+import 'utils/url_handler.dart';
 
 import 'firebase_options.dart'; // 임시로 주석 처리
 
@@ -128,8 +135,32 @@ void main() async {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+
+    // URL 핸들러 초기화
+    if (!kIsWeb) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        UrlHandler.initialize();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    // URL 핸들러 리소스 해제
+    UrlHandler.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

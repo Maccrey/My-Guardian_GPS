@@ -5,9 +5,15 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import '../../services/message_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/location_service.dart';
 import '../../models/message_model.dart';
 import '../../models/user_model.dart';
+import '../../models/shared_location_model.dart';
 import 'shared_location_view.dart'; // 위치 공유 화면 import 추가
+import 'package:uuid/uuid.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../utils/url_handler.dart';
 
 class MessageDetailView extends StatefulWidget {
   final String userId; // 대화 상대 ID
@@ -24,6 +30,7 @@ class MessageDetailView extends StatefulWidget {
 class _MessageDetailViewState extends State<MessageDetailView> {
   final MessageService _messageService = Get.find<MessageService>();
   final AuthService _authService = Get.find<AuthService>();
+  final LocationService _locationService = Get.find<LocationService>();
 
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -1409,41 +1416,88 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Container(
-                  width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-                  decoration: BoxDecoration(
-                    color: isCurrentUserSender
-                        ? Colors.white.withOpacity(0.25)
-                        : Colors.teal.shade800.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.map,
-                        size: 16,
-                        color: isCurrentUserSender
-                            ? Colors.white
-                            : Colors.teal.shade800,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '지도에서 보기',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // 지도에서 보기 버튼
+                    GestureDetector(
+                      onTap: () => _openInExternalMap(locationData),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 6, horizontal: 8),
+                        decoration: BoxDecoration(
                           color: isCurrentUserSender
-                              ? Colors.white
-                              : Colors.teal.shade800,
+                              ? Colors.white.withOpacity(0.25)
+                              : Colors.teal.shade800.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.map,
+                              size: 16,
+                              color: isCurrentUserSender
+                                  ? Colors.white
+                                  : Colors.teal.shade800,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '지도에서 보기',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: isCurrentUserSender
+                                    ? Colors.white
+                                    : Colors.teal.shade800,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+
+                    // 내 지도에 저장 버튼 추가
+                    GestureDetector(
+                      onTap: () => _saveLocationToMap(
+                          message, locationData, isCurrentUserSender),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 6, horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: isCurrentUserSender
+                              ? Colors.white.withOpacity(0.25)
+                              : Colors.teal.shade800.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.bookmark_outline,
+                              size: 16,
+                              color: isCurrentUserSender
+                                  ? Colors.white
+                                  : Colors.teal.shade800,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '지도에 저장',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: isCurrentUserSender
+                                    ? Colors.white
+                                    : Colors.teal.shade800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1493,55 +1547,72 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                 ),
 
               // 실제 메시지 컨텐츠 컨테이너
-              Container(
-                padding: message.messageType == 'location_share'
-                    ? EdgeInsets.zero // 위치 공유는 자체 패딩 있음
-                    : const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                decoration: message.messageType == 'location_share'
-                    ? null // 위치 공유는 자체 장식 있음
-                    : BoxDecoration(
-                        color: isCurrentUserSender
-                            ? Colors.blue.shade600
-                            : Colors.grey.shade100,
-                        borderRadius: BorderRadius.only(
-                          topLeft:
-                              Radius.circular(isCurrentUserSender ? 16 : 4),
-                          topRight:
-                              Radius.circular(isCurrentUserSender ? 4 : 16),
-                          bottomLeft: const Radius.circular(16),
-                          bottomRight: const Radius.circular(16),
+              GestureDetector(
+                onTap: () {
+                  // 일반 텍스트 메시지인 경우만 링크 감지
+                  if (message.messageType == 'text') {
+                    _handleTextWithLinks(message.content);
+                  }
+
+                  // 위치 공유 메시지인 경우 기존 동작 유지
+                  if (message.messageType == 'location_share') {
+                    final locationData = _parseLocationMessage(message.content);
+                    if (locationData != null) {
+                      _openSharedLocation(
+                          message, locationData, isCurrentUserSender);
+                    }
+                  }
+                },
+                child: Container(
+                  padding: message.messageType == 'location_share'
+                      ? EdgeInsets.zero // 위치 공유는 자체 패딩 있음
+                      : const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 3,
-                            offset: const Offset(0, 1),
+                  decoration: message.messageType == 'location_share'
+                      ? null // 위치 공유는 자체 장식 있음
+                      : BoxDecoration(
+                          color: isCurrentUserSender
+                              ? Colors.blue.shade600
+                              : Colors.grey.shade100,
+                          borderRadius: BorderRadius.only(
+                            topLeft:
+                                Radius.circular(isCurrentUserSender ? 16 : 4),
+                            topRight:
+                                Radius.circular(isCurrentUserSender ? 4 : 16),
+                            bottomLeft: const Radius.circular(16),
+                            bottomRight: const Radius.circular(16),
                           ),
-                        ],
-                      ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (replyReferenceWidget != null) replyReferenceWidget,
-                    messageContent,
-                    if (message.messageType != 'location_share')
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          _formatMessageTime(message.timestamp),
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: isCurrentUserSender
-                                ? Colors.white.withOpacity(0.7)
-                                : Colors.black54,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 3,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (replyReferenceWidget != null) replyReferenceWidget,
+                      messageContent,
+                      if (message.messageType != 'location_share')
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            _formatMessageTime(message.timestamp),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: isCurrentUserSender
+                                  ? Colors.white.withOpacity(0.7)
+                                  : Colors.black54,
+                            ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
 
@@ -1562,6 +1633,117 @@ class _MessageDetailViewState extends State<MessageDetailView> {
         ),
       ),
     );
+  }
+
+  // 지도 앱에서 바로 열기
+  Future<void> _openInExternalMap(Map<String, dynamic> locationData) async {
+    try {
+      final double latitude = double.parse(locationData['latitude'].toString());
+      final double longitude =
+          double.parse(locationData['longitude'].toString());
+
+      // 지도 URL 생성
+      String urlString;
+
+      if (Theme.of(context).platform == TargetPlatform.iOS) {
+        // iOS에서는 Apple Maps URL 스킴 사용
+        urlString =
+            'https://maps.apple.com/?ll=$latitude,$longitude&q=${Uri.encodeComponent(locationData['message'] ?? '공유된 위치')}';
+      } else {
+        // Android 및 기타 플랫폼에서는 Google Maps URL 스킴 사용
+        urlString =
+            'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
+      }
+
+      // 진동 피드백
+      HapticFeedback.mediumImpact();
+
+      // URL 파싱
+      final Uri url = Uri.parse(urlString);
+
+      // URL 실행 시도
+      final bool canLaunch = await canLaunchUrl(url);
+      if (canLaunch) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          Get.snackbar(
+            '오류',
+            '지도 앱을 열 수 없습니다',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red.withOpacity(0.8),
+            colorText: Colors.white,
+            duration: const Duration(seconds: 3),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ 외부 지도 앱 열기 오류: $e');
+    }
+  }
+
+  // 위치를 지도에 저장
+  Future<void> _saveLocationToMap(Message message,
+      Map<String, dynamic> locationData, bool isCurrentUserSender) async {
+    try {
+      // 진동 피드백
+      HapticFeedback.mediumImpact();
+
+      // 공유 위치 저장 모델 생성
+      final sharedLocation = SharedLocationModel(
+        id: const Uuid().v4(),
+        senderId: message.senderId,
+        senderName:
+            isCurrentUserSender ? '나' : _getRecipientName(message.senderId),
+        latitude: double.parse(locationData['latitude'].toString()),
+        longitude: double.parse(locationData['longitude'].toString()),
+        message: locationData['message'] ?? '공유된 위치',
+        timestamp: message.timestamp,
+        messageId: message.id,
+      );
+
+      // 위치 서비스에 저장
+      final success = await _locationService.saveSharedLocation(sharedLocation);
+
+      if (success && mounted) {
+        Get.snackbar(
+          '저장 완료',
+          '위치가 지도에 저장되었습니다. 지도 메뉴에서 확인할 수 있습니다.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green.shade600,
+          colorText: Colors.white,
+          margin: const EdgeInsets.all(8),
+          borderRadius: 8,
+          duration: const Duration(seconds: 2),
+        );
+      } else {
+        Get.snackbar(
+          '저장 실패',
+          '위치를 지도에 저장하지 못했습니다.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.shade600,
+          colorText: Colors.white,
+          margin: const EdgeInsets.all(8),
+          borderRadius: 8,
+          duration: const Duration(seconds: 2),
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ 위치 저장 오류: $e');
+
+      if (mounted) {
+        Get.snackbar(
+          '저장 오류',
+          '위치를 저장하는 중 오류가 발생했습니다',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.shade600,
+          colorText: Colors.white,
+          margin: const EdgeInsets.all(8),
+          borderRadius: 8,
+          duration: const Duration(seconds: 2),
+        );
+      }
+    }
   }
 
   // 위치 공유 메시지를 지도에서 표시
@@ -1922,5 +2104,68 @@ class _MessageDetailViewState extends State<MessageDetailView> {
         duration: const Duration(seconds: 3),
       );
     }
+  }
+
+  // 링크를 탐지하고 처리하는 메서드
+  void _handleTextWithLinks(String text) {
+    try {
+      // URL 패턴 - Google Maps URL 포함
+      final RegExp urlPattern = RegExp(
+        r'https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)',
+        caseSensitive: false,
+      );
+
+      final matches = urlPattern.allMatches(text);
+      if (matches.isNotEmpty) {
+        for (final match in matches) {
+          final url = text.substring(match.start, match.end);
+
+          // 특별히 Google Maps URL인지 확인
+          if (url.contains('maps.google.com') ||
+              url.contains('google.com/maps')) {
+            // Watch Over 앱 내에서 열기
+            if (mounted) {
+              _showOpenInAppMapDialog(url);
+            }
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ 링크 처리 오류: $e');
+    }
+  }
+
+  // Google Maps URL 앱 내에서 열기 제안 다이얼로그
+  void _showOpenInAppMapDialog(String url) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('지도 링크 감지'),
+        content: const Text('Google Maps 링크가 감지되었습니다. Watch Over 앱에서 열겠습니까?'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // 외부 브라우저에서 열기
+              launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+            },
+            child: const Text('브라우저에서 열기'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // URL 처리기로 앱 내에서 열기
+              UrlHandler.handleUrl(url);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue.shade700,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('앱에서 보기'),
+          ),
+        ],
+      ),
+    );
   }
 }

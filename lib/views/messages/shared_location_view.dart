@@ -4,6 +4,10 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../services/location_service.dart';
+import '../../models/shared_location_model.dart';
+import 'package:uuid/uuid.dart';
+import 'dart:async';
 
 class SharedLocationView extends StatefulWidget {
   final double latitude;
@@ -11,6 +15,73 @@ class SharedLocationView extends StatefulWidget {
   final String message;
   final DateTime timestamp;
   final String senderName;
+
+  // URL 파싱을 통한 위치 열기를 위한 정적 메서드 추가
+  static Future<void> openFromMapsUrl(String url) async {
+    try {
+      // URL 파싱
+      final coordinates = _parseGoogleMapsUrl(url);
+      if (coordinates != null) {
+        final lat = coordinates['latitude']!;
+        final lng = coordinates['longitude']!;
+
+        // SharedLocationView로 이동
+        Get.to(
+          () => SharedLocationView(
+            latitude: lat,
+            longitude: lng,
+            message: '공유된 위치',
+            timestamp: DateTime.now(),
+            senderName: '공유',
+          ),
+          transition: Transition.rightToLeft,
+        );
+
+        return;
+      }
+
+      // 파싱 실패 시 외부 브라우저로 열기
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint('⚠️ 지도 URL 열기 오류: $e');
+      Get.snackbar(
+        '오류',
+        '지도 URL을 열 수 없습니다',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.shade700,
+        colorText: Colors.white,
+      );
+    }
+  }
+
+  // Google Maps URL 파싱 정적 메서드
+  static Map<String, double>? _parseGoogleMapsUrl(String url) {
+    try {
+      // URL에서 좌표 추출
+      Uri uri = Uri.parse(url);
+
+      // maps.google.com 형식 확인
+      if (uri.host.contains('maps.google.com') ||
+          uri.host.contains('google.com/maps')) {
+        // q 파라미터로 좌표가 있는 경우
+        if (uri.queryParameters.containsKey('q')) {
+          final coordinates = uri.queryParameters['q']!.split(',');
+          if (coordinates.length == 2) {
+            final lat = double.tryParse(coordinates[0]);
+            final lng = double.tryParse(coordinates[1]);
+
+            if (lat != null && lng != null) {
+              return {'latitude': lat, 'longitude': lng};
+            }
+          }
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ URL 파싱 오류: $e');
+      return null;
+    }
+  }
 
   const SharedLocationView({
     Key? key,
@@ -31,6 +102,9 @@ class _SharedLocationViewState extends State<SharedLocationView> {
   GoogleMapController? _mapController;
   bool _isMapReady = false;
   bool _isSharing = false;
+  final LocationService _locationService = Get.find<LocationService>();
+  bool _isSavedToMap = false;
+  Timer? _clipboardCheckTimer;
 
   @override
   void initState() {
@@ -54,10 +128,88 @@ class _SharedLocationViewState extends State<SharedLocationView> {
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
       ),
     };
+
+    // 클립보드 모니터링 시작
+    _startClipboardMonitoring();
+  }
+
+  // 클립보드 모니터링 시작
+  void _startClipboardMonitoring() {
+    try {
+      _clipboardCheckTimer?.cancel();
+
+      // 주기적으로 클립보드를 확인
+      _clipboardCheckTimer =
+          Timer.periodic(const Duration(seconds: 2), (timer) {
+        _checkClipboardForMapsUrl();
+      });
+
+      // 초기 클립보드 확인
+      _checkClipboardForMapsUrl();
+    } catch (e) {
+      debugPrint('⚠️ 클립보드 모니터링 시작 오류: $e');
+    }
+  }
+
+  // 클립보드에서 Google Maps URL 확인
+  Future<void> _checkClipboardForMapsUrl() async {
+    try {
+      final ClipboardData? clipboardData =
+          await Clipboard.getData(Clipboard.kTextPlain);
+      if (clipboardData != null && clipboardData.text != null) {
+        final text = clipboardData.text!;
+
+        // Google Maps URL 패턴 확인
+        if (text.contains('maps.google.com') && text.contains('?q=')) {
+          debugPrint('🔍 클립보드에서 Google Maps URL 발견: $text');
+
+          // 사용자에게 앱에서 열기 옵션 제공
+          if (mounted) {
+            _showOpenInAppDialog(text);
+          }
+
+          // 확인 후 타이머 일시정지 (중복 알림 방지)
+          _clipboardCheckTimer?.cancel();
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ 클립보드 확인 오류: $e');
+    }
+  }
+
+  // 앱에서 열기 다이얼로그
+  void _showOpenInAppDialog(String url) {
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('지도 링크 감지'),
+        content: const Text('Google Maps 링크가 감지되었습니다. Watch Over 앱에서 열겠습니까?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('취소'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              SharedLocationView.openFromMapsUrl(url);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue.shade700,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('앱에서 열기'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   void dispose() {
+    _clipboardCheckTimer?.cancel();
     _mapController?.dispose();
     super.dispose();
   }
@@ -183,6 +335,97 @@ class _SharedLocationViewState extends State<SharedLocationView> {
     }
   }
 
+  // 앱 내 지도에 위치 저장
+  Future<void> _saveToAppMap() async {
+    if (_isSavedToMap) {
+      // 이미 저장된 경우 알림 표시
+      Get.snackbar(
+        '이미 저장됨',
+        '이 위치는 이미 지도에 저장되어 있습니다',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.blue.shade600,
+        colorText: Colors.white,
+        margin: const EdgeInsets.all(12),
+        borderRadius: 10,
+        duration: const Duration(seconds: 2),
+      );
+      return;
+    }
+
+    try {
+      // 진동 피드백
+      HapticFeedback.lightImpact();
+
+      // 저장 진행 중 알림
+      Get.snackbar(
+        '저장 중',
+        '지도에 위치를 저장하는 중...',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.teal.shade600,
+        colorText: Colors.white,
+        margin: const EdgeInsets.all(12),
+        borderRadius: 10,
+        duration: const Duration(seconds: 1),
+      );
+
+      // 공유된 위치 모델 생성
+      final sharedLocation = SharedLocationModel(
+        id: const Uuid().v4(), // 고유 ID 생성
+        senderId: 'shared_from_message', // 메시지에서 공유된 위치임을 표시
+        senderName: widget.senderName,
+        latitude: widget.latitude,
+        longitude: widget.longitude,
+        message: widget.message,
+        timestamp: widget.timestamp,
+        messageId: 'direct_share', // 직접 공유시 메시지 ID 없음
+      );
+
+      // 위치 서비스에 저장
+      final success = await _locationService.saveSharedLocation(sharedLocation);
+
+      if (success) {
+        setState(() {
+          _isSavedToMap = true;
+        });
+
+        Get.snackbar(
+          '저장 완료',
+          '위치가 지도에 저장되었습니다. 지도 메뉴에서 확인할 수 있습니다.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green.shade600,
+          colorText: Colors.white,
+          margin: const EdgeInsets.all(12),
+          borderRadius: 10,
+          duration: const Duration(seconds: 3),
+        );
+      } else {
+        Get.snackbar(
+          '저장 실패',
+          '위치를 지도에 저장하지 못했습니다. 다시 시도해주세요.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.shade700,
+          colorText: Colors.white,
+          margin: const EdgeInsets.all(12),
+          borderRadius: 10,
+          duration: const Duration(seconds: 3),
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ 지도에 위치 저장 중 오류: $e');
+
+      Get.snackbar(
+        '저장 오류',
+        '오류가 발생했습니다: 위치를 저장할 수 없습니다',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.shade700,
+        colorText: Colors.white,
+        margin: const EdgeInsets.all(12),
+        borderRadius: 10,
+        duration: const Duration(seconds: 3),
+      );
+    }
+  }
+
   // 외부 지도 앱에서 위치 열기
   Future<void> _openInExternalMap() async {
     try {
@@ -270,6 +513,57 @@ class _SharedLocationViewState extends State<SharedLocationView> {
     }
   }
 
+  // 지도 화면으로 직접 이동
+  void _openInMapView() {
+    try {
+      // 진동 피드백
+      HapticFeedback.mediumImpact();
+
+      // 현재 화면 닫기
+      Get.back();
+
+      // 잠시 대기 후 지도로 이동 (애니메이션을 위해)
+      Future.delayed(const Duration(milliseconds: 300), () {
+        // 공유 위치로 이동하는 기능은 이미 구현된 위치 서비스 활용
+        if (!_isSavedToMap) {
+          // 아직 저장되지 않은 경우 위치 저장 후 이동
+          final sharedLocation = SharedLocationModel(
+            id: const Uuid().v4(),
+            senderId: 'temp_navigation',
+            senderName: widget.senderName,
+            latitude: widget.latitude,
+            longitude: widget.longitude,
+            message: widget.message,
+            timestamp: widget.timestamp,
+            messageId: 'direct_navigation',
+          );
+
+          // 임시로 저장하고 이동
+          _locationService.saveSharedLocation(sharedLocation).then((success) {
+            if (success) {
+              _locationService.moveToSharedLocation(sharedLocation);
+            }
+          });
+        }
+
+        // 지도 탭으로 이동
+        Get.toNamed('/map');
+      });
+    } catch (e) {
+      debugPrint('⚠️ 지도 화면으로 이동 중 오류: $e');
+      Get.snackbar(
+        '이동 오류',
+        '지도 화면으로 이동할 수 없습니다',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.shade700,
+        colorText: Colors.white,
+        margin: const EdgeInsets.all(12),
+        borderRadius: 10,
+        duration: const Duration(seconds: 3),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -304,6 +598,16 @@ class _SharedLocationViewState extends State<SharedLocationView> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
+          // 앱 내 지도에 저장 버튼 추가
+          IconButton(
+            icon: Icon(
+              _isSavedToMap ? Icons.bookmark : Icons.bookmark_outline,
+              color:
+                  _isSavedToMap ? Colors.amber.shade600 : Colors.blue.shade600,
+            ),
+            onPressed: _saveToAppMap,
+            tooltip: '앱 지도에 저장',
+          ),
           // 공유 버튼
           _isSharing
               ? Container(
@@ -482,6 +786,26 @@ class _SharedLocationViewState extends State<SharedLocationView> {
                   ),
                 ),
               ],
+            ),
+          ),
+
+          // 하단에 앱 내 지도 버튼 추가
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: ElevatedButton.icon(
+              onPressed: _openInMapView,
+              icon: const Icon(Icons.map),
+              label: const Text('앱 지도에서 보기'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal.shade600,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                minimumSize: const Size(double.infinity, 50),
+              ),
             ),
           ),
 
