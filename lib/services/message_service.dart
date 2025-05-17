@@ -526,26 +526,47 @@ class MessageService extends GetxController {
   // 여러 메시지 읽음 상태로 변경
   Future<void> markMultipleMessagesAsRead(List<String> messageIds) async {
     try {
+      // 메시지 ID가 없으면 반환
+      if (messageIds.isEmpty) {
+        debugPrint('⚠️ 읽음 처리할 메시지 ID가 없습니다.');
+        return;
+      }
+
+      debugPrint('📱 ${messageIds.length}개 메시지를 읽음 상태로 변경합니다.');
+
+      bool updatedAny = false;
+
       // 로컬 메시지 상태 업데이트
       for (String id in messageIds) {
         final int index = messages.indexWhere((m) => m.id == id);
-        if (index >= 0) {
+        if (index >= 0 && !messages[index].isRead) {
           messages[index] = messages[index].copyWith(isRead: true);
+          updatedAny = true;
+          debugPrint('✅ 메시지 읽음 상태 로컬 업데이트: $id');
         }
       }
 
-      // UI 업데이트를 위해 메시지 목록 변경 알림
-      messages.refresh();
+      // 변경된 것이 있는 경우에만 UI 갱신
+      if (updatedAny) {
+        // UI 업데이트를 위해 메시지 목록 변경 알림
+        messages.refresh();
+      }
 
       // Firestore 메시지 상태 업데이트 (배치 작업)
       try {
         final batch = _firestore.batch();
+        int batchCount = 0;
+
         for (String id in messageIds) {
           final docRef = _firestore.collection('messages').doc(id);
           batch.update(docRef, {'isRead': true});
+          batchCount++;
         }
-        await batch.commit();
-        debugPrint('✅ ${messageIds.length}개 메시지 읽음 상태가 Firestore에 업데이트되었습니다.');
+
+        if (batchCount > 0) {
+          await batch.commit();
+          debugPrint('✅ $batchCount개 메시지 읽음 상태가 Firestore에 업데이트되었습니다.');
+        }
       } catch (e) {
         debugPrint('⚠️ Firestore 다중 메시지 읽음 상태 업데이트 실패: $e');
 

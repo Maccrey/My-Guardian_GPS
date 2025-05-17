@@ -890,11 +890,7 @@ class LocationService extends GetxController {
             position: location.toLatLng(),
             infoWindow: InfoWindow(
               title: location.message,
-              snippet: '${location.senderName}님이 공유 · 탭하여 삭제',
-              onTap: () {
-                // 마커 정보창 탭 시 삭제 다이얼로그 표시
-                _showDeleteLocationDialog(location);
-              },
+              snippet: '${location.senderName}님이 공유 · 탭하여 상세 정보',
             ),
             icon: BitmapDescriptor.defaultMarkerWithHue(
                 BitmapDescriptor.hueViolet),

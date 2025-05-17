@@ -589,6 +589,7 @@ class _SharedLocationViewState extends State<SharedLocationView> {
       String address = '주소를 찾을 수 없습니다';
       if (placemarks.isNotEmpty) {
         Placemark place = placemarks.first;
+        // 한국 주소 형식으로 포맷팅
         address =
             '${place.street ?? ''}, ${place.locality ?? ''}, ${place.administrativeArea ?? ''}, ${place.country ?? ''}';
         address = address.replaceAll(RegExp(r',\s*,'), ','); // 빈 필드 정리
