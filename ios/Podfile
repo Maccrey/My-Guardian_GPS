@@ -27,17 +27,16 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 
 flutter_ios_podfile_setup
 
-# 정적 라이브러리 사용 대신에 use_frameworks! 사용
-# use_modular_headers!
-use_frameworks! :linkage => :static
-
-# 의존성 버전 충돌 해결
-def fix_dependencies
-  # 버전을 지정하지 않고 의존성 관리자가 결정하도록 함
-  # pod 'GTMSessionFetcher/Core'
-end
+# 정적 라이브러리 사용
+use_modular_headers!
 
 target 'Runner' do
+  # Firestore 프리컴파일된 바이너리 사용
+  pod 'FirebaseFirestore', :git => 'https://github.com/invertase/firestore-ios-sdk-frameworks.git', :tag => '10.25.0'
+  
+  # Firebase Storage 문제 해결을 위한 설정
+  # pod 'FirebaseStorage', :modular_headers => true
+  
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   pod 'GoogleMaps'
   fix_dependencies
@@ -68,18 +67,12 @@ post_install do |installer|
   # gRPC 모듈맵 파일 생성
   grpc_public_headers = File.join(Dir.pwd, 'Pods', 'Headers', 'Public', 'gRPC-Core')
   grpc_private_headers = File.join(Dir.pwd, 'Pods', 'Headers', 'Private', 'grpc')
-  boringssl_public_headers = File.join(Dir.pwd, 'Pods', 'Headers', 'Public', 'BoringSSL-GRPC')
-  boringssl_private_headers = File.join(Dir.pwd, 'Pods', 'Headers', 'Private', 'openssl_grpc')
   
   FileUtils.mkdir_p(grpc_public_headers)
   FileUtils.mkdir_p(grpc_private_headers)
-  FileUtils.mkdir_p(boringssl_public_headers)
-  FileUtils.mkdir_p(boringssl_private_headers)
   
   grpc_public_modulemap = File.join(grpc_public_headers, 'gRPC-Core.modulemap')
   grpc_private_modulemap = File.join(grpc_private_headers, 'gRPC-Core.modulemap')
-  boringssl_public_modulemap = File.join(boringssl_public_headers, 'BoringSSL-GRPC.modulemap')
-  boringssl_private_modulemap = File.join(boringssl_private_headers, 'BoringSSL-GRPC.modulemap')
   
   # GRPC 모듈맵 파일 내용
   grpc_modulemap_content = <<~MAP
@@ -90,30 +83,14 @@ post_install do |installer|
     }
   MAP
   
-  # BoringSSL 모듈맵 파일 내용
-  boringssl_modulemap_content = <<~MAP
-    module BoringSSL_GRPC {
-      umbrella header "openssl.h"
-      export *
-      module * { export * }
-    }
-  MAP
-  
   # 모듈맵 파일 생성
   File.open(grpc_public_modulemap, 'w') do |f|
-    f.puts grpc_modulemap_content
+    f.puts modulemap_content
   end
   
+  # 프라이빗 폴더에도 복사
   File.open(grpc_private_modulemap, 'w') do |f|
-    f.puts grpc_modulemap_content
-  end
-  
-  File.open(boringssl_public_modulemap, 'w') do |f|
-    f.puts boringssl_modulemap_content
-  end
-  
-  File.open(boringssl_private_modulemap, 'w') do |f|
-    f.puts boringssl_modulemap_content
+    f.puts modulemap_content
   end
   
   puts "✅ gRPC-Core.modulemap 및 BoringSSL-GRPC.modulemap 수동 생성 완료"

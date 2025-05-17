@@ -35,6 +35,9 @@ class AuthService extends GetxController {
   final RxBool _isLoading = false.obs;
   final Rx<String?> _error = Rx<String?>(null);
 
+  // Firebase 사용자 ID (임시 구현)
+  final Rx<String?> _uid = Rx<String?>(null);
+
   // Getters
   bool get isAuthenticated => _isAuthenticated.value;
   UserModel? get currentUser => _currentUser.value;
@@ -366,6 +369,7 @@ class AuthService extends GetxController {
 
       _currentUser.value = null;
       _isAuthenticated.value = false;
+      _uid.value = null; // uid 초기화
       setLoading(false);
     } catch (e) {
       setError('로그아웃 중 오류가 발생했습니다: ${e.toString()}');
