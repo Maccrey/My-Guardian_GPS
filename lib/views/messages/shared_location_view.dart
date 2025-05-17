@@ -8,6 +8,7 @@ import '../../services/location_service.dart';
 import '../../models/shared_location_model.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:async';
+import 'dart:ui' as ui;
 import 'package:geocoding/geocoding.dart';
 
 class SharedLocationView extends StatefulWidget {
@@ -577,6 +578,12 @@ class _SharedLocationViewState extends State<SharedLocationView> {
       // 마커 진동 피드백
       HapticFeedback.selectionClick();
 
+      // 현재 기기의 로케일 가져오기
+      final Locale deviceLocale = ui.window.locale;
+      final String localeString = deviceLocale.languageCode;
+
+      debugPrint('🌐 현재 기기 로케일: $localeString (${deviceLocale.toString()})');
+
       // 주소 정보 가져오기
       List<Placemark> placemarks = await placemarkFromCoordinates(
         widget.latitude,
@@ -589,11 +596,35 @@ class _SharedLocationViewState extends State<SharedLocationView> {
       String address = '주소를 찾을 수 없습니다';
       if (placemarks.isNotEmpty) {
         Placemark place = placemarks.first;
-        // 한국 주소 형식으로 포맷팅
-        address =
-            '${place.street ?? ''}, ${place.locality ?? ''}, ${place.administrativeArea ?? ''}, ${place.country ?? ''}';
+
+        // 로케일에 맞는 형식으로 포맷팅 (국가별 주소체계 차이 고려)
+        if (localeString == 'ko') {
+          // 한국어 주소 형식
+          address =
+              '${place.country ?? ''} ${place.administrativeArea ?? ''} ${place.locality ?? ''} ${place.subLocality ?? ''} ${place.thoroughfare ?? ''} ${place.subThoroughfare ?? ''} ${place.street ?? ''}';
+        } else if (localeString == 'ja') {
+          // 일본어 주소 형식
+          address =
+              '${place.country ?? ''}、${place.administrativeArea ?? ''}、${place.locality ?? ''}、${place.subLocality ?? ''}、${place.thoroughfare ?? ''}、${place.street ?? ''}';
+        } else if (localeString == 'zh') {
+          // 중국어 주소 형식
+          address =
+              '${place.country ?? ''}${place.administrativeArea ?? ''}${place.locality ?? ''}${place.subLocality ?? ''}${place.thoroughfare ?? ''}${place.street ?? ''}';
+        } else {
+          // 기본 영어권 주소 형식 (및 기타 언어)
+          address =
+              '${place.street != null && place.street!.isNotEmpty ? place.street : place.thoroughfare ?? ''} ${place.subThoroughfare ?? ''}, ${place.locality ?? ''}, ${place.administrativeArea ?? ''}, ${place.country ?? ''}';
+        }
+
+        // 불필요한 공백 및 쉼표 정리
+        address = address.replaceAll(RegExp(r'\s+'), ' ').trim(); // 중복 공백 제거
         address = address.replaceAll(RegExp(r',\s*,'), ','); // 빈 필드 정리
         address = address.replaceAll(RegExp(r'^,\s*'), ''); // 앞부분 정리
+        address = address.replaceAll(RegExp(r',\s*$'), ''); // 뒷부분 정리
+
+        // 추가 로그 출력
+        debugPrint('🏙️ 변환된 주소: $address');
+        debugPrint('📍 플레이스마크 원본 데이터: ${place.toString()}');
       }
 
       // 위치 상세 정보 및 삭제 옵션이 있는 다이얼로그 표시
