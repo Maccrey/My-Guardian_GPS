@@ -256,15 +256,35 @@ class MessageService extends GetxController {
           .listen(
         (snapshot) {
           try {
-            debugPrint('📋 Firestore 스냅샷 수신: ${snapshot.docs.length}개 문서');
+            debugPrint('📩 Firestore 변경 감지: ${snapshot.docs.length}개 문서');
 
-            // Firestore 데이터를 Message.fromFirestore 사용하여 변환
+            // 변경 세부 정보 로그
+            if (kDebugMode) {
+              // 변경된 문서 로그
+              for (var change in snapshot.docChanges) {
+                switch (change.type) {
+                  case DocumentChangeType.added:
+                    debugPrint('🆕 새 메시지 추가됨: ${change.doc.id}');
+                    break;
+                  case DocumentChangeType.modified:
+                    debugPrint('📝 메시지 업데이트됨: ${change.doc.id}');
+                    break;
+                  case DocumentChangeType.removed:
+                    debugPrint('🗑️ 메시지 삭제됨: ${change.doc.id}');
+                    break;
+                }
+              }
+            }
+
+            // Firestore 데이터를 Message 객체로 변환
             final List<Message> firestoreMessages = [];
+
             for (var doc in snapshot.docs) {
               try {
-                firestoreMessages.add(Message.fromFirestore(doc));
+                final message = Message.fromFirestore(doc);
+                firestoreMessages.add(message);
               } catch (e) {
-                debugPrint('⚠️ 문서 변환 실패 (${doc.id}): $e');
+                debugPrint('⚠️ 메시지 변환 오류 (무시됨): $e, 문서: ${doc.id}');
               }
             }
 
@@ -272,58 +292,69 @@ class MessageService extends GetxController {
             firestoreMessages
                 .sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-            // 메시지 목록 갱신 (Firebase 데이터만 사용)
+            // 메시지 목록 갱신
             messages.value = firestoreMessages;
 
-            // 읽지 않은 메시지 수 업데이트
-            _updateUnreadCount();
-
-            hasError.value = false;
-            errorMessage.value = '';
+            // 오류 상태 초기화 (성공적으로 데이터를 받았으므로)
+            if (hasError.value) {
+              hasError.value = false;
+              errorMessage.value = '';
+              debugPrint('✅ Firestore 구독을 통해 데이터를 성공적으로 받아 오류 상태를 초기화했습니다.');
+            }
 
             debugPrint(
-                '✅ Firestore 스트림에서 ${firestoreMessages.length}개의 메시지 수신됨');
+                '✅ 실시간 업데이트: ${firestoreMessages.length}개의 메시지를 불러왔습니다.');
           } catch (e) {
-            debugPrint('⚠️ Firestore 스냅샷 처리 오류: $e');
+            debugPrint('⚠️ 스트림 데이터 처리 오류: $e');
+            debugPrint('⚠️ 오류 스택: ${StackTrace.current}');
           }
         },
         onError: (error) {
-          debugPrint('⚠️ Firestore 메시지 구독 오류: $error');
+          debugPrint('⚠️ Firestore 구독 오류: $error');
           debugPrint('⚠️ 오류 스택: ${StackTrace.current}');
 
-          // 권한 오류는 오류 메시지 표시
-          if (error.toString().contains('permission-denied')) {
-            debugPrint('🔒 Firebase 권한 오류: 메시지를 불러올 권한이 없습니다.');
-            errorMessage.value = 'Firebase 메시지를 불러올 권한이 없습니다.\n테스트 데이터를 사용합니다.';
-            hasError.value = true;
+          // 실패 시 오류 상태 설정
+          hasError.value = true;
 
-            // 권한 오류 시 테스트 데이터 제공
-            _provideTestMessages(currentUserId);
+          // 오류 메시지 결정
+          if (error.toString().contains('permission-denied')) {
+            errorMessage.value = '메시지에 접근할 권한이 없습니다.';
           } else if (error.toString().contains('network')) {
-            errorMessage.value = '네트워크 연결 오류로 메시지를 실시간으로 불러올 수 없습니다.';
-            hasError.value = true;
+            errorMessage.value = '네트워크 연결 문제로 메시지를 받아올 수 없습니다.';
           } else {
-            hasError.value = true;
-            errorMessage.value =
-                'Firestore에서 메시지를 불러오는 중 오류가 발생했습니다.\n${error.toString().split('\n').first}';
+            errorMessage.value = '메시지 실시간 업데이트 중 오류가 발생했습니다.';
           }
+
+          // 오류 발생 시 5초 후 재연결 시도
+          Future.delayed(const Duration(seconds: 5), () {
+            debugPrint('🔄 Firestore 구독 재연결 시도...');
+            _subscribeToFirestoreMessages();
+          });
         },
         onDone: () {
-          debugPrint('🔄 Firestore 메시지 스트림 종료됨');
+          debugPrint('ℹ️ Firestore 구독이 종료되었습니다. 재연결을 시도합니다.');
+
+          // 구독이 예기치 않게 종료된 경우 5초 후 재연결 시도
+          Future.delayed(const Duration(seconds: 5), () {
+            _subscribeToFirestoreMessages();
+          });
         },
       );
 
       debugPrint('✅ Firestore 메시지 구독 설정 완료');
     } catch (e) {
-      debugPrint('⚠️ Firestore 메시지 구독 설정 실패: $e');
+      debugPrint('⚠️ Firestore 구독 설정 오류: $e');
       debugPrint('⚠️ 오류 스택: ${StackTrace.current}');
 
+      // 오류 상태 설정
       hasError.value = true;
-      errorMessage.value =
-          'Firestore 메시지 구독 설정 중 오류가 발생했습니다.\n${e.toString().split('\n').first}';
+      errorMessage.value = 'Firestore 실시간 구독 설정 중 오류가 발생했습니다.';
 
-      // 오류 시 테스트 데이터 사용
-      _provideTestMessages(currentUserId);
+      // 오류 발생 시 10초 후 재연결 시도
+      Future.delayed(const Duration(seconds: 10), () {
+        debugPrint('🔄 오류 후 Firestore 구독 재설정 시도...');
+        _subscribeToFirestoreMessages();
+      });
     }
   }
 
@@ -1003,45 +1034,57 @@ class MessageService extends GetxController {
     }
   }
 
-  // 메시지 초기화 버튼 클릭 시 호출 - 모든 로컬 및 테스트 데이터 제거하고 Firebase에서 다시 로드
+  // 공개 메시지 새로고침 메서드 - UI에서 호출
   Future<void> refreshMessages() async {
+    debugPrint('🔄 메시지 새로고침 시작');
+
     try {
-      debugPrint('🔄 메시지 새로고침 시작');
+      isLoading.value = true;
+      hasError.value = false;
+      errorMessage.value = '';
 
-      // 메시지 개수 기록 (비교용)
-      final int beforeCount = messages.length;
-      debugPrint('📊 새로고침 전 메시지 수: $beforeCount');
-
-      // 기존 메시지 목록 초기화
-      messages.clear();
-
-      // Firebase에서 메시지 다시 로드
+      // Firebase에서 새로 데이터 로드
       await _loadFirestoreMessages();
 
-      // 새로고침 후 메시지 개수 확인
-      final int afterCount = messages.length;
-      debugPrint('📊 새로고침 후 메시지 수: $afterCount');
+      // 실시간 구독 확인 및 활성화
+      ensureFirestoreSubscription();
 
       // 읽지 않은 메시지 수 업데이트
       _updateUnreadCount();
 
-      // UI 갱신
-      messages.refresh();
-
       debugPrint('✅ 메시지 새로고침 완료 (${messages.length}개 메시지)');
-
-      // 메시지가 없는 경우 경고 표시
-      if (messages.isEmpty) {
-        debugPrint('⚠️ 새로고침 후 메시지가 없습니다!');
-
-        // 현재 사용자 ID 출력
-        final String currentUserId = _authService.currentUser?.uid ?? '로그인 안됨';
-        debugPrint('👤 현재 사용자 ID: $currentUserId');
-      }
     } catch (e) {
-      debugPrint('⚠️ 메시지 새로고침 오류: $e');
       hasError.value = true;
-      errorMessage.value = '메시지 새로고침 중 오류가 발생했습니다.';
+      errorMessage.value =
+          '메시지를 불러오는 중 오류가 발생했습니다.\n${e.toString().split('\n').first}';
+      debugPrint('⚠️ 메시지 새로고침 오류: $e');
+      debugPrint('⚠️ 오류 스택: ${StackTrace.current}');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // 실시간 Firestore 구독이 활성화되어 있는지 확인하고, 필요시 활성화
+  void ensureFirestoreSubscription() {
+    try {
+      final String currentUserId = _authService.currentUser?.uid ?? '';
+      if (currentUserId.isEmpty) {
+        debugPrint('⚠️ 사용자가 로그인되어 있지 않아 Firestore 구독을 설정할 수 없습니다.');
+        return;
+      }
+
+      // 이미 구독 중인지 확인
+      if (_messagesSubscription != null) {
+        debugPrint('✅ Firestore 메시지 구독이 이미 활성화되어 있습니다.');
+        return;
+      }
+
+      debugPrint('🔄 Firestore 메시지 구독을 활성화합니다.');
+      _subscribeToFirestoreMessages();
+      debugPrint('✅ Firestore 메시지 구독이 설정되었습니다.');
+    } catch (e) {
+      debugPrint('⚠️ Firestore 구독 설정 중 오류 발생: $e');
+      debugPrint('⚠️ 오류 스택: ${StackTrace.current}');
     }
   }
 }

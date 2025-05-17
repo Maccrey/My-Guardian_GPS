@@ -47,12 +47,12 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       try {
         debugPrint('🔄 메시지 화면 초기화 - 대화 상대 ID: ${widget.userId}');
 
-        // Firebase에서 메시지 새로고침 먼저 실행
+        // 1. 먼저 Firestore 구독 확인하고 실시간 업데이트 활성화
+        _messageService.ensureFirestoreSubscription();
+
+        // 2. 그다음 Firebase에서 메시지 새로고침
         _messageService.refreshMessages().then((_) {
           if (!mounted) return;
-
-          // 새로고침 후 상태 업데이트
-          setState(() {});
 
           // 읽음 상태로 변경 (내부에서 mounted 체크)
           _markMessagesAsRead();
@@ -61,6 +61,15 @@ class _MessageDetailViewState extends State<MessageDetailView> {
         });
       } catch (e) {
         debugPrint('⚠️ 초기화 중 오류 발생: $e');
+      }
+    });
+
+    // 메시지 리스트에 변경이 있을 때마다 UI 업데이트 및 읽음 처리
+    ever(_messageService.messages, (_) {
+      if (mounted) {
+        debugPrint('🔔 메시지 리스트 변경 감지 - UI 업데이트');
+        _markMessagesAsRead();
+        _safelyScrollToBottom();
       }
     });
   }
@@ -334,7 +343,17 @@ class _MessageDetailViewState extends State<MessageDetailView> {
 
   // 날짜 형식화
   String _formatMessageTime(DateTime date) {
-    return DateFormat('HH:mm').format(date);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDate = DateTime(date.year, date.month, date.day);
+
+    if (messageDate == today) {
+      // 오늘 메시지는 시/분만 표시
+      return DateFormat('HH:mm').format(date);
+    } else {
+      // 이전 메시지는 날짜와 시간 표시
+      return DateFormat('M/d HH:mm').format(date);
+    }
   }
 
   // 위치 메시지 파싱
@@ -456,9 +475,15 @@ class _MessageDetailViewState extends State<MessageDetailView> {
 
     try {
       // 로딩 상태 표시
-      setState(() {
-        // 새로고침 중 상태 변경
-      });
+      if (_messageService.isLoading.value) {
+        Get.snackbar(
+          '로딩 중',
+          '메시지를 이미 불러오는 중입니다. 잠시만 기다려주세요.',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 2),
+        );
+        return;
+      }
 
       debugPrint('🔄 메시지 화면 새로고침 시작');
 
@@ -472,23 +497,34 @@ class _MessageDetailViewState extends State<MessageDetailView> {
         await _authService.login('test@example.com', 'Password1!');
       }
 
-      // Firebase에서 메시지 새로고침
+      // 현재 메시지 개수 (비교용)
+      final beforeCount =
+          _messageService.getConversationWith(widget.userId).length;
+
+      // 새로고침 시작 알림
+      Get.snackbar(
+        '새로고침 중',
+        '메시지를 새로고침하는 중입니다...',
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 1),
+        backgroundColor: Colors.blue.withOpacity(0.3),
+      );
+
+      // Firebase에서 메시지 새로고침 및 구독 활성화
       await _messageService.refreshMessages();
 
       if (!mounted) return;
 
-      // 강제로 상태 갱신 (오류가 있더라도)
-      setState(() {});
-
-      // 대화 목록 확인
-      final conversation = _messageService.getConversationWith(widget.userId);
-      debugPrint('🔄 새로고침 후 대화 목록: ${conversation.length}개 메시지');
+      // 새로고침 후 메시지 개수 확인
+      final afterCount =
+          _messageService.getConversationWith(widget.userId).length;
+      final int diff = afterCount - beforeCount;
 
       // 읽음 상태 갱신 및 스크롤 이동
       _markMessagesAsRead();
       _safelyScrollToBottom();
 
-      // 오류가 있으면 표시
+      // 결과에 따른 피드백
       if (_messageService.hasError.value) {
         if (mounted) {
           Get.snackbar(
@@ -500,7 +536,7 @@ class _MessageDetailViewState extends State<MessageDetailView> {
             duration: const Duration(seconds: 5),
           );
         }
-      } else if (conversation.isEmpty) {
+      } else if (afterCount == 0) {
         // 메시지가 없는 경우 안내
         if (mounted) {
           Get.snackbar(
@@ -513,11 +549,18 @@ class _MessageDetailViewState extends State<MessageDetailView> {
           );
         }
       } else {
-        // 성공
+        // 성공 메시지
+        String message = '${afterCount}개 메시지가 있습니다.';
+        if (diff > 0) {
+          message = '${diff}개의 새로운 메시지를 받았습니다.';
+        } else if (diff < 0) {
+          message = '${-diff}개의 메시지가 삭제되었습니다.';
+        }
+
         if (mounted) {
           Get.snackbar(
             '새로고침 완료',
-            '${conversation.length}개 메시지가 있습니다.',
+            message,
             snackPosition: SnackPosition.BOTTOM,
             backgroundColor: Colors.green.withOpacity(0.7),
             colorText: Colors.white,
@@ -525,6 +568,8 @@ class _MessageDetailViewState extends State<MessageDetailView> {
           );
         }
       }
+
+      debugPrint('✅ 메시지 새로고침 완료: $beforeCount → $afterCount');
     } catch (e) {
       debugPrint('⚠️ 메시지 새로고침 중 오류 발생: $e');
 
@@ -545,13 +590,61 @@ class _MessageDetailViewState extends State<MessageDetailView> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_getRecipientName(widget.userId)),
+        elevation: 1,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.blue.shade700,
+        title: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: Colors.blue.shade100,
+              child: Text(
+                _getRecipientName(widget.userId)[0].toUpperCase(),
+                style: TextStyle(
+                  color: Colors.blue.shade700,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _getRecipientName(widget.userId),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Obx(() => Text(
+                        _messageService.isLoading.value
+                            ? '로딩 중...'
+                            : '${_messageService.getConversationWith(widget.userId).length}개의 메시지',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
+                      )),
+                ],
+              ),
+            ),
+          ],
+        ),
         actions: [
           // 새로고침 버튼
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _refreshMessages,
             tooltip: '메시지 새로고침',
+          ),
+          // 위치 공유 버튼
+          IconButton(
+            icon: const Icon(Icons.location_on),
+            color: Colors.green.shade600,
+            onPressed: _sendLocationRequest,
+            tooltip: '현재 위치 공유',
           ),
           // 디버그 버튼 (개발용)
           IconButton(
@@ -611,208 +704,412 @@ class _MessageDetailViewState extends State<MessageDetailView> {
             },
             tooltip: '메시지 디버깅',
           ),
-          IconButton(
-            icon: const Icon(Icons.location_on),
-            onPressed: _sendLocationRequest,
-            tooltip: '현재 위치 공유',
-          ),
         ],
       ),
-      body: Column(
-        children: [
-          // 답장 UI 표시 - 별도 Obx 위젯으로 분리
-          Obx(() => _messageService.replyToMessage.value != null
-              ? _buildReplyPreview()
-              : const SizedBox.shrink()),
+      body: Container(
+        decoration: BoxDecoration(
+          // 채팅 배경 패턴 추가
+          color: Colors.grey.shade100,
+          image: DecorationImage(
+            image: const NetworkImage(
+              'https://i.pinimg.com/originals/97/c0/07/97c00759d90d786d9b6096d274ad3e07.png',
+            ),
+            opacity: 0.1,
+            repeat: ImageRepeat.repeat,
+          ),
+        ),
+        child: Column(
+          children: [
+            // 답장 UI 표시 - 별도 Obx 위젯으로 분리
+            Obx(() => _messageService.replyToMessage.value != null
+                ? _buildReplyPreview()
+                : const SizedBox.shrink()),
 
-          // 메시지 목록 - Obx 중첩 제거, StatefulBuilder만 사용
-          Expanded(
-            child: Builder(builder: (context) {
-              // 대화 새로고침 버튼 추가
-              List<Message> conversation = [];
-
-              try {
+            // 메시지 목록 - Obx 사용하여 메시지 변경에 자동 반응
+            Expanded(
+              child: Obx(() {
                 // 대화 목록 가져오기
-                conversation =
-                    _messageService.getConversationWith(widget.userId);
-                debugPrint('🔄 UI 갱신: 대화 목록 ${conversation.length}개');
-              } catch (e) {
-                debugPrint('⚠️ 대화 목록 가져오기 오류: $e');
-                // 오류 발생 시 빈 목록 사용
-                conversation = [];
-              }
+                List<Message> conversation = [];
 
-              if (conversation.isEmpty) {
-                debugPrint('⚠️ 대화 목록이 비어 있습니다. 시작 메시지 표시');
+                try {
+                  // 대화 목록 가져오기
+                  conversation =
+                      _messageService.getConversationWith(widget.userId);
+                  debugPrint('🔄 UI 갱신: 대화 목록 ${conversation.length}개');
+                } catch (e) {
+                  debugPrint('⚠️ 대화 목록 가져오기 오류: $e');
+                  // 오류 발생 시 빈 목록 사용
+                  conversation = [];
+                }
 
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.chat_bubble_outline,
-                          size: 64, color: Colors.grey),
-                      const SizedBox(height: 16),
-                      const Text(
-                        '대화가 없습니다',
-                        style: TextStyle(fontSize: 18, color: Colors.grey),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${_getRecipientName(widget.userId)}님과의 대화를 시작해보세요',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.grey),
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          _messageController.text = '안녕하세요!';
-                          _sendMessage();
-                        },
-                        icon: const Icon(Icons.message),
-                        label: const Text('첫 메시지 보내기'),
-                      ),
-                      const SizedBox(height: 16),
-                      TextButton.icon(
-                        onPressed: _refreshMessages,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('대화 다시 불러오기'),
-                      ),
-                    ],
-                  ),
-                );
-              }
+                if (_messageService.isLoading.value) {
+                  return const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text('메시지를 불러오는 중...'),
+                      ],
+                    ),
+                  );
+                }
 
-              return RefreshIndicator(
-                onRefresh: _refreshMessages,
-                child: ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(16),
-                  itemCount: conversation.length,
-                  itemBuilder: (context, index) {
-                    if (index >= conversation.length) {
-                      // 인덱스 범위 체크
-                      return const SizedBox.shrink();
-                    }
+                if (_messageService.hasError.value) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error_outline,
+                            color: Colors.red, size: 48),
+                        const SizedBox(height: 16),
+                        Text(
+                          '${_messageService.errorMessage.value}',
+                          style: const TextStyle(color: Colors.red),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: _refreshMessages,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('다시 시도'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue.shade700,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
 
-                    final message = conversation[index];
-                    if (message == null) {
-                      debugPrint('⚠️ 대화 목록 인덱스 $index에 메시지가 null입니다');
-                      return const SizedBox.shrink();
-                    }
+                if (conversation.isEmpty) {
+                  debugPrint('⚠️ 대화 목록이 비어 있습니다. 시작 메시지 표시');
 
-                    // 안전하게 발신자 확인
-                    bool isCurrentUserSender = false;
-                    try {
-                      final currentUserId = _authService.uid ?? '';
-                      isCurrentUserSender = message.senderId == currentUserId;
-                    } catch (e) {
-                      debugPrint('⚠️ 발신자 확인 오류: $e');
-                    }
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.chat_bubble_outline,
+                            size: 80, color: Colors.blue.shade200),
+                        const SizedBox(height: 24),
+                        const Text(
+                          '대화가 없습니다',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 40),
+                          child: Text(
+                            '${_getRecipientName(widget.userId)}님과의 대화를 시작해보세요',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            _messageController.text = '안녕하세요!';
+                            _sendMessage();
+                          },
+                          icon: const Icon(Icons.message),
+                          label: const Text('첫 메시지 보내기'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue.shade700,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        TextButton.icon(
+                          onPressed: _refreshMessages,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('대화 다시 불러오기'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.blue.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
 
-                    // 메시지 슬라이드로 삭제/답장 기능
-                    return Dismissible(
-                      key: Key(message.id),
-                      background: Container(
-                        color: Colors.red,
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 20),
-                        child: const Icon(Icons.delete, color: Colors.white),
-                      ),
-                      secondaryBackground: Container(
-                        color: Colors.blue,
-                        alignment: Alignment.centerLeft,
-                        padding: const EdgeInsets.only(left: 20),
-                        child: const Icon(Icons.reply, color: Colors.white),
-                      ),
-                      confirmDismiss: (direction) async {
-                        if (direction == DismissDirection.endToStart) {
-                          // 왼쪽으로 스와이프: 삭제
-                          final bool? result = await showDialog<bool>(
-                            context: context,
-                            builder: (BuildContext context) {
-                              return AlertDialog(
-                                title: const Text('메시지 삭제'),
-                                content: const Text('이 메시지를 삭제하시겠습니까?'),
-                                actions: <Widget>[
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.of(context).pop(false),
-                                    child: const Text('취소'),
-                                  ),
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.of(context).pop(true),
-                                    child: const Text('삭제'),
-                                  ),
-                                ],
-                              );
-                            },
+                return RefreshIndicator(
+                  onRefresh: _refreshMessages,
+                  color: Colors.blue.shade700,
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: conversation.length,
+                    itemBuilder: (context, index) {
+                      if (index >= conversation.length) {
+                        // 인덱스 범위 체크
+                        return const SizedBox.shrink();
+                      }
+
+                      final message = conversation[index];
+                      if (message == null) {
+                        debugPrint('⚠️ 대화 목록 인덱스 $index에 메시지가 null입니다');
+                        return const SizedBox.shrink();
+                      }
+
+                      // 날짜 구분선 표시 로직 추가
+                      final bool showDateSeparator = index == 0 ||
+                          !_isSameDay(
+                            conversation[index].timestamp,
+                            conversation[index - 1].timestamp,
                           );
 
-                          if (result == true) {
-                            await _messageService.deleteMessage(message.id);
-                            // 삭제 후 수동 갱신
-                            if (mounted) {
-                              setState(() {});
-                            }
-                          }
-                          return false; // 삭제 후 Dismissible 효과는 보이지 않도록
-                        } else if (direction == DismissDirection.startToEnd) {
-                          // 오른쪽으로 스와이프: 답장
-                          _messageService.setReplyToMessage(message);
-                          return false; // Dismissible 효과는 보이지 않도록
-                        }
-                        return false;
-                      },
-                      child: GestureDetector(
-                        onTap: () {
-                          // 메시지 클릭 시 답장 모드
-                          _messageService.setReplyToMessage(message);
-                        },
-                        child: _buildMessageItem(message, isCurrentUserSender),
-                      ),
-                    );
-                  },
-                ),
-              );
-            }),
-          ),
+                      // 안전하게 발신자 확인
+                      bool isCurrentUserSender = false;
+                      try {
+                        final currentUserId = _authService.uid ?? '';
+                        isCurrentUserSender = message.senderId == currentUserId;
+                      } catch (e) {
+                        debugPrint('⚠️ 발신자 확인 오류: $e');
+                      }
 
-          // 메시지 입력 영역
-          Container(
-            padding: const EdgeInsets.all(8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    decoration: const InputDecoration(
-                      hintText: '메시지를 입력하세요...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(24)),
+                      return Column(
+                        children: [
+                          // 날짜 구분선
+                          if (showDateSeparator)
+                            Container(
+                              margin: const EdgeInsets.symmetric(vertical: 16),
+                              child: Center(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade200,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    _formatMessageDate(message.timestamp),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade700,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                          // 메시지 슬라이드로 삭제/답장 기능
+                          Dismissible(
+                            key: Key(message.id),
+                            background: Container(
+                              color: Colors.red.shade400,
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 20),
+                              child:
+                                  const Icon(Icons.delete, color: Colors.white),
+                            ),
+                            secondaryBackground: Container(
+                              color: Colors.blue.shade400,
+                              alignment: Alignment.centerLeft,
+                              padding: const EdgeInsets.only(left: 20),
+                              child:
+                                  const Icon(Icons.reply, color: Colors.white),
+                            ),
+                            confirmDismiss: (direction) async {
+                              if (direction == DismissDirection.endToStart) {
+                                // 왼쪽으로 스와이프: 삭제
+                                final bool? result = await showDialog<bool>(
+                                  context: context,
+                                  builder: (BuildContext context) {
+                                    return AlertDialog(
+                                      title: const Text('메시지 삭제'),
+                                      content: const Text('이 메시지를 삭제하시겠습니까?'),
+                                      actions: <Widget>[
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.of(context).pop(false),
+                                          child: const Text('취소'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.of(context).pop(true),
+                                          child: const Text('삭제'),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                );
+
+                                if (result == true) {
+                                  await _messageService
+                                      .deleteMessage(message.id);
+                                }
+                                return false; // 삭제 후 Dismissible 효과는 보이지 않도록
+                              } else if (direction ==
+                                  DismissDirection.startToEnd) {
+                                // 오른쪽으로 스와이프: 답장
+                                _messageService.setReplyToMessage(message);
+                                return false; // Dismissible 효과는 보이지 않도록
+                              }
+                              return false;
+                            },
+                            child: GestureDetector(
+                              onTap: () {
+                                // 메시지 클릭 시 답장 모드
+                                _messageService.setReplyToMessage(message);
+                              },
+                              child: _buildMessageItem(
+                                  message, isCurrentUserSender),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                );
+              }),
+            ),
+
+            // 메시지 입력 영역
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 3,
+                    offset: const Offset(0, -1),
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  // 위치 공유 버튼
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade100,
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: Icon(
+                        Icons.location_on,
+                        color: Colors.green.shade700,
                       ),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
+                      onPressed: _sendLocationRequest,
+                      tooltip: '현재 위치 공유',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minHeight: 36,
+                        minWidth: 36,
                       ),
                     ),
-                    maxLines: null,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendMessage(),
                   ),
-                ),
-                const SizedBox(width: 8),
-                FloatingActionButton(
-                  onPressed: _sendMessage,
-                  mini: true,
-                  child: const Icon(Icons.send),
-                ),
-              ],
+
+                  const SizedBox(width: 8),
+
+                  // 메시지 입력창
+                  Expanded(
+                    child: TextField(
+                      controller: _messageController,
+                      decoration: InputDecoration(
+                        hintText: '메시지를 입력하세요...',
+                        hintStyle: TextStyle(
+                          color: Colors.grey.shade400,
+                          fontSize: 15,
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey.shade100,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                      ),
+                      maxLines: null,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _sendMessage(),
+                      style: const TextStyle(fontSize: 15),
+                    ),
+                  ),
+
+                  const SizedBox(width: 8),
+
+                  // 전송 버튼
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.blue.shade700, Colors.blue.shade500],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.blue.shade300.withOpacity(0.5),
+                          blurRadius: 5,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: IconButton(
+                      onPressed: _sendMessage,
+                      icon: const Icon(
+                        Icons.send_rounded,
+                        color: Colors.white,
+                      ),
+                      tooltip: '메시지 보내기',
+                      padding: EdgeInsets.zero,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
+  }
+
+  // 같은 날짜인지 확인하는 헬퍼 메서드
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  // 메시지 날짜 형식화 (YYYY-MM-DD 또는 오늘/어제)
+  String _formatMessageDate(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = DateTime(now.year, now.month, now.day - 1);
+    final messageDate = DateTime(date.year, date.month, date.day);
+
+    if (messageDate == today) {
+      return '오늘';
+    } else if (messageDate == yesterday) {
+      return '어제';
+    } else {
+      return DateFormat('yyyy년 M월 d일').format(date);
+    }
   }
 
   // 답장 미리보기 위젯
@@ -827,21 +1124,41 @@ class _MessageDetailViewState extends State<MessageDetailView> {
         isCurrentUserSender ? '나' : _getRecipientName(replyMessage.senderId);
 
     return Container(
-      padding: const EdgeInsets.all(8),
-      color: Colors.grey.shade200,
+      padding: const EdgeInsets.all(12),
+      color: Colors.grey.shade100,
       child: Row(
         children: [
+          Container(
+            width: 4,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.blue.shade700,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  '$senderName님에게 답장',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue.shade700,
-                  ),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.reply,
+                      size: 16,
+                      color: Colors.blue.shade700,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$senderName님에게 답장',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue.shade700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -850,14 +1167,22 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                       : replyMessage.content,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: Colors.grey.shade700),
+                  style: TextStyle(
+                    color: Colors.grey.shade800,
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.close),
+            icon: const Icon(Icons.close, size: 20),
             onPressed: () => _messageService.cancelReply(),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(
+              minWidth: 40,
+              minHeight: 40,
+            ),
           ),
         ],
       ),
@@ -917,12 +1242,14 @@ class _MessageDetailViewState extends State<MessageDetailView> {
 
     Widget messageContent;
 
+    // 메시지 타입에 따른 컨텐츠 생성
     if (message.messageType == 'text') {
       // 일반 텍스트 메시지
       messageContent = Text(
         message.content,
         style: TextStyle(
-          color: isCurrentUserSender ? Colors.white : Colors.black,
+          color: isCurrentUserSender ? Colors.white : Colors.black87,
+          fontSize: 15,
         ),
       );
     } else if (message.messageType == 'location_request') {
@@ -930,12 +1257,17 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       messageContent = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.location_searching, size: 18),
+          Icon(
+            Icons.location_searching,
+            size: 18,
+            color: isCurrentUserSender ? Colors.white : Colors.blue.shade700,
+          ),
           const SizedBox(width: 8),
           Text(
             message.content,
             style: TextStyle(
-              color: isCurrentUserSender ? Colors.white : Colors.black,
+              color: isCurrentUserSender ? Colors.white : Colors.black87,
+              fontSize: 15,
             ),
           ),
         ],
@@ -950,52 +1282,103 @@ class _MessageDetailViewState extends State<MessageDetailView> {
             // 위치 정보가 있는 경우 지도 화면으로 이동
             _openSharedLocation(message, locationData, isCurrentUserSender);
           },
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.location_on, size: 18),
-                  const SizedBox(width: 8),
-                  Text(
-                    locationData['message'] ?? '위치가 공유되었습니다',
-                    style: TextStyle(
-                      color: isCurrentUserSender ? Colors.white : Colors.black,
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: isCurrentUserSender
+                    ? [Colors.blue.shade700, Colors.blue.shade500]
+                    : [Colors.teal.shade200, Colors.teal.shade100],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.location_on,
+                      size: 22,
+                      color: isCurrentUserSender
+                          ? Colors.white
+                          : Colors.teal.shade800,
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '좌표: ${locationData['latitude']}, ${locationData['longitude']}',
-                style: TextStyle(
-                  color: isCurrentUserSender
-                      ? Colors.white.withOpacity(0.8)
-                      : Colors.black54,
-                  fontSize: 12,
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        locationData['message'] ?? '위치가 공유되었습니다',
+                        style: TextStyle(
+                          color: isCurrentUserSender
+                              ? Colors.white
+                              : Colors.teal.shade800,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                decoration: BoxDecoration(
-                  color: isCurrentUserSender
-                      ? Colors.white.withOpacity(0.2)
-                      : Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '탭하여 지도에서 보기',
+                const SizedBox(height: 8),
+                Text(
+                  '좌표: ${locationData['latitude'].toStringAsFixed(5)}, ${locationData['longitude'].toStringAsFixed(5)}',
                   style: TextStyle(
-                    fontSize: 11,
                     color: isCurrentUserSender
                         ? Colors.white.withOpacity(0.9)
-                        : Colors.blue.shade700,
+                        : Colors.teal.shade700.withOpacity(0.8),
+                    fontSize: 13,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: isCurrentUserSender
+                        ? Colors.white.withOpacity(0.25)
+                        : Colors.teal.shade800.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.map,
+                        size: 16,
+                        color: isCurrentUserSender
+                            ? Colors.white
+                            : Colors.teal.shade800,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '지도에서 보기',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: isCurrentUserSender
+                              ? Colors.white
+                              : Colors.teal.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       } else {
@@ -1006,7 +1389,8 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       messageContent = Text(
         message.content,
         style: TextStyle(
-          color: isCurrentUserSender ? Colors.white : Colors.black,
+          color: isCurrentUserSender ? Colors.white : Colors.black87,
+          fontSize: 15,
         ),
       );
     }
@@ -1014,33 +1398,99 @@ class _MessageDetailViewState extends State<MessageDetailView> {
     return Align(
       alignment:
           isCurrentUserSender ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 10,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(Get.context!).size.width * 0.75,
         ),
-        decoration: BoxDecoration(
-          color: isCurrentUserSender ? Colors.blue : Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (replyReferenceWidget != null) replyReferenceWidget,
-            messageContent,
-            const SizedBox(height: 4),
-            Text(
-              _formatMessageTime(message.timestamp),
-              style: TextStyle(
-                fontSize: 10,
-                color: isCurrentUserSender
-                    ? Colors.white.withOpacity(0.7)
-                    : Colors.black54,
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(
+            crossAxisAlignment: isCurrentUserSender
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            children: [
+              // 발신자 이름 표시 (자신이 아닌 경우만)
+              if (!isCurrentUserSender &&
+                  message.messageType != 'location_share')
+                Padding(
+                  padding: const EdgeInsets.only(left: 12, bottom: 4),
+                  child: Text(
+                    _getRecipientName(message.senderId),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade700,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+
+              // 실제 메시지 컨테이너
+              Container(
+                padding: message.messageType == 'location_share'
+                    ? EdgeInsets.zero // 위치 공유는 자체 패딩 있음
+                    : const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                decoration: message.messageType == 'location_share'
+                    ? null // 위치 공유는 자체 장식 있음
+                    : BoxDecoration(
+                        color: isCurrentUserSender
+                            ? Colors.blue.shade600
+                            : Colors.grey.shade100,
+                        borderRadius: BorderRadius.only(
+                          topLeft:
+                              Radius.circular(isCurrentUserSender ? 16 : 4),
+                          topRight:
+                              Radius.circular(isCurrentUserSender ? 4 : 16),
+                          bottomLeft: const Radius.circular(16),
+                          bottomRight: const Radius.circular(16),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 3,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (replyReferenceWidget != null) replyReferenceWidget,
+                    messageContent,
+                    if (message.messageType != 'location_share')
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          _formatMessageTime(message.timestamp),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: isCurrentUserSender
+                                ? Colors.white.withOpacity(0.7)
+                                : Colors.black54,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-          ],
+
+              // 위치 공유 메시지는 시간 표시를 아래에 별도로
+              if (message.messageType == 'location_share')
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, right: 8, left: 8),
+                  child: Text(
+                    _formatMessageTime(message.timestamp),
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Colors.black54,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -1061,14 +1511,21 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       final String senderName =
           isCurrentUserSender ? '나' : _getRecipientName(message.senderId);
 
-      // 지도 화면으로 이동
-      Get.to(() => SharedLocationView(
-            latitude: latitude,
-            longitude: longitude,
-            message: displayMessage,
-            timestamp: message.timestamp,
-            senderName: senderName,
-          ));
+      // 지도 화면으로 이동 - 슬라이드 전환 애니메이션 추가
+      Get.to(
+        () => SharedLocationView(
+          latitude: latitude,
+          longitude: longitude,
+          message: displayMessage,
+          timestamp: message.timestamp,
+          senderName: senderName,
+        ),
+        transition: Transition.rightToLeft,
+        duration: const Duration(milliseconds: 300),
+      );
+
+      // 위치 공유시 진동 피드백 추가 (실제 구현시)
+      // HapticFeedback.mediumImpact();
     } catch (e) {
       debugPrint('⚠️ 위치 정보 파싱 오류: $e');
 
@@ -1079,6 +1536,8 @@ class _MessageDetailViewState extends State<MessageDetailView> {
           snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.red.withOpacity(0.8),
           colorText: Colors.white,
+          margin: const EdgeInsets.all(12),
+          borderRadius: 10,
         );
       }
     }

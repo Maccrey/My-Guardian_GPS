@@ -5,6 +5,7 @@ import '../../services/message_service.dart';
 import '../../services/auth_service.dart';
 import '../../models/message_model.dart';
 import 'message_detail_view.dart';
+import 'dart:convert';
 
 class MessagesListView extends StatefulWidget {
   const MessagesListView({Key? key}) : super(key: key);
@@ -214,10 +215,27 @@ class _MessagesListViewState extends State<MessagesListView> {
       return message.content;
     } else if (message.messageType == 'location_request') {
       // 위치 공유 요청
-      return '🔍 위치 공유 요청';
+      return '위치 공유 요청을 보냈습니다';
     } else if (message.messageType == 'location_share') {
       // 위치 공유
-      return '📍 위치 공유됨';
+      try {
+        // 위치 메시지 파싱 시도
+        final locationData =
+            jsonDecode(message.content) as Map<String, dynamic>;
+        final customMessage = locationData['message'] as String?;
+
+        if (customMessage != null && customMessage.isNotEmpty) {
+          // 위치와 함께 보낸 메시지가 있으면 표시
+          if (customMessage == '제 현재 위치입니다.') {
+            return '📍 현재 위치를 공유했습니다';
+          }
+          return '📍 $customMessage';
+        }
+        return '📍 위치를 공유했습니다';
+      } catch (e) {
+        // 파싱 실패 시 기본 메시지
+        return '📍 위치를 공유했습니다';
+      }
     } else {
       // 기타 메시지 타입
       return message.content;
@@ -228,15 +246,28 @@ class _MessagesListViewState extends State<MessagesListView> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('메시지'),
+        elevation: 1,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.blue.shade700,
+        title: const Text(
+          '메시지',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+            color: Colors.black87,
+          ),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
+            color: Colors.blue.shade700,
             onPressed: _refreshMessages,
+            tooltip: '메시지 새로고침',
           ),
           // 테스트 계정 버튼 추가
           IconButton(
             icon: const Icon(Icons.person_add),
+            color: Colors.green.shade600,
             onPressed: _showUserSearchDialog,
             tooltip: '대화 상대 검색',
           ),
@@ -244,12 +275,31 @@ class _MessagesListViewState extends State<MessagesListView> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showUserSearchDialog,
+        backgroundColor: Colors.blue.shade600,
+        elevation: 4,
         child: const Icon(Icons.edit),
       ),
       body: Builder(
         builder: (context) {
           if (_messageService.isLoading.value) {
-            return const Center(child: CircularProgressIndicator());
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    color: Colors.blue.shade600,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '메시지를 불러오는 중...',
+                    style: TextStyle(
+                      color: Colors.grey.shade700,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            );
           }
 
           if (_messageService.hasError.value) {
@@ -259,16 +309,33 @@ class _MessagesListViewState extends State<MessagesListView> {
                 children: [
                   const Icon(Icons.error_outline, color: Colors.red, size: 48),
                   const SizedBox(height: 16),
-                  Text(
-                    '${_messageService.errorMessage.value}',
-                    style: const TextStyle(color: Colors.red),
-                    textAlign: TextAlign.center,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Text(
+                      '${_messageService.errorMessage.value}',
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontSize: 16,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 24),
                   ElevatedButton.icon(
                     onPressed: _refreshMessages,
                     icon: const Icon(Icons.refresh),
                     label: const Text('다시 시도'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade600,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 24),
                   const Text(
@@ -276,10 +343,14 @@ class _MessagesListViewState extends State<MessagesListView> {
                     style: TextStyle(fontSize: 12, color: Colors.grey),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 8),
-                  TextButton(
+                  const SizedBox(height: 16),
+                  TextButton.icon(
                     onPressed: _showUserSearchDialog,
-                    child: const Text('대화 상대 검색하기'),
+                    icon: const Icon(Icons.search),
+                    label: const Text('대화 상대 검색하기'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.blue.shade700,
+                    ),
                   ),
                 ],
               ),
@@ -289,203 +360,335 @@ class _MessagesListViewState extends State<MessagesListView> {
           // 대화 목록 가져오기
           final conversations = _messageService.getConversationList();
           if (conversations.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.message, size: 64, color: Colors.grey),
-                  const SizedBox(height: 16),
-                  const Text(
-                    '메시지가 없습니다',
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                image: DecorationImage(
+                  image: const NetworkImage(
+                    'https://i.pinimg.com/originals/97/c0/07/97c00759d90d786d9b6096d274ad3e07.png',
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '위치 공유 요청이나 메시지를 보내면\n여기에 표시됩니다',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: _showUserSearchDialog,
-                    icon: const Icon(Icons.search),
-                    label: const Text('대화 상대 검색'),
-                  ),
-                ],
+                  opacity: 0.1,
+                  repeat: ImageRepeat.repeat,
+                ),
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.message_outlined,
+                      size: 80,
+                      color: Colors.blue.shade200,
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      '메시지가 없습니다',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 40),
+                      child: Text(
+                        '위치 공유 요청이나 메시지를 보내면\n여기에 표시됩니다',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    ElevatedButton.icon(
+                      onPressed: _showUserSearchDialog,
+                      icon: const Icon(Icons.search),
+                      label: const Text('대화 상대 검색'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue.shade600,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           }
 
-          return RefreshIndicator(
-            onRefresh: _refreshMessages,
-            child: ListView.builder(
-              itemCount: conversations.length,
-              itemBuilder: (context, index) {
-                if (index >= conversations.length) {
-                  // 인덱스 범위 체크
-                  return const SizedBox.shrink();
-                }
+          return Container(
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              image: DecorationImage(
+                image: const NetworkImage(
+                  'https://i.pinimg.com/originals/97/c0/07/97c00759d90d786d9b6096d274ad3e07.png',
+                ),
+                opacity: 0.1,
+                repeat: ImageRepeat.repeat,
+              ),
+            ),
+            child: RefreshIndicator(
+              onRefresh: _refreshMessages,
+              color: Colors.blue.shade700,
+              child: ListView.separated(
+                itemCount: conversations.length,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                separatorBuilder: (context, index) => Divider(
+                  height: 1,
+                  color: Colors.grey.shade300,
+                  indent: 80,
+                ),
+                itemBuilder: (context, index) {
+                  if (index >= conversations.length) {
+                    // 인덱스 범위 체크
+                    return const SizedBox.shrink();
+                  }
 
-                final message = conversations[index];
-                // null 체크
-                if (message == null) {
-                  return const SizedBox.shrink();
-                }
+                  final message = conversations[index];
+                  // null 체크
+                  if (message == null) {
+                    return const SizedBox.shrink();
+                  }
 
-                // AuthService UID null 체크
-                final String? currentUserUid = _authService.uid;
-                final isCurrentUserSender = currentUserUid != null &&
-                    (message.senderId == currentUserUid ||
-                        message.senderId.startsWith('test-') ||
-                        message.senderId.startsWith('fixed-'));
+                  // AuthService UID null 체크
+                  final String? currentUserUid = _authService.uid;
+                  final isCurrentUserSender = currentUserUid != null &&
+                      (message.senderId == currentUserUid ||
+                          message.senderId.startsWith('test-') ||
+                          message.senderId.startsWith('fixed-'));
 
-                // 대화 상대 ID - 수정: dynamic ID 처리 개선
-                final String otherUserId =
-                    isCurrentUserSender ? message.receiverId : message.senderId;
+                  // 대화 상대 ID - 수정: dynamic ID 처리 개선
+                  final String otherUserId = isCurrentUserSender
+                      ? message.receiverId
+                      : message.senderId;
 
-                // 대화 상대 이름
-                final otherUserName = _getRecipientName(otherUserId);
+                  // 대화 상대 이름
+                  final otherUserName = _getRecipientName(otherUserId);
 
-                return Dismissible(
-                  key: Key('conversation-${message.id}'),
-                  background: Container(
-                    color: Colors.red,
-                    alignment: Alignment.centerRight,
-                    padding: const EdgeInsets.only(right: 20.0),
-                    child: const Icon(Icons.delete, color: Colors.white),
-                  ),
-                  direction: DismissDirection.endToStart,
-                  confirmDismiss: (direction) async {
-                    return await showDialog<bool>(
-                      context: context,
-                      builder: (BuildContext context) {
-                        return AlertDialog(
-                          title: const Text('대화 삭제'),
-                          content: const Text('이 대화를 삭제하시겠습니까?'),
-                          actions: <Widget>[
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(false),
-                              child: const Text('취소'),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(true),
-                              child: const Text('삭제'),
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  },
-                  onDismissed: (direction) async {
-                    // 대화 삭제 기능 구현
-                    try {
-                      // 해당 대화에 속한 모든 메시지 삭제
-                      final conversation =
-                          _messageService.getConversationWith(otherUserId);
+                  // 메시지 타입에 따른 아이콘 및 색상 결정
+                  IconData? messageTypeIcon;
+                  Color? messageTypeColor;
 
-                      // 메시지가 있으면 모두 삭제
-                      if (conversation.isNotEmpty) {
-                        for (var msg in conversation) {
-                          await _messageService.deleteMessage(msg.id);
-                        }
-                        debugPrint('✅ ${conversation.length}개 메시지가 삭제되었습니다.');
-                      }
+                  if (message.messageType == 'location_share') {
+                    messageTypeIcon = Icons.location_on;
+                    messageTypeColor = Colors.teal.shade600;
+                  } else if (message.messageType == 'location_request') {
+                    messageTypeIcon = Icons.location_searching;
+                    messageTypeColor = Colors.blue.shade600;
+                  }
 
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                            content: Text('$otherUserName님과의 대화가 삭제되었습니다')),
-                      );
-
-                      // 데이터 변경 후 메시지 목록을 갱신하기 위해 인위적으로 새로고침
-                      _refreshMessages();
-                    } catch (e) {
-                      debugPrint('⚠️ 대화 삭제 오류: $e');
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('대화 삭제 중 오류가 발생했습니다'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  },
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor:
-                          Theme.of(context).primaryColor.withOpacity(0.8),
-                      child: Text(
-                        otherUserName.substring(0, 1),
-                        style: const TextStyle(color: Colors.white),
-                      ),
+                  return Dismissible(
+                    key: Key('conversation-${message.id}'),
+                    background: Container(
+                      color: Colors.red.shade400,
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 20.0),
+                      child: const Icon(Icons.delete, color: Colors.white),
                     ),
-                    title: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            otherUserName,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        Text(
-                          _formatDate(message.timestamp),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ],
-                    ),
-                    subtitle: Row(
-                      children: [
-                        // 내가 보낸 메시지인 경우 '나: '를 붙임
-                        if (isCurrentUserSender)
-                          const Text('나: ',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
-                        Expanded(
-                          child: Text(
-                            _getPreviewText(message),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (!message.isRead && !isCurrentUserSender)
-                          Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              color: Colors.blue,
-                              borderRadius: BorderRadius.circular(5),
-                            ),
-                          ),
-                      ],
-                    ),
-                    onTap: () {
-                      // 메시지 상세 화면으로 이동
-                      if (!mounted) return; // mounted 체크
-
-                      try {
-                        // 대화 상대 ID가 dynamic으로 시작하면 고정 ID로 변환
-                        String targetUserId = otherUserId;
-                        if (targetUserId.startsWith('dynamic-')) {
-                          targetUserId = 'fixed-user-1';
-                          debugPrint('⚠️ dynamic ID를 고정 ID로 변환: $targetUserId');
-                        }
-
-                        Get.to(() => MessageDetailView(userId: targetUserId));
-                      } catch (e) {
-                        debugPrint('⚠️ 메시지 상세 화면으로 이동 중 오류: $e');
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('메시지 상세 화면을 열 수 없습니다'),
-                              backgroundColor: Colors.red,
-                            ),
+                    direction: DismissDirection.endToStart,
+                    confirmDismiss: (direction) async {
+                      return await showDialog<bool>(
+                        context: context,
+                        builder: (BuildContext context) {
+                          return AlertDialog(
+                            title: const Text('대화 삭제'),
+                            content: Text('$otherUserName님과의 대화를 삭제하시겠습니까?'),
+                            actions: <Widget>[
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(false),
+                                child: const Text('취소'),
+                              ),
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(true),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                ),
+                                child: const Text('삭제'),
+                              ),
+                            ],
                           );
+                        },
+                      );
+                    },
+                    onDismissed: (direction) async {
+                      // 대화 삭제 기능 구현
+                      try {
+                        // 해당 대화에 속한 모든 메시지 삭제
+                        final conversation =
+                            _messageService.getConversationWith(otherUserId);
+
+                        // 메시지가 있으면 모두 삭제
+                        if (conversation.isNotEmpty) {
+                          for (var msg in conversation) {
+                            await _messageService.deleteMessage(msg.id);
+                          }
+                          debugPrint('✅ ${conversation.length}개 메시지가 삭제되었습니다.');
                         }
+
+                        Get.snackbar(
+                          '대화 삭제',
+                          '$otherUserName님과의 대화가 삭제되었습니다',
+                          snackPosition: SnackPosition.BOTTOM,
+                          backgroundColor: Colors.grey.shade800,
+                          colorText: Colors.white,
+                          margin: const EdgeInsets.all(12),
+                          borderRadius: 10,
+                        );
+
+                        // 데이터 변경 후 메시지 목록을 갱신하기 위해 인위적으로 새로고침
+                        _refreshMessages();
+                      } catch (e) {
+                        debugPrint('⚠️ 대화 삭제 오류: $e');
+                        Get.snackbar(
+                          '오류',
+                          '대화 삭제 중 오류가 발생했습니다',
+                          snackPosition: SnackPosition.BOTTOM,
+                          backgroundColor: Colors.red.shade400,
+                          colorText: Colors.white,
+                          margin: const EdgeInsets.all(12),
+                          borderRadius: 10,
+                        );
                       }
                     },
-                  ),
-                );
-              },
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        leading: CircleAvatar(
+                          radius: 28,
+                          backgroundColor: Colors.blue.shade100,
+                          child: Text(
+                            otherUserName.substring(0, 1).toUpperCase(),
+                            style: TextStyle(
+                              color: Colors.blue.shade700,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 20,
+                            ),
+                          ),
+                        ),
+                        title: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                otherUserName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              _formatDate(message.timestamp),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        subtitle: Row(
+                          children: [
+                            // 메시지 타입 아이콘 추가
+                            if (messageTypeIcon != null)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: Icon(
+                                  messageTypeIcon,
+                                  size: 14,
+                                  color: messageTypeColor,
+                                ),
+                              ),
+
+                            // 내가 보낸 메시지인 경우 '나: '를 붙임
+                            if (isCurrentUserSender)
+                              Text(
+                                '나: ',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 14,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+
+                            Expanded(
+                              child: Text(
+                                _getPreviewText(message),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+
+                            // 읽지 않은 메시지 표시
+                            if (!message.isRead && !isCurrentUserSender)
+                              Container(
+                                margin: const EdgeInsets.only(left: 8),
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade600,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                              ),
+                          ],
+                        ),
+                        onTap: () {
+                          // 메시지 상세 화면으로 이동
+                          if (!mounted) return; // mounted 체크
+
+                          try {
+                            // 대화 상대 ID가 dynamic으로 시작하면 고정 ID로 변환
+                            String targetUserId = otherUserId;
+                            if (targetUserId.startsWith('dynamic-')) {
+                              targetUserId = 'fixed-user-1';
+                              debugPrint(
+                                  '⚠️ dynamic ID를 고정 ID로 변환: $targetUserId');
+                            }
+
+                            Get.to(
+                              () => MessageDetailView(userId: targetUserId),
+                              transition: Transition.rightToLeft,
+                              duration: const Duration(milliseconds: 300),
+                            );
+                          } catch (e) {
+                            debugPrint('⚠️ 메시지 상세 화면으로 이동 중 오류: $e');
+                            if (mounted) {
+                              Get.snackbar(
+                                '오류',
+                                '메시지 상세 화면을 열 수 없습니다',
+                                snackPosition: SnackPosition.BOTTOM,
+                                backgroundColor: Colors.red.shade400,
+                                colorText: Colors.white,
+                                margin: const EdgeInsets.all(12),
+                                borderRadius: 10,
+                              );
+                            }
+                          }
+                        },
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        tileColor: Colors.white,
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
           );
         },
@@ -503,18 +706,29 @@ class _MessagesListViewState extends State<MessagesListView> {
       builder: (context) {
         return StatefulBuilder(builder: (context, setState) {
           return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             title: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('대화 상대 검색'),
+                Text(
+                  '대화 상대 검색',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue.shade700,
+                  ),
+                ),
                 IconButton(
                   icon: const Icon(Icons.close),
+                  color: Colors.grey.shade600,
                   onPressed: () => Navigator.of(context).pop(),
                 ),
               ],
             ),
             titlePadding: const EdgeInsets.fromLTRB(24, 16, 8, 0),
-            contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+            contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
             content: Container(
               width: double.maxFinite,
               constraints: BoxConstraints(
@@ -528,10 +742,18 @@ class _MessagesListViewState extends State<MessagesListView> {
                     autofocus: true,
                     decoration: InputDecoration(
                       hintText: '이메일 또는 닉네임 검색',
-                      prefixIcon: const Icon(Icons.search),
+                      hintStyle: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontSize: 15,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.search,
+                        color: Colors.blue.shade600,
+                      ),
                       suffixIcon: searchController.text.isNotEmpty
                           ? IconButton(
                               icon: const Icon(Icons.clear),
+                              color: Colors.grey.shade600,
                               onPressed: () {
                                 searchController.clear();
                                 _messageService.searchResults.clear();
@@ -567,8 +789,22 @@ class _MessagesListViewState extends State<MessagesListView> {
                   Flexible(
                     child: Obx(() {
                       if (_messageService.isSearching.value) {
-                        return const Center(
-                          child: CircularProgressIndicator(),
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              CircularProgressIndicator(
+                                color: Colors.blue.shade600,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                '검색 중...',
+                                style: TextStyle(
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                            ],
+                          ),
                         );
                       }
 
@@ -580,8 +816,8 @@ class _MessagesListViewState extends State<MessagesListView> {
                             children: [
                               Icon(
                                 Icons.search_off,
-                                size: 48,
-                                color: Colors.grey.shade400,
+                                size: 64,
+                                color: Colors.grey.shade300,
                               ),
                               const SizedBox(height: 16),
                               Text(
@@ -600,8 +836,8 @@ class _MessagesListViewState extends State<MessagesListView> {
                             children: [
                               Icon(
                                 Icons.search,
-                                size: 48,
-                                color: Colors.grey.shade400,
+                                size: 64,
+                                color: Colors.blue.shade200,
                               ),
                               const SizedBox(height: 16),
                               Text(
@@ -634,6 +870,10 @@ class _MessagesListViewState extends State<MessagesListView> {
                                 displayName.isNotEmpty ? displayName[0] : '?';
 
                             return ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 6,
+                              ),
                               leading: user.profileImageUrl != null
                                   ? CircleAvatar(
                                       backgroundImage:
@@ -647,13 +887,13 @@ class _MessagesListViewState extends State<MessagesListView> {
                                           : Text(firstLetter),
                                     )
                                   : CircleAvatar(
-                                      backgroundColor: Theme.of(context)
-                                          .primaryColor
-                                          .withOpacity(0.8),
+                                      backgroundColor: Colors.blue.shade100,
                                       child: Text(
-                                        firstLetter,
-                                        style: const TextStyle(
-                                            color: Colors.white),
+                                        firstLetter.toUpperCase(),
+                                        style: TextStyle(
+                                          color: Colors.blue.shade700,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
                                     ),
                               title: Text(
@@ -673,11 +913,28 @@ class _MessagesListViewState extends State<MessagesListView> {
                                 Navigator.of(context).pop();
                                 _startNewConversation(user);
                               },
-                              trailing: const Icon(
-                                Icons.arrow_forward_ios,
-                                size: 16,
-                                color: Colors.grey,
+                              trailing: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                child: Text(
+                                  '대화하기',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.blue.shade700,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              hoverColor: Colors.blue.shade50,
                             );
                           },
                         ),
