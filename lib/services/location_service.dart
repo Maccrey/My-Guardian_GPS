@@ -890,10 +890,84 @@ class LocationService extends GetxController {
             position: location.toLatLng(),
             infoWindow: InfoWindow(
               title: location.message,
-              snippet: '${location.senderName}님이 공유한 위치',
+              snippet: '${location.senderName}님이 공유 · 탭하여 삭제',
+              onTap: () {
+                // 마커 정보창 탭 시 삭제 다이얼로그 표시
+                _showDeleteLocationDialog(location);
+              },
             ),
             icon: BitmapDescriptor.defaultMarkerWithHue(
                 BitmapDescriptor.hueViolet),
+            onTap: () async {
+              // 마커 탭 시 주소 정보 가져오기
+              try {
+                final addresses = await placemarkFromCoordinates(
+                  location.latitude,
+                  location.longitude,
+                );
+
+                if (addresses.isNotEmpty) {
+                  final place = addresses.first;
+                  final address =
+                      '${place.street}, ${place.locality}, ${place.administrativeArea}';
+
+                  // 주소 정보가 있는 다이얼로그 표시
+                  Get.dialog(
+                    AlertDialog(
+                      title: Text(location.message),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${location.senderName}님이 공유한 위치'),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              const Icon(Icons.location_on,
+                                  size: 16, color: Colors.red),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                  child: Text(address,
+                                      style: const TextStyle(fontSize: 14))),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              const Icon(Icons.access_time,
+                                  size: 16, color: Colors.blue),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${location.timestamp.year}/${location.timestamp.month}/${location.timestamp.day} ${location.timestamp.hour}:${location.timestamp.minute}',
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Get.back(),
+                          child: const Text('닫기'),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            Get.back();
+                            _showDeleteLocationDialog(location);
+                          },
+                          child: const Text('삭제',
+                              style: TextStyle(color: Colors.red)),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+              } catch (e) {
+                debugPrint('⚠️ 주소 가져오기 실패: $e');
+                // 주소 정보가 없는 경우 기본 삭제 다이얼로그 표시
+                _showDeleteLocationDialog(location);
+              }
+            },
           ),
         );
       }
@@ -902,6 +976,46 @@ class LocationService extends GetxController {
     } catch (e) {
       debugPrint('❌ 공유 위치 마커 업데이트 실패: $e');
     }
+  }
+
+  // 위치 삭제 확인 다이얼로그
+  void _showDeleteLocationDialog(SharedLocationModel location) {
+    Get.dialog(
+      AlertDialog(
+        title: const Text('위치 삭제'),
+        content: Text('${location.message}\n이 위치를 삭제하시겠습니까?'),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () {
+              Get.back();
+              removeSharedLocation(location.id).then((success) {
+                if (success) {
+                  Get.snackbar(
+                    '삭제 완료',
+                    '위치가 삭제되었습니다.',
+                    snackPosition: SnackPosition.BOTTOM,
+                    duration: const Duration(seconds: 2),
+                  );
+                } else {
+                  Get.snackbar(
+                    '삭제 실패',
+                    '위치를 삭제하지 못했습니다.',
+                    snackPosition: SnackPosition.BOTTOM,
+                    duration: const Duration(seconds: 2),
+                  );
+                }
+              });
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
   }
 
   // 공유된 위치 삭제

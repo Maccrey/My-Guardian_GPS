@@ -42,7 +42,7 @@ dependencies:
   google_maps_flutter: ^2.5.3 # 구글 맵 표시를 위한 패키지
   geolocator: ^10.1.1 # 위치 정보 가져오기 위한 패키지
   flutter_polyline_points: ^2.0.0 # 경로 그리기 위한 패키지
-  geocoding: ^2.2.0 # 주소-좌표 변환을 위한 패키지
+  geocoding: ^3.0.0 # 주소-좌표 변환을 위한 패키지
   http: ^1.2.1 # API 요청을 위한 패키지
   flutter_dotenv: ^5.1.0 # 환경 변수 관리를 위한 패키지
   just_audio: ^0.9.44

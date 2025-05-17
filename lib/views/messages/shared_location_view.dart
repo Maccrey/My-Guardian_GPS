@@ -8,6 +8,7 @@ import '../../services/location_service.dart';
 import '../../models/shared_location_model.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:async';
+import 'package:geocoding/geocoding.dart';
 
 class SharedLocationView extends StatefulWidget {
   final double latitude;
@@ -119,16 +120,17 @@ class _SharedLocationViewState extends State<SharedLocationView> {
       zoom: 15,
     );
 
-    // 마커 설정
+    // 마커 설정 - onTap 콜백 추가
     _markers = {
       Marker(
         markerId: const MarkerId('shared_location'),
         position: LatLng(widget.latitude, widget.longitude),
         infoWindow: InfoWindow(
           title: widget.message,
-          onTap: () => _openInExternalMap(),
+          onTap: () => _getAddressAndShowDeleteDialog(),
         ),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+        onTap: () => _getAddressAndShowDeleteDialog(),
       ),
     };
 
@@ -559,6 +561,256 @@ class _SharedLocationViewState extends State<SharedLocationView> {
       Get.snackbar(
         '이동 오류',
         '지도 화면으로 이동할 수 없습니다',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.shade700,
+        colorText: Colors.white,
+        margin: const EdgeInsets.all(12),
+        borderRadius: 10,
+        duration: const Duration(seconds: 3),
+      );
+    }
+  }
+
+  // 주소 정보 조회 및 삭제 다이얼로그 표시
+  Future<void> _getAddressAndShowDeleteDialog() async {
+    try {
+      // 마커 진동 피드백
+      HapticFeedback.selectionClick();
+
+      // 주소 정보 가져오기
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        widget.latitude,
+        widget.longitude,
+      );
+
+      if (!mounted) return;
+
+      // 주소 포맷팅
+      String address = '주소를 찾을 수 없습니다';
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks.first;
+        address =
+            '${place.street ?? ''}, ${place.locality ?? ''}, ${place.administrativeArea ?? ''}, ${place.country ?? ''}';
+        address = address.replaceAll(RegExp(r',\s*,'), ','); // 빈 필드 정리
+        address = address.replaceAll(RegExp(r'^,\s*'), ''); // 앞부분 정리
+      }
+
+      // 위치 상세 정보 및 삭제 옵션이 있는 다이얼로그 표시
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(widget.message),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${widget.senderName}님이 공유한 위치'),
+              const SizedBox(height: 12),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.location_on, size: 18, color: Colors.red.shade600),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      address,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.access_time,
+                      size: 16, color: Colors.blue.shade700),
+                  const SizedBox(width: 8),
+                  Text(
+                    _formatTimestamp(widget.timestamp),
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Icon(Icons.info_outline,
+                      size: 16, color: Colors.grey.shade600),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '위도: ${widget.latitude.toStringAsFixed(6)}\n경도: ${widget.longitude.toStringAsFixed(6)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('닫기'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _saveToAppMap();
+              },
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _isSavedToMap ? Icons.bookmark : Icons.bookmark_outline,
+                    size: 16,
+                    color: Colors.blue.shade700,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _isSavedToMap ? '저장됨' : '저장하기',
+                    style: TextStyle(color: Colors.blue.shade700),
+                  ),
+                ],
+              ),
+            ),
+            if (_isSavedToMap)
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _showDeleteConfirmDialog();
+                },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.delete_outline,
+                        size: 16, color: Colors.red),
+                    const SizedBox(width: 4),
+                    const Text('삭제', style: TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      );
+    } catch (e) {
+      debugPrint('⚠️ 주소 정보 가져오기 실패: $e');
+
+      // 오류 발생 시 기본 정보만 표시
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(widget.message),
+            content: Text(
+                '${widget.senderName}님이 ${_formatTimestamp(widget.timestamp)}에 공유한 위치입니다.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('닫기'),
+              ),
+              if (_isSavedToMap)
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _showDeleteConfirmDialog();
+                  },
+                  child: const Text('삭제', style: TextStyle(color: Colors.red)),
+                ),
+            ],
+          ),
+        );
+      }
+    }
+  }
+
+  // 삭제 확인 다이얼로그
+  void _showDeleteConfirmDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('위치 삭제'),
+        content: Text('이 위치를 지도에서 삭제하시겠습니까?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _deleteSharedLocation();
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 저장된 위치 삭제
+  Future<void> _deleteSharedLocation() async {
+    try {
+      HapticFeedback.mediumImpact();
+
+      // 저장된 공유 위치 찾기
+      final savedLocation = _locationService.sharedLocations.firstWhereOrNull(
+        (loc) =>
+            loc.latitude == widget.latitude &&
+            loc.longitude == widget.longitude,
+      );
+
+      if (savedLocation != null) {
+        final success =
+            await _locationService.removeSharedLocation(savedLocation.id);
+        if (success) {
+          setState(() {
+            _isSavedToMap = false;
+          });
+
+          Get.snackbar(
+            '삭제 완료',
+            '위치가 지도에서 삭제되었습니다',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.green.shade600,
+            colorText: Colors.white,
+            margin: const EdgeInsets.all(12),
+            borderRadius: 10,
+            duration: const Duration(seconds: 2),
+          );
+        } else {
+          Get.snackbar(
+            '삭제 실패',
+            '위치를 삭제하지 못했습니다. 다시 시도해주세요',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red.shade700,
+            colorText: Colors.white,
+            margin: const EdgeInsets.all(12),
+            borderRadius: 10,
+            duration: const Duration(seconds: 3),
+          );
+        }
+      } else {
+        Get.snackbar(
+          '오류',
+          '삭제할 위치를 찾을 수 없습니다',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.shade700,
+          colorText: Colors.white,
+          margin: const EdgeInsets.all(12),
+          borderRadius: 10,
+          duration: const Duration(seconds: 3),
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ 위치 삭제 중 오류: $e');
+      Get.snackbar(
+        '오류',
+        '위치를 삭제하는 중 오류가 발생했습니다',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red.shade700,
         colorText: Colors.white,
