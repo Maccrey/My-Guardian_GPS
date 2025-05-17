@@ -578,8 +578,9 @@ class _SharedLocationViewState extends State<SharedLocationView> {
       // 마커 진동 피드백
       HapticFeedback.selectionClick();
 
-      // 현재 기기의 로케일 가져오기
-      final Locale deviceLocale = ui.window.locale;
+      // 현재 기기의 로케일 가져오기 - 최신 방식 사용
+      final Locale deviceLocale =
+          WidgetsBinding.instance.platformDispatcher.locale;
       final String localeString = deviceLocale.languageCode;
 
       debugPrint('🌐 현재 기기 로케일: $localeString (${deviceLocale.toString()})');
