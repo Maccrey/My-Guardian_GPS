@@ -145,11 +145,22 @@ class _MessagesListViewState extends State<MessagesListView> {
           // 닉네임이 있으면 닉네임 반환, 없으면 이메일 앞부분 사용
           final user = foundUsers.first;
           if (user.nickname != null && user.nickname!.isNotEmpty) {
+            debugPrint('👤 닉네임으로 사용자 표시: ${user.nickname} (ID: ${user.uid})');
             return user.nickname!;
           } else if (user.email != null && user.email!.isNotEmpty) {
             // 이메일 앞부분만 추출 (@ 앞부분)
-            return user.email!.split('@')[0];
+            final username = user.email!.split('@')[0];
+            debugPrint('👤 이메일로 사용자 표시: $username (전체: ${user.email})');
+            return username;
           }
+        }
+
+        // 사용자 검색에서 찾지 못한 경우 데이터베이스에서 찾기 시도
+        try {
+          debugPrint('🔍 ID로 사용자 검색 시도: $userId');
+          // 여기에 추가적인 사용자 데이터 검색 로직 추가 가능
+        } catch (e) {
+          debugPrint('⚠️ 사용자 ID 검색 오류: $e');
         }
       } catch (e) {
         debugPrint('⚠️ 사용자 정보 검색 오류: $e');

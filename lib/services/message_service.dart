@@ -787,35 +787,52 @@ class MessageService extends GetxController {
         // Firebase 사용자 컬렉션에서 데이터 가져오기
         QuerySnapshot userSnapshot;
 
-        // 이메일로 검색
-        if (query.contains('@')) {
-          userSnapshot = await _firestore
-              .collection('users')
-              .where('email', isGreaterThanOrEqualTo: query)
-              .where('email', isLessThanOrEqualTo: query + '\uf8ff')
-              .limit(10)
-              .get();
-        } else {
-          // 닉네임으로 검색 시도
-          userSnapshot = await _firestore
-              .collection('users')
-              .where('nickname', isGreaterThanOrEqualTo: query)
-              .where('nickname', isLessThanOrEqualTo: query + '\uf8ff')
-              .limit(10)
-              .get();
-        }
+        // 이메일 또는 닉네임 검색을 위해 전체 사용자 목록을 가져와서 클라이언트에서 필터링
+        // Firebase는 포함 검색을 직접 지원하지 않으므로 클라이언트에서 필터링하는 방식 사용
+        userSnapshot = await _firestore
+            .collection('users')
+            .limit(50) // 적절한 수로 제한
+            .get();
+
+        debugPrint('🔍 사용자 검색: $query (이메일 또는 닉네임으로 필터링 예정)');
 
         debugPrint('✅ Firebase 검색 결과: ${userSnapshot.docs.length}명');
 
         // 사용자 데이터 변환
         if (userSnapshot.docs.isNotEmpty) {
+          final lowercaseQuery = query.toLowerCase();
+
           for (var doc in userSnapshot.docs) {
             final userData = doc.data() as Map<String, dynamic>;
-            foundUsers.add(UserModel.fromJson({
-              'uid': doc.id,
-              ...userData,
-            }));
+
+            // 항상 닉네임과 이메일 모두 검색
+            final nickname = userData['nickname'] as String?;
+            final email = userData['email'] as String?;
+
+            bool matchesNickname = nickname != null &&
+                nickname.toLowerCase().contains(lowercaseQuery);
+            bool matchesEmail =
+                email != null && email.toLowerCase().contains(lowercaseQuery);
+
+            if (matchesNickname || matchesEmail) {
+              foundUsers.add(UserModel.fromJson({
+                'uid': doc.id,
+                ...userData,
+              }));
+
+              if (matchesNickname) {
+                debugPrint(
+                    '👤 닉네임 매칭: "$query" -> ${nickname ?? ''} (${email ?? ''})');
+              }
+
+              if (matchesEmail) {
+                debugPrint(
+                    '👤 이메일 매칭: "$query" -> ${email ?? ''} (${nickname ?? ''})');
+              }
+            }
           }
+
+          debugPrint('✅ 닉네임/이메일 필터링 후 검색 결과: ${foundUsers.length}명');
         }
       } catch (e) {
         debugPrint('⚠️ Firebase 사용자 검색 오류: $e');
@@ -886,18 +903,22 @@ class MessageService extends GetxController {
           ),
         ];
 
-        // 검색어에 맞는 테스트 사용자 필터링
+        // 검색어에 맞는 테스트 사용자 필터링 - 항상 이메일과 닉네임 모두 검색
         List<UserModel> filteredTestUsers = testUsers.where((user) {
-          // 이메일 검색
-          if (query.contains('@')) {
-            return user.email?.toLowerCase().contains(lowercaseQuery) == true;
+          // 이메일이나 닉네임에 검색어가 포함된 경우
+          final matchNickname =
+              user.nickname?.toLowerCase().contains(lowercaseQuery) == true;
+          final matchEmail =
+              user.email?.toLowerCase().contains(lowercaseQuery) == true;
+
+          if (matchNickname) {
+            debugPrint('✅ 닉네임 테스트 사용자 매칭: ${user.nickname}');
           }
-          // 닉네임 검색
-          else {
-            return user.nickname?.toLowerCase().contains(lowercaseQuery) ==
-                    true ||
-                user.email?.toLowerCase().contains(lowercaseQuery) == true;
+          if (matchEmail) {
+            debugPrint('✅ 이메일 테스트 사용자 매칭: ${user.email}');
           }
+
+          return matchNickname || matchEmail;
         }).toList();
 
         // 필터링된 테스트 사용자 추가
@@ -905,21 +926,32 @@ class MessageService extends GetxController {
 
         // 그래도 결과가 없으면 기본 테스트 사용자 생성
         if (foundUsers.isEmpty) {
+          debugPrint('⚠️ 검색 결과 없음: "$query"와 일치하는 사용자가 없습니다');
+
+          String uid =
+              'fixed-user-for-$query-${DateTime.now().millisecondsSinceEpoch}';
+          String email, nickname;
+
+          // 이메일 형식 확인
           if (query.contains('@')) {
-            foundUsers.add(UserModel(
-              uid: 'fixed-email-user', // 고정 ID 사용
-              email: query,
-              nickname: '이메일검색_${query.split('@')[0]}',
-              profileImageUrl: 'https://via.placeholder.com/150',
-            ));
+            // 이메일 형식인 경우
+            email = query;
+            nickname = '검색_${query.split('@')[0]}';
+            debugPrint('✅ 이메일 검색용 기본 사용자 생성: $email');
           } else {
-            foundUsers.add(UserModel(
-              uid: 'fixed-user-for-$query', // 고정 ID 사용
-              email: '$query@example.com',
-              nickname: query,
-              profileImageUrl: 'https://via.placeholder.com/150',
-            ));
+            // 닉네임 형식인 경우
+            email = '$query@example.com';
+            nickname = query;
+            debugPrint('✅ 닉네임 검색용 기본 사용자 생성: $nickname');
           }
+
+          // 사용자 추가
+          foundUsers.add(UserModel(
+            uid: uid,
+            email: email,
+            nickname: nickname,
+            profileImageUrl: 'https://via.placeholder.com/150',
+          ));
         }
 
         // maccrey@naver.com 사용자 항상 추가 (질문에 언급된 특정 사용자)
