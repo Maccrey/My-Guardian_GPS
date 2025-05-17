@@ -34,6 +34,26 @@
 				<string>com.googleusercontent.apps.1071355933777-m1i508qebs4no0fm10on2et5q61mbjig</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.example.gpsSeach</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>gpsseach</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>googleauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.1071355933777-m1i508qebs4no0fm10on2et5q61mbjig</string>
+			</array>
+		</dict>
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
@@ -65,6 +85,15 @@
 		<string>sms</string>
 		<string>https</string>
 		<string>http</string>
+		<string>googlechrome</string>
+		<string>googlechrome-x-callback</string>
+		<string>hasgoogledeviceowner</string>
+		<string>com.google.gpsonlineassistant</string>
+		<string>googleauth</string>
+		<string>google</string>
+		<string>googleauthentication</string>
+		<string>googlesignin</string>
+		<string>com.googleusercontent.apps</string>
 	</array>
 	<!-- 위치 권한 설명 -->
 	<key>NSLocationWhenInUseUsageDescription</key>
@@ -79,5 +108,16 @@
 	<!-- 오디오 사용 설명 -->
 	<key>NSMicrophoneUsageDescription</key>
 	<string>SOS 긴급 상황 시 알림음 재생을 위해 사용됩니다.</string>
+	
+	<!-- 네트워크 관련 설정 -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 </dict>
 </plist>
