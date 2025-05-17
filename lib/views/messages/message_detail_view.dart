@@ -279,11 +279,33 @@ class _MessageDetailViewState extends State<MessageDetailView> {
         debugPrint('✅ 테스트 로그인 완료, 새 UID: ${_authService.uid}');
       }
 
-      // 테스트 위치 정보 생성 (실제 앱에서는 위치 권한 획득 후 실제 현재 위치를 사용)
-      final double latitude =
-          37.5665 + (DateTime.now().millisecond / 10000); // 서울 위도에 약간의 랜덤성 추가
-      final double longitude =
-          126.9780 + (DateTime.now().second / 1000); // 서울 경도에 약간의 랜덤성 추가
+      // 위치 서비스 권한 확인 및 실제 위치 가져오기
+      _locationService.isLoading.value = true;
+      Get.snackbar(
+        '위치 확인 중',
+        '현재 위치를 확인하는 중입니다...',
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 2),
+      );
+
+      await _locationService.getCurrentLocation();
+
+      // 위치 서비스에서 오류가 있는지 확인
+      if (_locationService.errorMsg.value.isNotEmpty) {
+        throw Exception(_locationService.errorMsg.value);
+      }
+
+      // 현재 위치 가져오기
+      final currentLatLng = _locationService.currentLocation.value;
+
+      if (currentLatLng == null) {
+        throw Exception('현재 위치를 가져올 수 없습니다.');
+      }
+
+      final double latitude = currentLatLng.latitude;
+      final double longitude = currentLatLng.longitude;
+
+      debugPrint('🔍 실제 GPS 위치 확인됨: $latitude, $longitude');
 
       // 위치 공유 메시지 전송
       final success = await _messageService.sendLocationShare(
@@ -309,8 +331,10 @@ class _MessageDetailViewState extends State<MessageDetailView> {
     } catch (e) {
       debugPrint('⚠️ 위치 공유 중 예외 발생: $e');
       if (mounted) {
-        _showErrorSnackBar('위치 공유 중 오류가 발생했습니다.');
+        _showErrorSnackBar('위치 공유 중 오류가 발생했습니다: ${e.toString()}');
       }
+    } finally {
+      _locationService.isLoading.value = false;
     }
   }
 
