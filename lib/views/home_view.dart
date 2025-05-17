@@ -17,7 +17,34 @@ class HomeView extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        // title: const Text('GPS Search'),
+        title: Obx(() {
+          final user = authService.currentUser;
+          final name = user?.nickname ?? '게스트';
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '안녕하세요, $name님!',
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              // if (user?.email != null)
+              //   Padding(
+              //     padding: const EdgeInsets.only(top: 4.0),
+              //     child: Text(
+              //       '${user!.email}',
+              //       style: TextStyle(
+              //         fontSize: 14,
+              //         color: Colors.grey.shade600,
+              //       ),
+              //     ),
+              //   ),
+            ],
+          );
+        }),
         actions: [
           IconButton(
             icon: const Icon(Icons.person),
@@ -61,43 +88,19 @@ class HomeView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 사용자 환영 메시지
-              Obx(() {
-                final user = authService.currentUser;
-                final name = user?.nickname ?? '게스트';
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '안녕하세요, $name님!',
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
+              // 안내 메시지
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Watch Over와 함께 안전한 위치 공유를 시작하세요.',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey,
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'GPS Search와 함께 안전한 위치 공유를 시작하세요.',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    if (user?.email != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4.0),
-                        child: Text(
-                          '${user!.email}',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ),
-                  ],
-                );
-              }),
+                  ),
+                ],
+              ),
               const SizedBox(height: 24),
 
               // 주요 기능 카드
