@@ -1,5 +1,5 @@
 # Uncomment this line to define a global platform for your project
-platform :ios, '14.0'
+platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -31,9 +31,16 @@ flutter_ios_podfile_setup
 # use_modular_headers!
 use_frameworks! :linkage => :static
 
+# 의존성 버전 충돌 해결
+def fix_dependencies
+  # 버전을 지정하지 않고 의존성 관리자가 결정하도록 함
+  # pod 'GTMSessionFetcher/Core'
+end
+
 target 'Runner' do
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   pod 'GoogleMaps'
+  fix_dependencies
   target 'RunnerTests' do
     inherit! :search_paths
   end
@@ -54,7 +61,7 @@ post_install do |installer|
       config.build_settings['SWIFT_VERSION'] = '5.0'
       
       # 호환성 설정
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
     end
   end
   

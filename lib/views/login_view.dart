@@ -208,24 +208,52 @@ class LoginView extends StatelessWidget {
 
                           // 소셜 로그인 버튼들
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
-                              _buildSocialButton(
-                                context,
-                                icon: Icons.g_mobiledata_rounded,
-                                color: Colors.red,
-                              ),
-                              const SizedBox(width: 24),
+                              _buildGoogleButton(context, controller),
                               _buildSocialButton(
                                 context,
                                 icon: Icons.apple,
                                 color: Colors.black,
+                                text: '애플',
+                                onTap: () async {
+                                  if (await controller.loginWithApple()) {
+                                    Get.snackbar(
+                                      '성공',
+                                      '애플 로그인 성공!',
+                                      snackPosition: SnackPosition.BOTTOM,
+                                    );
+                                    Get.offAllNamed('/home');
+                                  } else if (controller.error != null) {
+                                    Get.snackbar(
+                                      '오류',
+                                      controller.error!,
+                                      snackPosition: SnackPosition.BOTTOM,
+                                    );
+                                  }
+                                },
                               ),
-                              const SizedBox(width: 24),
                               _buildSocialButton(
                                 context,
-                                icon: Icons.facebook,
-                                color: Colors.blue.shade800,
+                                icon: Icons.chat_outlined,
+                                color: const Color(0xFFFEE500),
+                                text: '카카오',
+                                onTap: () async {
+                                  if (await controller.loginWithKakao()) {
+                                    Get.snackbar(
+                                      '성공',
+                                      '카카오 로그인 성공!',
+                                      snackPosition: SnackPosition.BOTTOM,
+                                    );
+                                    Get.offAllNamed('/home');
+                                  } else if (controller.error != null) {
+                                    Get.snackbar(
+                                      '오류',
+                                      controller.error!,
+                                      snackPosition: SnackPosition.BOTTOM,
+                                    );
+                                  }
+                                },
                               ),
                             ],
                           ),
@@ -276,13 +304,92 @@ class LoginView extends StatelessWidget {
   }
 
   Widget _buildSocialButton(BuildContext context,
-      {required IconData icon, required Color color}) {
+      {required IconData icon,
+      required Color color,
+      String? text,
+      VoidCallback? onTap}) {
+    final bool isKakao = color == const Color(0xFFFEE500);
+    final bool isGoogle = color == const Color(0xFF4285F4);
+    final bool isApple = color == Colors.black;
+
     return InkWell(
-      onTap: () {},
+      onTap: onTap ?? () {},
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        width: 54,
-        height: 54,
+        width: 100,
+        height: 48,
+        decoration: BoxDecoration(
+          color: isKakao
+              ? color
+              : isApple
+                  ? Colors.black
+                  : isGoogle
+                      ? Colors.white
+                      : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.shade200,
+              blurRadius: 10,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              color: isKakao
+                  ? Colors.brown.shade800
+                  : isApple
+                      ? Colors.white
+                      : color,
+              size: 22,
+            ),
+            if (text != null) ...[
+              const SizedBox(width: 8),
+              Text(
+                text,
+                style: TextStyle(
+                  color: isKakao
+                      ? Colors.brown.shade800
+                      : isApple
+                          ? Colors.white
+                          : Colors.black87,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGoogleButton(BuildContext context, LoginViewModel controller) {
+    return InkWell(
+      onTap: () async {
+        if (await controller.loginWithGoogle()) {
+          Get.snackbar(
+            '성공',
+            '구글 로그인 성공!',
+            snackPosition: SnackPosition.BOTTOM,
+          );
+          Get.offAllNamed('/home');
+        } else if (controller.error != null) {
+          Get.snackbar(
+            '오류',
+            controller.error!,
+            snackPosition: SnackPosition.BOTTOM,
+          );
+        }
+      },
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: 100,
+        height: 48,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -294,10 +401,71 @@ class LoginView extends StatelessWidget {
             ),
           ],
         ),
-        child: Icon(
-          icon,
-          color: color,
-          size: 28,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Center(
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // 흰색 원형 배경
+                    Container(
+                      width: 22,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.grey.shade200,
+                            blurRadius: 2,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                    ),
+                    // 구글의 "G" 문자
+                    Text(
+                      'G',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        foreground: Paint()
+                          ..shader = LinearGradient(
+                            colors: const [
+                              Color(0xFF4285F4), // Google Blue
+                              Color(0xFFDB4437), // Google Red
+                              Color(0xFFF4B400), // Google Yellow
+                              Color(0xFF0F9D58), // Google Green
+                            ],
+                            // 그라데이션 방향 조정 - 실제 구글 로고 색상 흐름과 비슷하게
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            stops: const [0.0, 0.33, 0.67, 1.0],
+                          ).createShader(const Rect.fromLTWH(0, 0, 24, 24)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              '구글',
+              style: TextStyle(
+                color: Colors.black87,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ],
         ),
       ),
     );

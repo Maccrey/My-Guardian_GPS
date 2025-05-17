@@ -22,6 +22,19 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- Google 로그인을 위한 URL 스키마 설정 -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<!-- 이 값은 GoogleService-Info.plist 파일의 REVERSED_CLIENT_ID 값과 일치해야 합니다 -->
+				<string>com.googleusercontent.apps.1071355933777-m1i508qebs4no0fm10on2et5q61mbjig</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
@@ -50,6 +63,8 @@
 	<array>
 		<string>tel</string>
 		<string>sms</string>
+		<string>https</string>
+		<string>http</string>
 	</array>
 	<!-- 위치 권한 설명 -->
 	<key>NSLocationWhenInUseUsageDescription</key>

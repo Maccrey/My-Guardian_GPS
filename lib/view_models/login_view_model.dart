@@ -60,6 +60,25 @@ class LoginViewModel extends GetxController {
     return await _authService.login(email, password);
   }
 
+  // 구글 로그인 처리
+  Future<bool> loginWithGoogle() async {
+    return await _authService.signInWithGoogle();
+  }
+
+  // 애플 로그인 처리
+  Future<bool> loginWithApple() async {
+    // 향후 애플 로그인 구현 시 추가
+    _authService.setError('애플 로그인은 아직 지원되지 않습니다');
+    return false;
+  }
+
+  // 카카오 로그인 처리
+  Future<bool> loginWithKakao() async {
+    // 향후 카카오 로그인 구현 시 추가
+    _authService.setError('카카오 로그인은 아직 지원되지 않습니다');
+    return false;
+  }
+
   // 리소스 해제
   @override
   void onClose() {

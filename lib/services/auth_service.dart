@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../models/user_model.dart';
 
 class AuthService extends GetxController {
@@ -611,5 +612,118 @@ class AuthService extends GetxController {
       {'name': '잠비아', 'code': 'ZM'},
       {'name': '짐바브웨', 'code': 'ZW'},
     ];
+  }
+
+  // 구글 로그인 메서드
+  Future<bool> signInWithGoogle() async {
+    setLoading(true);
+    setError(null);
+
+    try {
+      if (_useMockAuth) {
+        // Mock 환경에서는 지연만 시뮬레이션
+        await Future.delayed(const Duration(seconds: 2));
+
+        // 테스트용 Mock Google 계정 설정
+        final mockGoogleUser = UserModel(
+          uid: 'google-mock-${DateTime.now().millisecondsSinceEpoch}',
+          email: 'google-user@example.com',
+          nickname: 'Google 사용자',
+        );
+
+        _currentUser.value = mockGoogleUser;
+        _isAuthenticated.value = true;
+
+        debugPrint('✅ Mock Google 로그인 성공');
+        setLoading(false);
+        return true;
+      } else {
+        // 실제 Google 로그인 처리
+        debugPrint('✅ Google 로그인 시작...');
+
+        // 기존 구글 인증 계정이 있으면 로그아웃
+        final GoogleSignIn googleSignIn = GoogleSignIn();
+
+        try {
+          if (await googleSignIn.isSignedIn()) {
+            await googleSignIn.signOut();
+            debugPrint('✅ 기존 Google 계정 로그아웃 완료');
+          }
+        } catch (e) {
+          debugPrint('⚠️ Google 로그아웃 오류 (무시됨): $e');
+        }
+
+        // 새로운 로그인 시도
+        final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+
+        debugPrint('✅ Google 로그인 계정 선택 완료: ${googleUser?.email}');
+
+        if (googleUser == null) {
+          // 사용자가 로그인을 취소한 경우
+          debugPrint('❌ Google 로그인 취소됨');
+          setError('Google 로그인이 취소되었습니다');
+          setLoading(false);
+          return false;
+        }
+
+        // Google 계정의 인증 정보 얻기
+        debugPrint('✅ Google 인증 정보 요청 중...');
+        final GoogleSignInAuthentication googleAuth =
+            await googleUser.authentication;
+        debugPrint('✅ Google 인증 정보 획득 완료');
+
+        final OAuthCredential credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+
+        debugPrint('✅ Firebase 인증 시작...');
+
+        // Firebase로 로그인
+        final userCredential = await _auth.signInWithCredential(credential);
+        final User? user = userCredential.user;
+
+        if (user == null) {
+          setError('Google 계정으로 로그인에 실패했습니다');
+          setLoading(false);
+          return false;
+        }
+
+        // Firestore에서 사용자 정보 확인 및 저장
+        final docSnapshot =
+            await _firestore.collection('users').doc(user.uid).get();
+
+        if (!docSnapshot.exists) {
+          // 신규 사용자인 경우 Firestore에 정보 저장
+          final newUser = UserModel(
+            uid: user.uid,
+            email: user.email,
+            nickname: user.displayName ?? '사용자',
+          );
+
+          await _saveUserData(user.uid, newUser);
+          _currentUser.value = newUser;
+        } else {
+          // 기존 사용자 정보 로드
+          await _fetchUserData(user.uid);
+        }
+
+        debugPrint('✅ Google 로그인 성공: ${user.uid}');
+        setLoading(false);
+        return true;
+      }
+    } catch (e) {
+      String errorMessage = 'Google 로그인 중 오류가 발생했습니다';
+
+      if (e is FirebaseAuthException) {
+        // Firebase 관련 오류 처리
+        errorMessage = 'Google 로그인 오류: ${e.code}';
+      }
+
+      setError(errorMessage);
+      debugPrint('❌ Google 로그인 오류: $e');
+      setLoading(false);
+      return false;
+    }
   }
 }

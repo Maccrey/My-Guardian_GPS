@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:label="gps_seach"
         android:name="${applicationName}"
@@ -59,5 +60,11 @@
             <action android:name="android.intent.action.DIAL" />
             <data android:scheme="tel" />
         </intent>
+        <!-- 구글 로그인을 위한 설정 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="com.example.gps_seach" />
+        </intent>
+        <package android:name="com.google.android.gms" />
     </queries>
 </manifest>
