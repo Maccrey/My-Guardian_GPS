@@ -808,12 +808,12 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       body: Container(
         decoration: BoxDecoration(
           // 채팅 배경 패턴 추가
-          color: Colors.grey.shade100,
+          color: Colors.blue.shade50,
           image: DecorationImage(
             image: const NetworkImage(
               'https://i.pinimg.com/originals/97/c0/07/97c00759d90d786d9b6096d274ad3e07.png',
             ),
-            opacity: 0.1,
+            opacity: 0.07,
             repeat: ImageRepeat.repeat,
           ),
         ),
