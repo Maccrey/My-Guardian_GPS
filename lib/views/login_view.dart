@@ -131,8 +131,24 @@ class LoginView extends StatelessWidget {
                                           borderRadius:
                                               BorderRadius.circular(4),
                                         ),
-                                        onChanged: (value) =>
-                                            controller.toggleRememberMe(),
+                                        onChanged: (value) {
+                                          controller.toggleRememberMe();
+                                          // 체크박스 상태가 변경될 때마다 알림 표시
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                controller.rememberMe.value
+                                                    ? '로그인 정보를 저장합니다.'
+                                                    : '로그인 정보를 저장하지 않습니다.',
+                                              ),
+                                              duration:
+                                                  const Duration(seconds: 1),
+                                              behavior:
+                                                  SnackBarBehavior.floating,
+                                            ),
+                                          );
+                                        },
                                       ),
                                       const Text('로그인 정보 저장'),
                                     ],
@@ -158,6 +174,11 @@ class LoginView extends StatelessWidget {
                                             '로그인 성공!',
                                             snackPosition: SnackPosition.BOTTOM,
                                           );
+
+                                          // 로그인 정보 저장 상태 로그
+                                          debugPrint(
+                                              '✅ 로그인 성공: 로그인 정보 저장=${controller.rememberMe.value}');
+
                                           Get.offAllNamed('/home');
                                         } else if (controller.error != null) {
                                           Get.snackbar(
@@ -165,6 +186,10 @@ class LoginView extends StatelessWidget {
                                             controller.error!,
                                             snackPosition: SnackPosition.BOTTOM,
                                           );
+
+                                          // 로그인 실패 로그
+                                          debugPrint(
+                                              '❌ 로그인 실패: ${controller.error}');
                                         }
                                       },
                                 style: ElevatedButton.styleFrom(
