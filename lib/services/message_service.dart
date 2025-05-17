@@ -765,7 +765,50 @@ class MessageService extends GetxController {
     }
   }
 
-  // 사용자 검색 - 실제 Firebase 사용자 검색 기능 추가
+  // 사용자 ID로 Firebase에서 사용자 정보 조회
+  Future<UserModel?> findUserById(String userId) async {
+    if (userId.isEmpty) {
+      return null;
+    }
+
+    debugPrint('🔍 ID로 사용자 검색 시도: $userId');
+
+    try {
+      // 기존 검색 결과에서 먼저 확인
+      final cachedUser =
+          searchResults.firstWhereOrNull((user) => user.uid == userId);
+      if (cachedUser != null) {
+        debugPrint(
+            '✅ 캐시에서 사용자 찾음: ${cachedUser.nickname ?? cachedUser.email ?? userId}');
+        return cachedUser;
+      }
+
+      // Firestore에서 사용자 정보 조회
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+
+      if (userDoc.exists && userDoc.data() != null) {
+        final userData = userDoc.data() as Map<String, dynamic>;
+        final user = UserModel.fromJson({...userData, 'uid': userId});
+
+        // 검색 결과 캐시에 추가
+        if (!searchResults.any((u) => u.uid == user.uid)) {
+          searchResults.add(user);
+        }
+
+        debugPrint(
+            '✅ Firestore에서 사용자 찾음: ${user.nickname ?? user.email ?? userId}');
+        return user;
+      } else {
+        debugPrint('⚠️ Firestore에서 사용자를 찾을 수 없음: $userId');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('⚠️ 사용자 정보 조회 오류: $e');
+      return null;
+    }
+  }
+
+  // 사용자 검색 - 실제 Firebase 사용자 검색 기능 개선
   Future<List<UserModel>> searchUsers(String query) async {
     if (query.length < 2) {
       searchResults.clear();
@@ -795,44 +838,24 @@ class MessageService extends GetxController {
             .get();
 
         debugPrint('🔍 사용자 검색: $query (이메일 또는 닉네임으로 필터링 예정)');
-
         debugPrint('✅ Firebase 검색 결과: ${userSnapshot.docs.length}명');
 
-        // 사용자 데이터 변환
-        if (userSnapshot.docs.isNotEmpty) {
-          final lowercaseQuery = query.toLowerCase();
+        // 사용자 데이터 변환 및 필터링
+        for (var doc in userSnapshot.docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          // 닉네임이나 이메일에 검색어가 포함되어 있는지 확인
+          final String nickname =
+              (data['nickname'] as String?)?.toLowerCase() ?? '';
+          final String email = (data['email'] as String?)?.toLowerCase() ?? '';
 
-          for (var doc in userSnapshot.docs) {
-            final userData = doc.data() as Map<String, dynamic>;
-
-            // 항상 닉네임과 이메일 모두 검색
-            final nickname = userData['nickname'] as String?;
-            final email = userData['email'] as String?;
-
-            bool matchesNickname = nickname != null &&
-                nickname.toLowerCase().contains(lowercaseQuery);
-            bool matchesEmail =
-                email != null && email.toLowerCase().contains(lowercaseQuery);
-
-            if (matchesNickname || matchesEmail) {
-              foundUsers.add(UserModel.fromJson({
-                'uid': doc.id,
-                ...userData,
-              }));
-
-              if (matchesNickname) {
-                debugPrint(
-                    '👤 닉네임 매칭: "$query" -> ${nickname ?? ''} (${email ?? ''})');
-              }
-
-              if (matchesEmail) {
-                debugPrint(
-                    '👤 이메일 매칭: "$query" -> ${email ?? ''} (${nickname ?? ''})');
-              }
-            }
+          if (nickname.contains(lowercaseQuery) ||
+              email.contains(lowercaseQuery)) {
+            // ID가 문서 ID와 일치하는지 확인
+            final userId = doc.id;
+            final UserModel user = UserModel.fromJson({...data, 'uid': userId});
+            foundUsers.add(user);
+            debugPrint('👤 사용자 찾음: ${user.nickname ?? user.email ?? userId}');
           }
-
-          debugPrint('✅ 닉네임/이메일 필터링 후 검색 결과: ${foundUsers.length}명');
         }
       } catch (e) {
         debugPrint('⚠️ Firebase 사용자 검색 오류: $e');

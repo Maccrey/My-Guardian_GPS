@@ -367,7 +367,7 @@ class _MessageDetailViewState extends State<MessageDetailView> {
     }
   }
 
-  // 상대방 이름 가져오기 (닉네임 우선 표시로 개선된 버전)
+  // 상대방 이름 가져오기 (Firebase에서 실제 정보를 가져오도록 개선)
   String _getRecipientName(String userId) {
     // 자신인 경우 즉시 '나'로 반환
     if (userId == _authService.uid) {
@@ -383,9 +383,8 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       return '알 수 없음';
     }
 
-    // Firebase user 검색에서 찾기
+    // 1. 메시지 서비스의 검색 결과에서 사용자 먼저 찾기
     try {
-      // 1. 메시지 서비스의 검색 결과에서 사용자 먼저 찾기
       final foundUsers = _messageService.searchResults
           .where((user) => user.uid == userId)
           .toList();
@@ -404,37 +403,22 @@ class _MessageDetailViewState extends State<MessageDetailView> {
         }
       }
 
-      // 2. 검색 결과에 없는 경우는 로컬 캐시에서 사용자 정보 사용
-      // MessageService에 findUserById 메서드가 없으므로 searchUsers로 대체
-      if (userId.isNotEmpty) {
-        // 검색 쿼리를 통해 사용자 정보 가져오기 시도
-        _messageService.searchUsers(
-            userId.replaceAll("real-", "").replaceAll("fixed-", ""));
+      // 2. 검색 결과에 없는 경우는 Firebase에서 조회 시도
+      if (mounted) {
+        // findUserById를 호출하여 Firebase에서 사용자 정보 조회
+        _messageService.findUserById(userId).then((user) {
+          if (user != null && mounted) {
+            // 상태 업데이트가 필요하므로 setState 호출
+            setState(() {});
+          }
+        });
       }
     } catch (e) {
       debugPrint('⚠️ 사용자 정보 검색 처리 중 오류: $e');
     }
 
-    // 고정 테스트 사용자 맵핑 (특정 UID에 대한 이름 하드코딩)
-    final Map<String, String> hardcodedNames = {
-      'maccrey': '매크레이',
-      'real-maccrey': '매크레이',
-      'real-john': '존',
-      'real-amy': '에이미',
-      'fixed-user-1': '사용자1',
-      'fixed-user-2': '사용자2',
-      'fixed-user-3': '홍길동',
-      'fixed-user-4': '김영자',
-      'fixed-user-5': '박지수',
-      'fixed-user-6': '이철수',
-    };
-
-    // 하드코딩된 이름 맵에서 찾기
-    if (hardcodedNames.containsKey(userId)) {
-      return hardcodedNames[userId]!;
-    }
-
     // ID 접두어 처리하여 사람이 읽기 쉬운 형식으로 변환
+    // 임시 표시 (Firebase에서 정보를 가져오는 동안 사용)
 
     // fixed- 접두사 제거
     if (userId.startsWith('fixed-')) {
@@ -1508,7 +1492,7 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                   ),
                 ),
 
-              // 실제 메시지 컨테이너
+              // 실제 메시지 컨텐츠 컨테이너
               Container(
                 padding: message.messageType == 'location_share'
                     ? EdgeInsets.zero // 위치 공유는 자체 패딩 있음
