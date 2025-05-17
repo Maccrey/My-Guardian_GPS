@@ -741,77 +741,102 @@ class _MessagesListViewState extends State<MessagesListView> {
             titlePadding: const EdgeInsets.fromLTRB(24, 16, 8, 0),
             contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
             content: Container(
-              width: double.maxFinite,
+              width: MediaQuery.of(context).size.width * 0.9, // 화면 너비의 90%로 고정
+              height: 500, // 고정 높이 설정 (적당한 크기)
               constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.6,
+                maxHeight: MediaQuery.of(context).size.height * 0.7, // 최대 높이 제한
+                maxWidth: 400, // 최대 너비 제한
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(
-                    controller: searchController,
-                    autofocus: true,
-                    decoration: InputDecoration(
-                      hintText: '이메일 또는 닉네임 검색',
-                      hintStyle: TextStyle(
-                        color: Colors.grey.shade400,
-                        fontSize: 15,
+                  // 검색 입력 필드
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: TextField(
+                      controller: searchController,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: '이메일 또는 닉네임 검색',
+                        hintStyle: TextStyle(
+                          color: Colors.grey.shade400,
+                          fontSize: 15,
+                        ),
+                        prefixIcon: Icon(
+                          Icons.search,
+                          color: Colors.blue.shade600,
+                        ),
+                        suffixIcon: searchController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                color: Colors.grey.shade600,
+                                onPressed: () {
+                                  searchController.clear();
+                                  _messageService.searchResults.clear();
+                                  setState(() {});
+                                },
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: Colors.grey.shade100,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                          horizontal: 16,
+                        ),
                       ),
-                      prefixIcon: Icon(
-                        Icons.search,
-                        color: Colors.blue.shade600,
-                      ),
-                      suffixIcon: searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear),
-                              color: Colors.grey.shade600,
-                              onPressed: () {
-                                searchController.clear();
-                                _messageService.searchResults.clear();
-                                setState(() {});
-                              },
-                            )
-                          : null,
-                      filled: true,
-                      fillColor: Colors.grey.shade100,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        vertical: 12,
-                        horizontal: 16,
-                      ),
-                    ),
-                    onChanged: (value) {
-                      setState(() {}); // 지우기 버튼 상태 업데이트
+                      onChanged: (value) {
+                        setState(() {}); // 지우기 버튼 상태 업데이트
 
-                      if (value.length >= 2) {
-                        // 검색 실행
-                        _messageService.searchUsers(value);
-                      } else if (value.isEmpty) {
-                        // 검색 결과 초기화
-                        _messageService.searchResults.clear();
-                        setState(() {});
-                      }
-                    },
+                        if (value.length >= 2) {
+                          // 검색 실행
+                          _messageService.searchUsers(value);
+                        } else if (value.isEmpty) {
+                          // 검색 결과 초기화
+                          _messageService.searchResults.clear();
+                          setState(() {});
+                        }
+                      },
+                    ),
                   ),
-                  const SizedBox(height: 16),
-                  Flexible(
+                  // 구분선 추가
+                  Divider(height: 1, color: Colors.grey.shade300),
+                  const SizedBox(height: 8),
+                  // 결과 목록 (스크롤 가능)
+                  Expanded(
                     child: Obx(() {
                       if (_messageService.isSearching.value) {
-                        return Center(
+                        return Container(
+                          padding: const EdgeInsets.symmetric(vertical: 40),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              CircularProgressIndicator(
-                                color: Colors.blue.shade600,
+                              SizedBox(
+                                width: 40,
+                                height: 40,
+                                child: CircularProgressIndicator(
+                                  color: Colors.blue.shade600,
+                                  strokeWidth: 3,
+                                ),
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 20),
                               Text(
                                 '검색 중...',
                                 style: TextStyle(
                                   color: Colors.grey.shade700,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '사용자 정보를 찾고 있습니다',
+                                style: TextStyle(
+                                  color: Colors.grey.shade500,
+                                  fontSize: 14,
                                 ),
                               ),
                             ],
@@ -821,54 +846,84 @@ class _MessagesListViewState extends State<MessagesListView> {
 
                       final results = _messageService.searchResults;
                       if (results.isEmpty) {
-                        if (searchController.text.length >= 2) {
-                          return Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.search_off,
-                                size: 64,
-                                color: Colors.grey.shade300,
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                '\'${searchController.text}\'에 대한\n검색 결과가 없습니다.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.grey.shade600,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ],
-                          );
-                        } else {
-                          return Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.search,
-                                size: 64,
-                                color: Colors.blue.shade200,
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                '이메일이나 닉네임을 입력하여\n대화 상대를 검색해보세요.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.grey.shade600,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ],
-                          );
-                        }
+                        // 결과가 없을 때 스크롤 가능한 상태 유지
+                        return SingleChildScrollView(
+                          controller: scrollController,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 40),
+                            child: searchController.text.length >= 2
+                                ? Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.search_off,
+                                        size: 60,
+                                        color: Colors.grey.shade300,
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        '\'${searchController.text}\'에 대한\n검색 결과가 없습니다.',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: Colors.grey.shade600,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        '다른 검색어로 시도해보세요',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: Colors.grey.shade500,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.search,
+                                        size: 60,
+                                        color: Colors.blue.shade200,
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        '이메일이나 닉네임을 입력하여\n대화 상대를 검색해보세요.',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: Colors.grey.shade600,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        '최소 2글자 이상 입력하세요',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: Colors.grey.shade500,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                          ),
+                        );
                       }
 
                       return Scrollbar(
                         controller: scrollController,
+                        thickness: 6, // 스크롤바 두께
+                        radius: const Radius.circular(10), // 스크롤바 모서리 둥글게
+                        thumbVisibility: true, // 스크롤바 항상 표시
                         child: ListView.separated(
                           controller: scrollController,
-                          shrinkWrap: true,
+                          shrinkWrap: false, // 스크롤 가능하도록 설정
+                          physics:
+                              const AlwaysScrollableScrollPhysics(), // 항상 스크롤 가능
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 8, horizontal: 4),
                           separatorBuilder: (context, index) => Divider(
                             height: 1,
                             color: Colors.grey.shade200,
