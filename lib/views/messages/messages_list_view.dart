@@ -130,93 +130,119 @@ class _MessagesListViewState extends State<MessagesListView> {
     }
   }
 
-  // 상대방 이름 가져오기 (개선된 버전)
+  // 상대방 이름 가져오기 (닉네임 우선 표시로 개선된 버전)
   String _getRecipientName(String userId) {
-    // Firebase auth 사용자 ID인 경우 (이메일 기반으로 개선된 표시)
-    if (userId.isNotEmpty && userId != _authService.uid) {
-      // 메시지 서비스에서 사용자 정보 찾기 시도
-      try {
-        // 검색 결과에서 사용자 찾기
-        final foundUsers = _messageService.searchResults
-            .where((user) => user.uid == userId)
-            .toList();
-
-        if (foundUsers.isNotEmpty) {
-          // 닉네임이 있으면 닉네임 반환, 없으면 이메일 앞부분 사용
-          final user = foundUsers.first;
-          if (user.nickname != null && user.nickname!.isNotEmpty) {
-            debugPrint('👤 닉네임으로 사용자 표시: ${user.nickname} (ID: ${user.uid})');
-            return user.nickname!;
-          } else if (user.email != null && user.email!.isNotEmpty) {
-            // 이메일 앞부분만 추출 (@ 앞부분)
-            final username = user.email!.split('@')[0];
-            debugPrint('👤 이메일로 사용자 표시: $username (전체: ${user.email})');
-            return username;
-          }
-        }
-
-        // 사용자 검색에서 찾지 못한 경우 데이터베이스에서 찾기 시도
-        try {
-          debugPrint('🔍 ID로 사용자 검색 시도: $userId');
-          // 여기에 추가적인 사용자 데이터 검색 로직 추가 가능
-        } catch (e) {
-          debugPrint('⚠️ 사용자 ID 검색 오류: $e');
-        }
-      } catch (e) {
-        debugPrint('⚠️ 사용자 정보 검색 오류: $e');
-      }
-
-      // FirebaseAuth 현재 사용자와 비교
-      if (_authService.currentUser?.email != null) {
-        final currentEmail = _authService.currentUser!.email!;
-        if (currentEmail.contains(userId) || userId.contains(currentEmail)) {
-          return '나';
-        }
-      }
-
-      // fixed- 접두사 제거하고 보기 좋게 표시
-      if (userId.startsWith('fixed-')) {
-        final cleanId = userId.replaceAll('fixed-', '');
-        // user- 접두사도 제거
-        final finalId = cleanId.replaceAll('user-', '');
-
-        // 숫자로만 구성된 ID인 경우 '사용자'와 함께 표시
-        if (finalId.contains(RegExp(r'^[0-9]+$'))) {
-          return '사용자 $finalId';
-        }
-
-        // 이메일 형식인지 확인
-        if (finalId.contains('@')) {
-          // 이메일 형식이면 @ 앞부분만 표시
-          return finalId.split('@')[0];
-        }
-
-        // 그 외의 경우 그대로 표시
-        return finalId.capitalize ?? finalId;
-      }
-
-      // real- 접두사 제거
-      if (userId.startsWith('real-')) {
-        final cleanId = userId.replaceAll('real-', '');
-        return cleanId.capitalize ?? cleanId;
-      }
-    }
-
-    // 특수 케이스 처리
-    if (userId == 'admin') {
-      return '관리자';
-    } else if (userId == _authService.uid) {
+    // 자신인 경우 즉시 '나'로 반환
+    if (userId == _authService.uid) {
       return '나';
     }
 
-    // ID에서 직접 이름 추출 시도
-    if (userId.contains('@')) {
+    // 특수 케이스 빠른 처리
+    if (userId == 'admin') {
+      return '관리자';
+    }
+
+    if (userId.isEmpty) {
+      return '알 수 없음';
+    }
+
+    // Firebase user 검색에서 찾기
+    try {
+      // 1. 메시지 서비스의 검색 결과에서 사용자 먼저 찾기
+      final foundUsers = _messageService.searchResults
+          .where((user) => user.uid == userId)
+          .toList();
+
+      if (foundUsers.isNotEmpty) {
+        final user = foundUsers.first;
+
+        // 닉네임 우선 사용
+        if (user.nickname != null && user.nickname!.isNotEmpty) {
+          return user.nickname!;
+        }
+
+        // 이메일이 있으면 사용자 이름 부분 추출
+        if (user.email != null && user.email!.isNotEmpty) {
+          return user.email!.split('@')[0];
+        }
+      }
+
+      // 2. 검색 결과에 없는 경우는 검색 시도
+      if (userId.isNotEmpty) {
+        // 검색 쿼리를 통해 사용자 정보 가져오기 시도
+        _messageService.searchUsers(
+            userId.replaceAll("real-", "").replaceAll("fixed-", ""));
+      }
+    } catch (e) {
+      debugPrint('⚠️ 사용자 정보 검색 처리 중 오류: $e');
+    }
+
+    // 고정 테스트 사용자 맵핑 (특정 UID에 대한 이름 하드코딩)
+    final Map<String, String> hardcodedNames = {
+      'maccrey': '매크레이',
+      'real-maccrey': '매크레이',
+      'real-john': '존',
+      'real-amy': '에이미',
+      'fixed-user-1': '사용자1',
+      'fixed-user-2': '사용자2',
+      'fixed-user-3': '홍길동',
+      'fixed-user-4': '김영자',
+      'fixed-user-5': '박지수',
+      'fixed-user-6': '이철수',
+    };
+
+    // 하드코딩된 이름 맵에서 찾기
+    if (hardcodedNames.containsKey(userId)) {
+      return hardcodedNames[userId]!;
+    }
+
+    // ID 접두어 처리하여 사람이 읽기 쉬운 형식으로 변환
+
+    // fixed- 접두사 제거
+    if (userId.startsWith('fixed-')) {
+      final cleanId = userId.replaceAll('fixed-', '');
+      // user- 접두사도 제거
+      final finalId = cleanId.replaceAll('user-', '');
+
+      // 숫자로만 구성된 ID인 경우 '사용자'와 함께 표시
+      if (finalId.contains(RegExp(r'^[0-9]+$'))) {
+        return '사용자 $finalId';
+      }
+
       // 이메일 형식이면 @ 앞부분만 표시
+      if (finalId.contains('@')) {
+        return finalId.split('@')[0];
+      }
+
+      // 그 외의 경우 첫 글자 대문자로 변환
+      return finalId.capitalize ?? finalId;
+    }
+
+    // real- 접두사 제거
+    if (userId.startsWith('real-')) {
+      final cleanId = userId.replaceAll('real-', '');
+      if (cleanId.contains('@')) {
+        return cleanId.split('@')[0];
+      }
+      return cleanId.capitalize ?? cleanId;
+    }
+
+    // test- 접두사 제거
+    if (userId.startsWith('test-')) {
+      final cleanId = userId.replaceAll('test-', '');
+      return '테스트 $cleanId';
+    }
+
+    // 이메일 형식이면 @ 앞부분만 표시
+    if (userId.contains('@')) {
       return userId.split('@')[0];
     }
 
-    // 마지막 대안: ID 자체를 반환하되 가능하면 정리
-    return userId.replaceAll(RegExp(r'[0-9-_]+$'), '').capitalize ?? userId;
+    // 마지막 대안: ID에서 불필요한 숫자나 기호 제거 후 보기 좋게 변환
+    final cleanUserId = userId.replaceAll(RegExp(r'[0-9-_]+$'), '');
+    return cleanUserId.isNotEmpty
+        ? (cleanUserId.capitalize ?? cleanUserId)
+        : userId;
   }
 
   // 메시지 미리보기 텍스트 만들기

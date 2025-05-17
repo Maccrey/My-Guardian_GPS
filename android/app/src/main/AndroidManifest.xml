@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.maccrey.watch_over">
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -6,7 +7,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.INTERNET" />
     <application
-        android:label="gps_seach"
+        android:label="Watch Over"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -63,7 +64,7 @@
         <!-- 구글 로그인을 위한 설정 -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="com.example.gps_seach" />
+            <data android:scheme="com.maccrey.watch_over" />
         </intent>
         <package android:name="com.google.android.gms" />
     </queries>
