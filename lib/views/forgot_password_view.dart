@@ -9,8 +9,8 @@ class ForgotPasswordView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // GetX 컨트롤러 초기화
-    final controller =
-        Get.put(ForgotPasswordViewModel(Get.find<AuthService>()));
+    Get.lazyPut(() => ForgotPasswordViewModel(Get.find<AuthService>()));
+    final controller = Get.find<ForgotPasswordViewModel>();
 
     return Scaffold(
       backgroundColor: Colors.white,

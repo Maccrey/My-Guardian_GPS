@@ -7,13 +7,20 @@ class ForgotPasswordViewModel extends GetxController {
   final AuthService _authService;
 
   // 컨트롤러
-  final TextEditingController emailController = TextEditingController();
+  late TextEditingController emailController;
 
   // 상태
   final RxBool _resetLinkSent = false.obs;
 
   // 생성자
   ForgotPasswordViewModel(this._authService);
+
+  @override
+  void onInit() {
+    super.onInit();
+    // 컨트롤러 초기화
+    emailController = TextEditingController();
+  }
 
   // Getters
   bool get isLoading => _authService.isLoading;
@@ -35,23 +42,17 @@ class ForgotPasswordViewModel extends GetxController {
       return false;
     }
 
-    // 비밀번호 재설정 요청
-    _authService.setLoading(true);
-    _authService.setError(null);
-
+    // 비밀번호 재설정 요청 - 수정된 부분: 실제 AuthService 메서드 호출
     try {
-      // API 호출을 시뮬레이션
-      await Future.delayed(const Duration(seconds: 2));
+      final result = await _authService.sendPasswordResetEmail(email);
 
-      // 실제 서비스에서는 서버에 비밀번호 재설정 요청을 보냄
-      print('비밀번호 재설정 요청: $email');
+      if (result) {
+        _resetLinkSent.value = true;
+      }
 
-      _resetLinkSent.value = true;
-      _authService.setLoading(false);
-      return true;
+      return result;
     } catch (e) {
       _authService.setError('비밀번호 재설정 링크 전송 중 오류가 발생했습니다: ${e.toString()}');
-      _authService.setLoading(false);
       return false;
     }
   }

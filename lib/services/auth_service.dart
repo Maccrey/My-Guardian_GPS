@@ -368,6 +368,49 @@ class AuthService extends GetxController {
     _error.value = value;
   }
 
+  // 비밀번호 재설정 메서드
+  Future<bool> sendPasswordResetEmail(String email) async {
+    setLoading(true);
+    setError(null);
+
+    try {
+      if (_useMockAuth) {
+        // Mock 환경에서는 지연만 시뮬레이션
+        await Future.delayed(const Duration(seconds: 2));
+        debugPrint('✅ Mock 비밀번호 재설정 이메일 전송 (가상): $email');
+        setLoading(false);
+        return true;
+      } else {
+        // Firebase를 사용하여 실제 비밀번호 재설정 이메일 전송
+        await _auth.sendPasswordResetEmail(email: email);
+        debugPrint('✅ Firebase 비밀번호 재설정 이메일 전송: $email');
+        setLoading(false);
+        return true;
+      }
+    } catch (e) {
+      // 오류 처리
+      String errorMessage = '비밀번호 재설정 이메일 전송 중 오류가 발생했습니다';
+
+      if (e is FirebaseAuthException) {
+        switch (e.code) {
+          case 'user-not-found':
+            errorMessage = '해당 이메일로 등록된 사용자가 없습니다';
+            break;
+          case 'invalid-email':
+            errorMessage = '유효하지 않은 이메일 형식입니다';
+            break;
+          default:
+            errorMessage = '비밀번호 재설정 요청 중 오류가 발생했습니다: ${e.code}';
+        }
+      }
+
+      setError(errorMessage);
+      debugPrint('❌ 비밀번호 재설정 이메일 전송 오류: $e');
+      setLoading(false);
+      return false;
+    }
+  }
+
   // 국가 리스트 제공 메소드
   List<Map<String, dynamic>> getCountries() {
     return [
