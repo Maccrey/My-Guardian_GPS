@@ -14,6 +14,9 @@ import 'package:uuid/uuid.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/url_handler.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 class MessageDetailView extends StatefulWidget {
   final String userId; // 대화 상대 ID
@@ -34,6 +37,7 @@ class _MessageDetailViewState extends State<MessageDetailView> {
 
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ImagePicker _imagePicker = ImagePicker(); // 이미지 피커 추가
 
   // 스캐폴드 키를 저장할 변수 - dispose에서 안전하게 액세스하기 위함
   ScaffoldMessengerState? _scaffoldMessenger;
@@ -699,6 +703,13 @@ class _MessageDetailViewState extends State<MessageDetailView> {
           ],
         ),
         actions: [
+          // 이미지 공유 버튼 추가
+          IconButton(
+            icon: const Icon(Icons.image),
+            color: Colors.purple.shade400,
+            onPressed: _sendImageMessage,
+            tooltip: '이미지 공유',
+          ),
           // 위치 공유 버튼
           IconButton(
             icon: const Icon(Icons.location_on),
@@ -1530,6 +1541,194 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       } else {
         messageContent = const Text('잘못된 위치 데이터');
       }
+    } else if (message.messageType == 'image') {
+      // 이미지 메시지
+      final imageData = _parseImageMessage(message.content);
+
+      if (imageData != null && imageData.containsKey('url')) {
+        messageContent = GestureDetector(
+          onTap: () {
+            // 이미지 전체 화면 보기
+            Get.to(() => Scaffold(
+                  backgroundColor: Colors.black,
+                  appBar: AppBar(
+                    backgroundColor: Colors.black,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    leading: IconButton(
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: () => Get.back(),
+                    ),
+                    actions: [
+                      IconButton(
+                        icon: const Icon(Icons.share),
+                        onPressed: () {
+                          // 이미지 공유 기능 (나중에 구현)
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.download),
+                        onPressed: () {
+                          // 이미지 다운로드 기능 (나중에 구현)
+                        },
+                      ),
+                    ],
+                  ),
+                  body: Center(
+                    child: InteractiveViewer(
+                      minScale: 0.5,
+                      maxScale: 3.0,
+                      child: Image.network(
+                        imageData['url'] as String,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Center(
+                            child: CircularProgressIndicator(
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                  : null,
+                            ),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Center(
+                            child: Icon(
+                              Icons.broken_image,
+                              size: 48,
+                              color: Colors.grey,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ));
+          },
+          child: Container(
+            constraints: const BoxConstraints(
+              maxHeight: 200,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isCurrentUserSender
+                    ? Colors.blue.shade400
+                    : Colors.grey.shade300,
+                width: 1,
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // 이미지 로딩 표시
+                  const SizedBox(
+                    width: 30,
+                    height: 30,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
+                    ),
+                  ),
+
+                  // 이미지 표시
+                  Image.network(
+                    imageData['url'] as String,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Center(
+                        child: SizedBox(
+                          width: 30,
+                          height: 30,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            value: loadingProgress.expectedTotalBytes != null
+                                ? loadingProgress.cumulativeBytesLoaded /
+                                    loadingProgress.expectedTotalBytes!
+                                : null,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                                isCurrentUserSender
+                                    ? Colors.blue.shade200
+                                    : Colors.grey.shade400),
+                          ),
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        width: 150,
+                        height: 100,
+                        color: Colors.grey.shade300,
+                        child: const Center(
+                          child: Icon(
+                            Icons.broken_image,
+                            size: 48,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+
+                  // 이미지 제목 (옵션)
+                  if (imageData.containsKey('caption') &&
+                      imageData['caption'] != null &&
+                      imageData['caption'] != '이미지 공유')
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 4,
+                          horizontal: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [
+                              Colors.black.withOpacity(0.7),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
+                        child: Text(
+                          imageData['caption'] as String,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      } else {
+        messageContent = Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade300,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.broken_image, size: 18),
+              SizedBox(width: 8),
+              Text('이미지를 표시할 수 없습니다'),
+            ],
+          ),
+        );
+      }
     } else {
       // 기타 메시지 타입
       messageContent = Text(
@@ -2191,5 +2390,157 @@ class _MessageDetailViewState extends State<MessageDetailView> {
         ],
       ),
     );
+  }
+
+  // 사진/이미지 공유 기능 추가
+  Future<void> _sendImageMessage() async {
+    // 먼저 mounted 체크
+    if (!mounted) {
+      debugPrint('⚠️ 위젯이 이미 dispose되어 이미지 공유를 중단합니다.');
+      return;
+    }
+
+    try {
+      // 이미지 소스 선택 다이얼로그 표시
+      showModalBottomSheet(
+        context: context,
+        builder: (BuildContext context) {
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                ListTile(
+                  leading: const Icon(Icons.photo_camera),
+                  title: const Text('카메라로 촬영'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _getAndSendImage(ImageSource.camera);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_library),
+                  title: const Text('갤러리에서 선택'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _getAndSendImage(ImageSource.gallery);
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    } catch (e) {
+      debugPrint('⚠️ 이미지 선택 다이얼로그 오류: $e');
+      if (mounted) {
+        _showErrorSnackBar('이미지 공유 중 오류가 발생했습니다');
+      }
+    }
+  }
+
+  // 이미지 선택 및 전송
+  Future<void> _getAndSendImage(ImageSource source) async {
+    if (!mounted) return;
+
+    try {
+      // 로딩 표시
+      Get.dialog(
+        const Center(
+          child: CircularProgressIndicator(),
+        ),
+        barrierDismissible: false,
+      );
+
+      // 로그인되지 않은 경우 테스트 로그인 시도 (개발용)
+      if (_authService.uid == null || _authService.uid!.isEmpty) {
+        debugPrint('⚠️ 로그인되지 않음 - 테스트 계정으로 자동 로그인 시도');
+        await _authService.login('test@example.com', 'Password1!');
+
+        // 로그인 후 mounted 체크
+        if (!mounted) {
+          Get.back(); // 로딩 종료
+          return;
+        }
+      }
+
+      // 이미지 선택
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 70, // 이미지 품질 조정 (최적화)
+      );
+
+      if (pickedFile == null) {
+        // 이미지 선택 취소됨
+        if (Get.isDialogOpen == true) Get.back();
+        return;
+      }
+
+      // 파일 경로 및 이름 설정
+      final String fileName =
+          'chat_image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final File imageFile = File(pickedFile.path);
+
+      // Firebase Storage에 이미지 업로드
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('chat_images')
+          .child(_authService.uid!)
+          .child(fileName);
+
+      final UploadTask uploadTask = storageRef.putFile(imageFile);
+      final TaskSnapshot taskSnapshot = await uploadTask;
+
+      // 업로드된 이미지 URL 가져오기
+      final String imageUrl = await taskSnapshot.ref.getDownloadURL();
+
+      // 이미지 메시지 데이터 생성
+      final imageData = {'type': 'image', 'url': imageUrl, 'caption': '이미지 공유'};
+
+      // 이미지 메시지 전송
+      final success = await _messageService.sendMessage(
+        receiverId: widget.userId,
+        content: jsonEncode(imageData),
+        messageType: 'image',
+      );
+
+      // 로딩 종료
+      if (Get.isDialogOpen == true) Get.back();
+
+      if (success) {
+        // 성공 메시지
+        Get.snackbar(
+          '이미지 공유 성공',
+          '이미지가 전송되었습니다',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green.shade600,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 2),
+        );
+
+        // 스크롤을 맨 아래로 이동
+        _safelyScrollToBottom();
+      } else {
+        // 실패 메시지
+        _showErrorSnackBar('이미지 전송에 실패했습니다');
+      }
+    } catch (e) {
+      // 로딩 종료
+      if (Get.isDialogOpen == true) Get.back();
+
+      debugPrint('⚠️ 이미지 공유 중 오류 발생: $e');
+      if (mounted) {
+        _showErrorSnackBar('이미지 공유 중 오류가 발생했습니다: ${e.toString()}');
+      }
+    }
+  }
+
+  // 이미지 타입 메시지 파싱
+  Map<String, dynamic>? _parseImageMessage(String content) {
+    try {
+      return jsonDecode(content) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('⚠️ 이미지 메시지 파싱 오류: $e');
+      return null;
+    }
   }
 }
