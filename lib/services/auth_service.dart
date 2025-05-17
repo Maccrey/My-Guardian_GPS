@@ -35,14 +35,16 @@ class AuthService extends GetxController {
   final RxBool _isLoading = false.obs;
   final Rx<String?> _error = Rx<String?>(null);
 
-  // Firebase 사용자 ID (임시 구현)
+  // Firebase 사용자 ID와 로그인 상태 관리
   final Rx<String?> _uid = Rx<String?>(null);
+  final RxBool _isGoogleSignInInProgress = false.obs; // 구글 로그인 진행 상태
 
   // Getters
   bool get isAuthenticated => _isAuthenticated.value;
   UserModel? get currentUser => _currentUser.value;
   bool get isLoading => _isLoading.value;
   String? get error => _error.value;
+  bool get isGoogleSignInInProgress => _isGoogleSignInInProgress.value;
 
   // Firebase Auth의 UID 가져오기
   String? get uid =>
@@ -697,27 +699,76 @@ class AuthService extends GetxController {
         try {
           logger.d('GoogleSignIn.signIn() 호출 중...');
 
-          // iOS 플랫폼에 맞는 특별 처리
-          if (defaultTargetPlatform == TargetPlatform.iOS) {
-            logger.d('iOS 플랫폼 감지, 특별 처리 적용 중...');
-            // 기존 로그인 세션 내부적으로 초기화
-            await googleSignIn.disconnect().catchError((e) {
-              logger.d('disconnect 오류 (무시됨): $e');
-            });
+          // 중복 로그인 방지
+          if (_isGoogleSignInInProgress.value) {
+            logger.w('⚠️ 이미 구글 로그인이 진행 중입니다');
+            return false;
+          }
 
-            // iOS 15.0+ 디바이스용 직접 로그인 방식
-            googleUser = await googleSignIn.signInSilently().catchError((e) {
-              logger.d('signInSilently 오류 (예상됨): $e');
-              return null;
-            });
+          _isGoogleSignInInProgress.value = true;
 
-            if (googleUser == null) {
-              // 일반 로그인 시도
+          try {
+            // iOS 플랫폼에 맞는 특별 처리
+            if (defaultTargetPlatform == TargetPlatform.iOS) {
+              logger.d('iOS 플랫폼 감지, 특별 처리 적용 중...');
+
+              // 기존 로그인 세션 정리 시도
+              try {
+                await googleSignIn.signOut().catchError((e) {
+                  logger.d('signOut 오류 (무시됨): $e');
+                });
+                await googleSignIn.disconnect().catchError((e) {
+                  logger.d('disconnect 오류 (무시됨): $e');
+                });
+                logger.d('기존 세션 정리 완료');
+              } catch (e) {
+                logger.d('세션 정리 오류 (무시됨): $e');
+              }
+
+              // 타임아웃 추가
+              logger.d('구글 로그인 시작 (iOS 최적화 방식)');
+
+              // 먼저 무음 로그인 시도 (캐시된 계정)
+              try {
+                googleUser = await googleSignIn.signInSilently().timeout(
+                  const Duration(seconds: 5),
+                  onTimeout: () {
+                    logger.d('signInSilently 타임아웃');
+                    return null;
+                  },
+                ).catchError((e) {
+                  logger.d('signInSilently 오류 (예상됨): $e');
+                  return null;
+                });
+              } catch (e) {
+                logger.d('signInSilently 예외 발생 (무시됨): $e');
+                googleUser = null;
+              }
+
+              // 캐시된 계정이 없으면 UI 표시
+              if (googleUser == null) {
+                logger.d('일반 로그인 시도 중...');
+                try {
+                  googleUser = await googleSignIn.signIn().timeout(
+                    const Duration(seconds: 60),
+                    onTimeout: () {
+                      logger.e('⚠️ 구글 로그인 타임아웃');
+                      throw Exception('구글 로그인 시간이 초과되었습니다');
+                    },
+                  );
+                } catch (e) {
+                  logger.e('signIn 오류: $e');
+                  rethrow; // 다시 던져서 외부 catch 블록에서 처리
+                }
+              }
+            } else {
+              // 일반 로그인 시도 (Android 및 기타 플랫폼)
               googleUser = await googleSignIn.signIn();
             }
-          } else {
-            // 일반 로그인 시도 (Android 및 기타 플랫폼)
-            googleUser = await googleSignIn.signIn();
+          } catch (e) {
+            _isGoogleSignInInProgress.value = false; // 진행 상태 초기화
+            logger.e('구글 로그인 프로세스 오류: $e');
+            rethrow;
           }
 
           logger.i('✅ Google 로그인 계정 선택 완료: ${googleUser?.email}');
@@ -729,14 +780,28 @@ class AuthService extends GetxController {
             logger.e('예외 타입: ${e.runtimeType}');
           }
 
-          // "네트워크 연결이 유실됨" 문제 특별 처리
-          if (e.toString().contains('network') ||
-              e.toString().contains('connection') ||
-              e.toString().contains('safari')) {
-            setError(
-                '구글 로그인 페이지 로드 중 오류가 발생했습니다. 인터넷 연결을 확인하거나 잠시 후 다시 시도해 주세요.');
+          // 로그인 진행 상태 초기화
+          _isGoogleSignInInProgress.value = false;
+
+          // 오류 메시지 최적화
+          if (e.toString().toLowerCase().contains('network') ||
+              e.toString().toLowerCase().contains('connection') ||
+              e.toString().toLowerCase().contains('safari') ||
+              e.toString().toLowerCase().contains('canceled') ||
+              e.toString().toLowerCase().contains('cancelled') ||
+              e.toString().toLowerCase().contains('timed out') ||
+              e.toString().toLowerCase().contains('timeout')) {
+            if (e.toString().toLowerCase().contains('canceled') ||
+                e.toString().toLowerCase().contains('cancelled')) {
+              setError('구글 로그인이 취소되었습니다.');
+            } else if (e.toString().toLowerCase().contains('timed out') ||
+                e.toString().toLowerCase().contains('timeout')) {
+              setError('구글 로그인 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.');
+            } else {
+              setError('인터넷 연결을 확인해 주세요. 구글 로그인 서비스에 연결할 수 없습니다.');
+            }
           } else {
-            setError('Google 로그인 시도 중 오류가 발생했습니다: ${e.toString()}');
+            setError('구글 로그인 중 오류가 발생했습니다: ${e.toString()}');
           }
 
           setLoading(false);
@@ -808,7 +873,8 @@ class AuthService extends GetxController {
           await _fetchUserData(user.uid);
         }
 
-        debugPrint('✅ Google 로그인 성공: ${user.uid}');
+        logger.i('✅ Google 로그인 성공: ${user.uid}');
+        _isGoogleSignInInProgress.value = false; // 진행 상태 초기화
         setLoading(false);
         return true;
       }

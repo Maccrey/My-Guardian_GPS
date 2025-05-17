@@ -4,6 +4,8 @@ platform :ios, '15.0'
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
+# $RNFirebaseAsStaticFramework = true
+
 project 'Runner', {
   'Debug' => :debug,
   'Profile' => :release,
@@ -27,12 +29,21 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 
 flutter_ios_podfile_setup
 
-# 정적 라이브러리 사용
-use_modular_headers!
+# 정적 라이브러리 사용 (모듈맵 문제 해결을 위해 변경)
+# use_modular_headers!
+use_frameworks! :linkage => :static
+
+# 의존성 버전 충돌 해결
+def fix_dependencies
+  # 버전 충돌 문제 해결을 위한 함수
+  # 필요한 경우 특정 버전을 고정
+  # GTMSessionFetcher 버전 충돌 해결
+  # pod 'GTMSessionFetcher/Core'
+end
 
 target 'Runner' do
-  # Firestore 프리컴파일된 바이너리 사용
-  pod 'FirebaseFirestore', :git => 'https://github.com/invertase/firestore-ios-sdk-frameworks.git', :tag => '10.25.0'
+  # 최신 Firebase SDK 사용
+  # pod 'FirebaseFirestore', :git => 'https://github.com/invertase/firestore-ios-sdk-frameworks.git', :tag => '10.25.0'
   
   # Firebase Storage 문제 해결을 위한 설정
   # pod 'FirebaseStorage', :modular_headers => true
@@ -64,34 +75,7 @@ post_install do |installer|
     end
   end
   
-  # gRPC 모듈맵 파일 생성
-  grpc_public_headers = File.join(Dir.pwd, 'Pods', 'Headers', 'Public', 'gRPC-Core')
-  grpc_private_headers = File.join(Dir.pwd, 'Pods', 'Headers', 'Private', 'grpc')
-  
-  FileUtils.mkdir_p(grpc_public_headers)
-  FileUtils.mkdir_p(grpc_private_headers)
-  
-  grpc_public_modulemap = File.join(grpc_public_headers, 'gRPC-Core.modulemap')
-  grpc_private_modulemap = File.join(grpc_private_headers, 'gRPC-Core.modulemap')
-  
-  # GRPC 모듈맵 파일 내용
-  grpc_modulemap_content = <<~MAP
-    module gRPC_Core {
-      umbrella header "grpc.h"
-      export *
-      module * { export * }
-    }
-  MAP
-  
-  # 모듈맵 파일 생성
-  File.open(grpc_public_modulemap, 'w') do |f|
-    f.puts modulemap_content
-  end
-  
-  # 프라이빗 폴더에도 복사
-  File.open(grpc_private_modulemap, 'w') do |f|
-    f.puts modulemap_content
-  end
-  
-  puts "✅ gRPC-Core.modulemap 및 BoringSSL-GRPC.modulemap 수동 생성 완료"
+  # fix_grpc_permanent.sh 스크립트 실행 (추가된 부분)
+  puts "🔄 fix_grpc_permanent.sh 스크립트 실행 중..."
+  system('bash ./fix_grpc_permanent.sh')
 end

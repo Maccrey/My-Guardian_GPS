@@ -6,7 +6,6 @@ class UserModel {
   DateTime? birthDate;
   String? country;
   String? userType;
-  String? uid; // Firebase 사용자 ID
 
   UserModel({
     this.uid,
@@ -16,7 +15,6 @@ class UserModel {
     this.birthDate,
     this.country,
     this.userType,
-    this.uid,
   });
 
   Map<String, dynamic> toJson() {
@@ -28,7 +26,6 @@ class UserModel {
       'birthDate': birthDate?.toIso8601String(),
       'country': country,
       'userType': userType,
-      'uid': uid,
     };
   }
 
@@ -42,7 +39,6 @@ class UserModel {
           json['birthDate'] != null ? DateTime.parse(json['birthDate']) : null,
       country: json['country'],
       userType: json['userType'],
-      uid: json['uid'],
     );
   }
 }

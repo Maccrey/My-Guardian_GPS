@@ -55,7 +55,7 @@ class MessageService extends GetxController {
       await _loadLocalMessages();
 
       // 사용자가 로그인되어 있으면 Firebase에서 메시지 스트림 구독
-      if (_authService.isLoggedIn) {
+      if (_authService.currentUser != null) {
         debugPrint('👤 로그인 상태: ${_authService.uid} - Firestore 구독 시작');
         _subscribeToFirestoreMessages();
       } else {
