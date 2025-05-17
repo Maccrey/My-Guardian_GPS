@@ -1992,6 +1992,7 @@ class _MessageDetailViewState extends State<MessageDetailView> {
           message: displayMessage,
           timestamp: message.timestamp,
           senderName: senderName,
+          fromMessageDetail: true, // 메시지 디테일에서 직접 넘어온 경우
         ),
         transition: Transition.rightToLeft,
         duration: const Duration(milliseconds: 300),
