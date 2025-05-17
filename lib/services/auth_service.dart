@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:logger/logger.dart';
 import '../models/user_model.dart';
+import 'package:flutter/material.dart';
 
 // 로깅을 위한 인스턴스
 final logger = Logger(
@@ -891,5 +892,116 @@ class AuthService extends GetxController {
       setLoading(false);
       return false;
     }
+  }
+
+  // 사용자 활동 상태 업데이트 메소드
+  Future<void> updateUserActivity() async {
+    if (_useMockAuth || uid == null) {
+      return; // Mock 모드이거나 로그인되지 않은 경우 업데이트 필요 없음
+    }
+
+    try {
+      final now = DateTime.now();
+
+      // Firestore에 마지막 활동 시간 업데이트
+      await _firestore.collection('users').doc(uid).update({
+        'lastActive': now.toIso8601String(),
+      });
+
+      // 로컬 사용자 모델 업데이트
+      if (_currentUser.value != null) {
+        _currentUser.value!.lastActive = now;
+      }
+
+      debugPrint('✅ 사용자 활동 상태 업데이트 성공: $uid');
+    } catch (e) {
+      debugPrint('⚠️ 사용자 활동 상태 업데이트 오류: $e');
+    }
+  }
+
+  // 다른 사용자의 마지막 활동 시간 조회
+  Future<DateTime?> getUserLastActive(String userId) async {
+    if (_useMockAuth) {
+      return null; // Mock 모드에서는 null 반환
+    }
+
+    try {
+      final docSnapshot =
+          await _firestore.collection('users').doc(userId).get();
+
+      if (docSnapshot.exists) {
+        final userData = docSnapshot.data() as Map<String, dynamic>;
+        if (userData['lastActive'] != null) {
+          return DateTime.parse(userData['lastActive']);
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ 사용자 마지막 활동 시간 조회 오류: $e');
+      return null;
+    }
+  }
+
+  // 사용자의 온라인 상태 텍스트 반환
+  String getUserOnlineStatusText(DateTime? lastActive) {
+    if (lastActive == null) {
+      return '오프라인';
+    }
+
+    final now = DateTime.now();
+    final difference = now.difference(lastActive);
+
+    // 5분 이내에 활동했으면 온라인으로 간주
+    if (difference.inMinutes < 5) {
+      return '온라인';
+    }
+
+    // 오늘 활동했으면 시간 표시
+    if (lastActive.day == now.day &&
+        lastActive.month == now.month &&
+        lastActive.year == now.year) {
+      return '마지막 활동: ${lastActive.hour.toString().padLeft(2, '0')}:${lastActive.minute.toString().padLeft(2, '0')}';
+    }
+
+    // 어제 활동했으면 "어제" 표시
+    final yesterday = now.subtract(const Duration(days: 1));
+    if (lastActive.day == yesterday.day &&
+        lastActive.month == yesterday.month &&
+        lastActive.year == yesterday.year) {
+      return '마지막 활동: 어제';
+    }
+
+    // 일주일 이내면 요일 표시
+    if (difference.inDays < 7) {
+      final weekday =
+          ['월', '화', '수', '목', '금', '토', '일'][lastActive.weekday - 1];
+      return '마지막 활동: $weekday요일';
+    }
+
+    // 그 외에는 날짜 표시
+    return '마지막 활동: ${lastActive.month}/${lastActive.day}';
+  }
+
+  // 사용자의 온라인 상태 색상 반환
+  Color getUserOnlineStatusColor(DateTime? lastActive) {
+    if (lastActive == null) {
+      return Colors.grey;
+    }
+
+    final now = DateTime.now();
+    final difference = now.difference(lastActive);
+
+    // 5분 이내에 활동했으면 온라인(녹색)으로 간주
+    if (difference.inMinutes < 5) {
+      return Colors.green;
+    }
+
+    // 1시간 이내면 주황색
+    if (difference.inMinutes < 60) {
+      return Colors.orange;
+    }
+
+    // 그 외에는 회색
+    return Colors.grey;
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:async'; // Timer를 위한 import 추가
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -42,6 +43,12 @@ class _MessageDetailViewState extends State<MessageDetailView> {
   // 스캐폴드 키를 저장할 변수 - dispose에서 안전하게 액세스하기 위함
   ScaffoldMessengerState? _scaffoldMessenger;
 
+  // 사용자 온라인 상태 관련 변수
+  Timer? _activityUpdateTimer; // 주기적으로 사용자 활동 업데이트를 위한 타이머
+  Timer? _statusCheckTimer; // 상대방 상태 확인 타이머
+  final RxString _recipientStatusText = '오프라인'.obs; // 상대방 상태 텍스트
+  final Rx<Color> _recipientStatusColor = Colors.grey.obs; // 상대방 상태 색상
+
   @override
   void initState() {
     super.initState();
@@ -72,6 +79,20 @@ class _MessageDetailViewState extends State<MessageDetailView> {
           // 스크롤 이동 (내부에서 mounted 체크)
           _safelyScrollToBottom();
         });
+
+        // 3. 현재 사용자의 활동 상태 업데이트
+        _updateCurrentUserActivity();
+
+        // 4. 상대방의 상태 확인
+        _checkRecipientStatus();
+
+        // 5. 주기적으로 현재 사용자의 활동 상태를 업데이트하는 타이머 설정 (1분마다)
+        _activityUpdateTimer = Timer.periodic(
+            const Duration(minutes: 1), (_) => _updateCurrentUserActivity());
+
+        // 6. 주기적으로 상대방의 상태를 확인하는 타이머 설정 (30초마다)
+        _statusCheckTimer = Timer.periodic(
+            const Duration(seconds: 30), (_) => _checkRecipientStatus());
       } catch (e) {
         debugPrint('⚠️ 초기화 중 오류 발생: $e');
       }
@@ -103,6 +124,10 @@ class _MessageDetailViewState extends State<MessageDetailView> {
   @override
   void dispose() {
     debugPrint('🧹 MessageDetailView dispose 시작: ${widget.userId}');
+
+    // 타이머 취소
+    _activityUpdateTimer?.cancel();
+    _statusCheckTimer?.cancel();
 
     // mounted 상태 확인 없이 직접 컨트롤러 정리
     try {
@@ -676,27 +701,27 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
-                  Row(
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: Colors.green,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      const Text(
-                        '온라인',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.green,
-                          fontWeight: FontWeight.w400,
-                        ),
-                      ),
-                    ],
-                  ),
+                  Obx(() => Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: _recipientStatusColor.value,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _recipientStatusText.value,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _recipientStatusColor.value,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ],
+                      )),
                 ],
               ),
             ),
@@ -2463,6 +2488,37 @@ class _MessageDetailViewState extends State<MessageDetailView> {
     } catch (e) {
       debugPrint('⚠️ 이미지 메시지 파싱 오류: $e');
       return null;
+    }
+  }
+
+  // 현재 사용자의 활동 상태 업데이트
+  Future<void> _updateCurrentUserActivity() async {
+    if (!mounted) return;
+
+    try {
+      await _authService.updateUserActivity();
+    } catch (e) {
+      debugPrint('⚠️ 사용자 활동 상태 업데이트 중 오류: $e');
+    }
+  }
+
+  // 상대방의 상태 확인
+  Future<void> _checkRecipientStatus() async {
+    if (!mounted) return;
+
+    try {
+      // 상대방의 마지막 활동 시간 조회
+      final lastActive = await _authService.getUserLastActive(widget.userId);
+
+      // 상태 텍스트와 색상 업데이트
+      if (mounted) {
+        _recipientStatusText.value =
+            _authService.getUserOnlineStatusText(lastActive);
+        _recipientStatusColor.value =
+            _authService.getUserOnlineStatusColor(lastActive);
+      }
+    } catch (e) {
+      debugPrint('⚠️ 상대방 상태 확인 중 오류: $e');
     }
   }
 }

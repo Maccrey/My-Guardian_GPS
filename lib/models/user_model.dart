@@ -7,6 +7,7 @@ class UserModel {
   String? country;
   String? userType;
   String? profileImageUrl;
+  DateTime? lastActive;
 
   UserModel({
     this.uid,
@@ -17,6 +18,7 @@ class UserModel {
     this.country,
     this.userType,
     this.profileImageUrl,
+    this.lastActive,
   });
 
   Map<String, dynamic> toJson() {
@@ -29,6 +31,7 @@ class UserModel {
       'country': country,
       'userType': userType,
       'profileImageUrl': profileImageUrl,
+      'lastActive': lastActive?.toIso8601String(),
     };
   }
 
@@ -43,6 +46,9 @@ class UserModel {
       country: json['country'],
       userType: json['userType'],
       profileImageUrl: json['profileImageUrl'],
+      lastActive: json['lastActive'] != null
+          ? DateTime.parse(json['lastActive'])
+          : null,
     );
   }
 }
