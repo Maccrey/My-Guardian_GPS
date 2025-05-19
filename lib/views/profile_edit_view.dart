@@ -169,17 +169,23 @@ class ProfileEditController extends GetxController {
       final cropper = ImageCropper();
       final croppedFile = await cropper.cropImage(
         sourcePath: filePath,
-        compressQuality: 90,
+        compressQuality: 50, // 품질 50% 미만으로 설정 (45%)
+        compressFormat: ImageCompressFormat.jpg, // JPG 형식으로 압축
+        maxHeight: 300, // 최대 높이 100px
+        maxWidth: 300, // 최대 너비 100px
         uiSettings: [
           AndroidUiSettings(
             toolbarTitle: '프로필 이미지 편집',
             toolbarColor: Get.theme.primaryColor,
             toolbarWidgetColor: Colors.white,
             lockAspectRatio: true,
+            aspectRatioPresets: [CropAspectRatioPreset.square], // 정사각형으로 제한
           ),
           IOSUiSettings(
             title: '프로필 이미지 편집',
             aspectRatioLockEnabled: true,
+            aspectRatioPresets: [CropAspectRatioPreset.square], // 정사각형으로 제한
+            minimumAspectRatio: 1.0,
           ),
         ],
       );
@@ -187,7 +193,7 @@ class ProfileEditController extends GetxController {
       if (croppedFile != null) {
         profileImage.value = File(croppedFile.path);
         isImageSelected.value = true;
-        debugPrint('✅ 이미지 크롭 성공: ${croppedFile.path}');
+        debugPrint('✅ 이미지 크롭 성공: ${croppedFile.path} (100x100, 품질: 45%)');
       } else {
         debugPrint('⚠️ 이미지 크롭이 취소되었습니다.');
       }
@@ -265,11 +271,17 @@ class ProfileEditView extends GetView<ProfileEditController> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('프로필 편집'),
+        centerTitle: true,
+        elevation: 0,
+        backgroundColor: theme.colorScheme.surface,
+        foregroundColor: theme.colorScheme.onSurface,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
           onPressed: () => Get.back(),
         ),
       ),
@@ -280,16 +292,16 @@ class ProfileEditView extends GetView<ProfileEditController> {
           }
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(20.0),
             child: Form(
               key: controller.formKey,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   // 프로필 이미지
-                  _buildProfileImageWidget(),
+                  _buildProfileImageWidget(theme),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 32),
 
                   // 프로필 정보 폼
                   _buildProfileForm(),
@@ -302,26 +314,36 @@ class ProfileEditView extends GetView<ProfileEditController> {
                       padding: const EdgeInsets.symmetric(vertical: 8.0),
                       child: Text(
                         controller.errorMessage.value,
-                        style: const TextStyle(color: Colors.red),
+                        style: TextStyle(
+                          color: theme.colorScheme.error,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 32),
 
                   // 저장 버튼
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: controller.updateProfile,
+                      onPressed: () {
+                        controller.updateProfile();
+                        Get.back();
+                      },
                       style: ElevatedButton.styleFrom(
+                        backgroundColor: theme.colorScheme.primary,
+                        foregroundColor: theme.colorScheme.onPrimary,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(12),
                         ),
+                        elevation: 0,
                       ),
                       child: const Text(
                         '저장하기',
-                        style: TextStyle(fontSize: 16),
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),
@@ -334,65 +356,114 @@ class ProfileEditView extends GetView<ProfileEditController> {
     );
   }
 
-  Widget _buildProfileImageWidget() {
+  Widget _buildProfileImageWidget(ThemeData theme) {
     return Column(
       children: [
-        Stack(
-          alignment: Alignment.bottomRight,
-          children: [
-            // 프로필 이미지
-            Obx(() {
-              if (controller.isImageSelected.value &&
-                  controller.profileImage.value != null) {
-                // 로컬에서 선택한 이미지
-                return CircleAvatar(
-                  radius: 60,
-                  backgroundImage: FileImage(controller.profileImage.value!),
-                );
-              } else if (controller.user.value.profileImageUrl != null &&
-                  controller.user.value.profileImageUrl!.isNotEmpty) {
-                // Firebase에서 가져온 이미지
-                return CircleAvatar(
-                  radius: 60,
-                  backgroundImage:
-                      NetworkImage(controller.user.value.profileImageUrl!),
-                );
-              } else {
-                // 기본 이미지
-                return const CircleAvatar(
-                  radius: 60,
-                  backgroundColor: Colors.blue,
-                  child: Icon(Icons.person, size: 60, color: Colors.white),
-                );
-              }
-            }),
-
-            // 이미지 선택 버튼
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.grey.shade300),
+        Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                spreadRadius: 2,
               ),
-              child: InkWell(
-                onTap: _showImageSourceDialog,
-                child: const Icon(
-                  Icons.camera_alt,
-                  size: 24,
-                  color: Colors.blue,
+            ],
+          ),
+          child: Stack(
+            alignment: Alignment.bottomRight,
+            children: [
+              // 프로필 이미지
+              Obx(() {
+                Widget image;
+
+                if (controller.isImageSelected.value &&
+                    controller.profileImage.value != null) {
+                  // 로컬에서 선택한 이미지
+                  image = CircleAvatar(
+                    radius: 64,
+                    backgroundImage: FileImage(controller.profileImage.value!),
+                  );
+                } else if (controller.user.value.profileImageUrl != null &&
+                    controller.user.value.profileImageUrl!.isNotEmpty) {
+                  // Firebase에서 가져온 이미지
+                  image = CircleAvatar(
+                    radius: 64,
+                    backgroundImage:
+                        NetworkImage(controller.user.value.profileImageUrl!),
+                  );
+                } else {
+                  // 기본 이미지
+                  image = CircleAvatar(
+                    radius: 64,
+                    backgroundColor: theme.colorScheme.primary.withOpacity(0.8),
+                    child: Icon(
+                      Icons.person_rounded,
+                      size: 64,
+                      color: theme.colorScheme.onPrimary,
+                    ),
+                  );
+                }
+
+                return Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: theme.colorScheme.surface,
+                      width: 4,
+                    ),
+                  ),
+                  child: image,
+                );
+              }),
+
+              // 이미지 선택 버튼
+              Container(
+                margin: const EdgeInsets.only(bottom: 6, right: 6),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 4,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+                child: InkWell(
+                  onTap: _showImageSourceDialog,
+                  child: Icon(
+                    Icons.camera_alt_rounded,
+                    size: 20,
+                    color: theme.colorScheme.onPrimary,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          '프로필 사진 변경',
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.blue[600],
-            fontWeight: FontWeight.w500,
+        const SizedBox(height: 12),
+        TextButton.icon(
+          onPressed: _showImageSourceDialog,
+          icon: Icon(
+            Icons.add_photo_alternate_rounded,
+            size: 18,
+            color: theme.colorScheme.primary,
+          ),
+          label: Text(
+            '프로필 사진 변경',
+            style: TextStyle(
+              fontSize: 14,
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          style: TextButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
           ),
         ),
       ],
@@ -402,42 +473,37 @@ class ProfileEditView extends GetView<ProfileEditController> {
   Widget _buildProfileForm() {
     return Builder(
       builder: (BuildContext context) {
+        final theme = Theme.of(context);
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // 이메일 (읽기 전용)
-            const Text(
-              '이메일',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
+            _buildFormLabel('이메일'),
             const SizedBox(height: 8),
             TextFormField(
               initialValue: controller.user.value.email,
               readOnly: true,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
+              style: TextStyle(
+                  color: theme.colorScheme.onSurface.withOpacity(0.7)),
+              decoration: _buildInputDecoration(
+                hintText: '이메일',
+                prefixIcon: const Icon(Icons.email_outlined),
                 filled: true,
-                fillColor: Colors.grey[200],
+                fillColor: theme.colorScheme.surfaceVariant.withOpacity(0.3),
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
 
             // 닉네임
-            const Text(
-              '닉네임',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
+            _buildFormLabel('닉네임'),
             const SizedBox(height: 8),
             TextFormField(
               controller: controller.nicknameController,
-              decoration: InputDecoration(
+              decoration: _buildInputDecoration(
                 hintText: '닉네임을 입력하세요',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
+                prefixIcon: const Icon(Icons.person_outline_rounded),
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
@@ -447,33 +513,35 @@ class ProfileEditView extends GetView<ProfileEditController> {
               },
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
 
             // 국가
-            const Text(
-              '국가',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
+            _buildFormLabel('국가'),
             const SizedBox(height: 8),
             InkWell(
               onTap: () => _showCountrySelectionBottomSheet(context),
+              borderRadius: BorderRadius.circular(12),
               child: Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade400),
-                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: theme.colorScheme.outline.withOpacity(0.5)),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   children: [
+                    const Icon(Icons.public_rounded, size: 22),
+                    const SizedBox(width: 12),
                     Obx(() {
                       final countryCode = controller.selectedCountryCode.value;
-                      return Text(
-                        countryCode.isNotEmpty
-                            ? controller.getCountryFlag(countryCode)
-                            : '🏳️',
-                        style: const TextStyle(fontSize: 24),
-                      );
+                      if (countryCode.isNotEmpty) {
+                        return Text(
+                          controller.getCountryFlag(countryCode),
+                          style: const TextStyle(fontSize: 22),
+                        );
+                      }
+                      return const SizedBox.shrink();
                     }),
                     const SizedBox(width: 12),
                     Expanded(
@@ -489,37 +557,39 @@ class ProfileEditView extends GetView<ProfileEditController> {
                             color: controller
                                         .selectedCountry.value.isNotEmpty ||
                                     controller.countryController.text.isNotEmpty
-                                ? Colors.black
-                                : Colors.grey.shade600,
+                                ? theme.colorScheme.onSurface
+                                : theme.colorScheme.onSurface.withOpacity(0.5),
                           ),
                         );
                       }),
                     ),
-                    const Icon(Icons.arrow_drop_down),
+                    Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: theme.colorScheme.primary,
+                    ),
                   ],
                 ),
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
 
             // 생년월일
-            const Text(
-              '생년월일',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
+            _buildFormLabel('생년월일'),
             const SizedBox(height: 8),
             InkWell(
               onTap: () => _showDatePicker(context),
+              borderRadius: BorderRadius.circular(12),
               child: AbsorbPointer(
                 child: TextFormField(
                   controller: controller.birthDateController,
-                  decoration: InputDecoration(
+                  decoration: _buildInputDecoration(
                     hintText: '생년월일을 선택하세요',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
+                    prefixIcon: const Icon(Icons.calendar_today_rounded),
+                    suffixIcon: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: theme.colorScheme.primary,
                     ),
-                    suffixIcon: const Icon(Icons.calendar_today),
                   ),
                 ),
               ),
@@ -530,24 +600,100 @@ class ProfileEditView extends GetView<ProfileEditController> {
     );
   }
 
+  Widget _buildFormLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4.0, bottom: 4.0),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 15,
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _buildInputDecoration({
+    required String hintText,
+    Widget? prefixIcon,
+    Widget? suffixIcon,
+    bool filled = false,
+    Color? fillColor,
+  }) {
+    return InputDecoration(
+      hintText: hintText,
+      prefixIcon: prefixIcon,
+      suffixIcon: suffixIcon,
+      filled: filled,
+      fillColor: fillColor,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Colors.blue, width: 1.5),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.red.shade300),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+    );
+  }
+
   void _showImageSourceDialog() {
     Get.dialog(
       AlertDialog(
-        title: const Text('프로필 사진 선택'),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Text(
+          '프로필 사진 선택',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.photo_library),
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child:
+                    const Icon(Icons.photo_library_rounded, color: Colors.blue),
+              ),
               title: const Text('갤러리에서 선택'),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
               onTap: () {
                 Get.back();
                 controller.pickImage();
               },
             ),
+            const SizedBox(height: 8),
             ListTile(
-              leading: const Icon(Icons.camera_alt),
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child:
+                    const Icon(Icons.camera_alt_rounded, color: Colors.green),
+              ),
               title: const Text('카메라로 촬영'),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
               onTap: () {
                 Get.back();
                 controller.takePhoto();
@@ -558,14 +704,22 @@ class ProfileEditView extends GetView<ProfileEditController> {
         actions: [
           TextButton(
             onPressed: () => Get.back(),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.grey[700],
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
             child: const Text('취소'),
           ),
         ],
+        actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       ),
     );
   }
 
   void _showCountrySelectionBottomSheet(BuildContext context) {
+    final theme = Theme.of(context);
     final scrollController = ScrollController();
     final textController = TextEditingController();
     final countries = controller.getCountries();
@@ -589,7 +743,7 @@ class ProfileEditView extends GetView<ProfileEditController> {
     }
 
     Get.bottomSheet(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.colorScheme.surface,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -598,61 +752,85 @@ class ProfileEditView extends GetView<ProfileEditController> {
         height: MediaQuery.of(context).size.height * 0.7,
         child: Column(
           children: [
+            // 바텀시트 드래그 핸들
             Container(
-              margin: const EdgeInsets.only(top: 8, bottom: 4),
+              margin: const EdgeInsets.only(top: 12, bottom: 8),
               height: 4,
               width: 40,
               decoration: BoxDecoration(
-                color: Colors.grey.shade300,
+                color: theme.colorScheme.onSurface.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
+
+            // 제목과 검색창
             Padding(
               padding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
               child: Column(
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         '국가 선택',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.onSurface,
                         ),
                       ),
                       IconButton(
                         onPressed: () => Get.back(),
-                        icon: const Icon(Icons.close),
+                        icon: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceVariant,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.close_rounded,
+                            size: 18,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       ),
                     ],
                   ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    padding: const EdgeInsets.symmetric(vertical: 12.0),
                     child: TextField(
                       controller: textController,
                       onChanged: onSearchChanged,
                       decoration: InputDecoration(
                         hintText: '국가 검색...',
-                        prefixIcon: const Icon(Icons.search),
+                        hintStyle: TextStyle(
+                          color: theme.colorScheme.onSurface.withOpacity(0.5),
+                        ),
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          color: theme.colorScheme.primary,
+                        ),
+                        filled: true,
+                        fillColor:
+                            theme.colorScheme.surfaceVariant.withOpacity(0.3),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
                         ),
                         enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
                         ),
                         focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(16),
                           borderSide: BorderSide(
-                            color: Theme.of(context).colorScheme.primary,
-                            width: 2,
+                            color: theme.colorScheme.primary.withOpacity(0.2),
+                            width: 1.5,
                           ),
                         ),
-                        contentPadding:
-                            const EdgeInsets.symmetric(vertical: 12),
+                        contentPadding: const EdgeInsets.symmetric(
+                            vertical: 14, horizontal: 16),
                       ),
                       autofocus: true,
                     ),
@@ -660,7 +838,10 @@ class ProfileEditView extends GetView<ProfileEditController> {
                 ],
               ),
             ),
+
             const Divider(height: 1),
+
+            // 국가 목록
             Expanded(
               child: Obx(() {
                 if (filteredCountries.isEmpty) {
@@ -669,16 +850,16 @@ class ProfileEditView extends GetView<ProfileEditController> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          Icons.search_off,
+                          Icons.search_off_rounded,
                           size: 48,
-                          color: Colors.grey.shade400,
+                          color: theme.colorScheme.onSurface.withOpacity(0.3),
                         ),
                         const SizedBox(height: 16),
                         Text(
                           '검색 결과가 없습니다',
                           style: TextStyle(
                             fontSize: 16,
-                            color: Colors.grey.shade600,
+                            color: theme.colorScheme.onSurface.withOpacity(0.7),
                           ),
                         ),
                       ],
@@ -693,13 +874,13 @@ class ProfileEditView extends GetView<ProfileEditController> {
                       // 자주 사용하는 국가 섹션
                       SliverToBoxAdapter(
                         child: Padding(
-                          padding: const EdgeInsets.all(8.0),
+                          padding: const EdgeInsets.all(16.0),
                           child: Text(
                             '자주 사용하는 국가',
                             style: TextStyle(
                               fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.grey.shade700,
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.primary,
                             ),
                           ),
                         ),
@@ -708,7 +889,7 @@ class ProfileEditView extends GetView<ProfileEditController> {
                         delegate: SliverChildBuilderDelegate(
                           (context, index) {
                             final country = frequentCountries[index];
-                            return _buildCountryListTile(country);
+                            return _buildCountryListTile(country, theme);
                           },
                           childCount: frequentCountries.length,
                         ),
@@ -716,16 +897,20 @@ class ProfileEditView extends GetView<ProfileEditController> {
                       // 구분선
                       SliverToBoxAdapter(
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                          padding: const EdgeInsets.symmetric(vertical: 16.0),
                           child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Divider(),
-                              Text(
-                                '모든 국가',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.grey.shade700,
+                              Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Text(
+                                  '모든 국가',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: theme.colorScheme.primary,
+                                  ),
                                 ),
                               ),
                             ],
@@ -742,7 +927,7 @@ class ProfileEditView extends GetView<ProfileEditController> {
                                 .any((c) => c['code'] == country['code'])) {
                               return const SizedBox.shrink();
                             }
-                            return _buildCountryListTile(country);
+                            return _buildCountryListTile(country, theme);
                           },
                           childCount: filteredCountries.length,
                         ),
@@ -752,10 +937,11 @@ class ProfileEditView extends GetView<ProfileEditController> {
                 } else {
                   return ListView.builder(
                     controller: scrollController,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
                     itemCount: filteredCountries.length,
                     itemBuilder: (context, index) {
                       final country = filteredCountries[index];
-                      return _buildCountryListTile(country);
+                      return _buildCountryListTile(country, theme);
                     },
                   );
                 }
@@ -767,21 +953,50 @@ class ProfileEditView extends GetView<ProfileEditController> {
     );
   }
 
-  Widget _buildCountryListTile(Map<String, dynamic> country) {
-    return ListTile(
-      leading: Text(
-        controller.getCountryFlag(country['code']),
-        style: const TextStyle(fontSize: 24),
+  Widget _buildCountryListTile(Map<String, dynamic> country, ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+      child: ListTile(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        leading: Container(
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.secondaryContainer.withOpacity(0.3),
+            shape: BoxShape.circle,
+          ),
+          child: Text(
+            controller.getCountryFlag(country['code']),
+            style: const TextStyle(fontSize: 24),
+          ),
+        ),
+        title: Text(
+          country['name'],
+          style: TextStyle(
+            fontWeight: FontWeight.w500,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
+        subtitle: Text(
+          country['code'],
+          style: TextStyle(
+            fontSize: 12,
+            color: theme.colorScheme.onSurface.withOpacity(0.6),
+          ),
+        ),
+        onTap: () {
+          controller.setSelectedCountry(country['name'], country['code']);
+          Get.back();
+        },
       ),
-      title: Text(country['name']),
-      onTap: () {
-        controller.setSelectedCountry(country['name'], country['code']);
-        Get.back();
-      },
     );
   }
 
   void _showDatePicker(BuildContext context) async {
+    final ThemeData theme = Theme.of(context);
     final DateTime now = DateTime.now();
     final DateTime firstDate = DateTime(now.year - 100, 1, 1); // 100년 전
     final DateTime lastDate = DateTime(now.year - 18, 12, 31); // 최소 18세 이상
@@ -797,16 +1012,34 @@ class ProfileEditView extends GetView<ProfileEditController> {
       helpText: '생년월일 선택',
       cancelText: '취소',
       confirmText: '확인',
+      fieldLabelText: '생년월일 입력',
+      fieldHintText: 'YYYY-MM-DD',
+      errorFormatText: '올바른 형식이 아닙니다',
+      errorInvalidText: '유효한 날짜를 선택해주세요',
+      initialEntryMode: DatePickerEntryMode.calendarOnly,
       builder: (BuildContext context, Widget? child) {
         return Theme(
-          data: ThemeData.light().copyWith(
-            colorScheme: ColorScheme.light(
-              primary: Theme.of(context).primaryColor,
-              onPrimary: Colors.white,
-              surface: Colors.white,
-              onSurface: Colors.black,
+          data: theme.copyWith(
+            colorScheme: theme.colorScheme.copyWith(
+              primary: theme.colorScheme.primary,
+              onPrimary: theme.colorScheme.onPrimary,
+              surface: theme.colorScheme.surface,
+              onSurface: theme.colorScheme.onSurface,
             ),
-            dialogBackgroundColor: Colors.white,
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: theme.colorScheme.primary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+            dialogTheme: DialogTheme(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              elevation: 16,
+            ),
           ),
           child: child!,
         );
