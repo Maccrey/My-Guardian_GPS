@@ -52,6 +52,7 @@ dependencies:
   google_sign_in: ^6.3.0
   # 구글 로그인 디버깅용 패키지
   logger: ^2.0.2 # 구글 로그인을 위한 패키지
+  image_cropper: ^9.1.0 # 이미지 크롭을 위한 패키지
 
   # Firebase 관련 패키지 - 테스트를 위해 임시 주석 처리
   firebase_core: ^3.13.0
@@ -91,6 +92,7 @@ flutter:
   assets:
     - .env
     - assets/mp3/
+    - assets/images/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -278,6 +278,15 @@ class _SettingsViewState extends State<SettingsView> {
             // 계정 관리 섹션
             _buildCategoryHeader('계정 관리'),
             ListTile(
+              title: const Text('프로필 편집'),
+              subtitle: const Text('프로필 정보와 이미지를 수정합니다'),
+              leading: const Icon(Icons.person, color: Colors.blue),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              onTap: () {
+                Get.toNamed('/profile-edit');
+              },
+            ),
+            ListTile(
               title: const Text('회원 탈퇴'),
               subtitle: const Text('모든 계정 정보가 삭제됩니다'),
               leading: const Icon(Icons.person_remove, color: Colors.red),

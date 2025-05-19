@@ -7,6 +7,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:logger/logger.dart';
 import '../models/user_model.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:typed_data';
 
 // 로깅을 위한 인스턴스
 final logger = Logger(
@@ -192,6 +194,91 @@ class AuthService extends GetxController {
       debugPrint('⚠️ Firestore 사용자 정보 저장 오류: $e');
       debugPrint('⚠️ Firestore 권한 문제로 인해 데이터 저장에 실패했지만, 인증 정보는 저장되었습니다.');
       // 오류를 던지지 않고 로그만 남김 (회원가입 과정에서 실패하지 않도록)
+    }
+  }
+
+  // 사용자 정보 업데이트
+  Future<bool> updateUserData(UserModel updatedUser) async {
+    setLoading(true);
+    setError(null);
+
+    try {
+      if (_useMockAuth) {
+        // Mock 데이터 업데이트
+        final index =
+            _mockUsers.indexWhere((user) => user.uid == updatedUser.uid);
+        if (index != -1) {
+          _mockUsers[index] = updatedUser;
+          _currentUser.value = updatedUser;
+          setLoading(false);
+          return true;
+        } else {
+          setError('사용자를 찾을 수 없습니다');
+          setLoading(false);
+          return false;
+        }
+      }
+
+      // 현재 로그인한 사용자의 UID 확인
+      final String? currentUid = _auth.currentUser?.uid;
+      if (currentUid == null) {
+        setError('로그인되어 있지 않습니다');
+        setLoading(false);
+        return false;
+      }
+
+      // Firestore에 사용자 정보 업데이트
+      Map<String, dynamic> userData = updatedUser.toJson();
+      userData.remove('password'); // 보안을 위해 비밀번호 제거
+
+      await _firestore.collection('users').doc(currentUid).update(userData);
+
+      // 현재 사용자 정보 업데이트
+      _currentUser.value = updatedUser;
+
+      debugPrint('✅ 사용자 정보 업데이트 성공: $currentUid');
+      setLoading(false);
+      return true;
+    } catch (e) {
+      String errorMessage = '사용자 정보 업데이트 중 오류가 발생했습니다';
+      debugPrint('⚠️ 사용자 정보 업데이트 오류: $e');
+      setError(errorMessage);
+      setLoading(false);
+      return false;
+    }
+  }
+
+  // 프로필 이미지 업로드 및 URL 업데이트
+  Future<String?> uploadProfileImage(String uid, Uint8List imageData) async {
+    if (_useMockAuth) {
+      // Mock 이미지 URL 반환
+      return 'https://mock-image-url.com/${DateTime.now().millisecondsSinceEpoch}';
+    }
+
+    try {
+      // Firebase Storage 참조 생성
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('profile_images')
+          .child('$uid.jpg');
+
+      // 이미지 업로드
+      final uploadTask = storageRef.putData(
+        imageData,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
+
+      // 업로드 완료 대기
+      final snapshot = await uploadTask;
+
+      // 이미지 다운로드 URL 가져오기
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+
+      debugPrint('✅ 프로필 이미지 업로드 성공: $downloadUrl');
+      return downloadUrl;
+    } catch (e) {
+      debugPrint('⚠️ 프로필 이미지 업로드 오류: $e');
+      return null;
     }
   }
 

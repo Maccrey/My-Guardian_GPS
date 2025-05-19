@@ -31,6 +31,7 @@ import 'views/settings/settings_view.dart';
 import 'services/settings_service.dart';
 import 'views/messages/shared_location_view.dart';
 import 'utils/url_handler.dart';
+import 'views/profile_edit_view.dart';
 
 import 'firebase_options.dart'; // 임시로 주석 처리
 
@@ -297,6 +298,12 @@ class _MyAppState extends State<MyApp> {
         // IMPORTANT: MapView는 지도 화면을 담당하는 중요 컴포넌트입니다.
         // 경로를 변경하거나 다른 구성으로 변경하지 마세요.
         GetPage(name: '/map', page: () => MapView()),
+        // 프로필 편집 페이지 라우트
+        GetPage(
+          name: '/profile-edit',
+          page: () => const ProfileEditView(),
+          binding: ProfileEditBinding(),
+        ),
       ],
     );
   }

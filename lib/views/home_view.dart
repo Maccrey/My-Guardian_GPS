@@ -31,17 +31,6 @@ class HomeView extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              // if (user?.email != null)
-              //   Padding(
-              //     padding: const EdgeInsets.only(top: 4.0),
-              //     child: Text(
-              //       '${user!.email}',
-              //       style: TextStyle(
-              //         fontSize: 14,
-              //         color: Colors.grey.shade600,
-              //       ),
-              //     ),
-              //   ),
             ],
           );
         }),
@@ -49,7 +38,7 @@ class HomeView extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.person),
             onPressed: () {
-              // 나중에 프로필 화면으로 이동하는 기능 추가
+              Get.toNamed('/profile-edit');
             },
           ),
           IconButton(
