@@ -7,6 +7,7 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
 
@@ -146,20 +147,75 @@ class ProfileEditController extends GetxController {
   // 갤러리에서 이미지 선택
   Future<void> pickImage() async {
     final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    try {
+      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
 
-    if (image != null) {
-      await cropImage(image.path);
+      if (image != null) {
+        await cropImage(image.path);
+      }
+    } catch (e) {
+      debugPrint('❌ 갤러리 이미지 선택 오류: $e');
+      errorMessage.value = '갤러리에서 이미지를 선택하는 중 오류가 발생했습니다.';
+      Get.snackbar(
+        '오류',
+        '갤러리 접근에 실패했습니다.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red[100],
+        colorText: Colors.red[800],
+        duration: const Duration(seconds: 3),
+      );
     }
   }
 
   // 카메라로 이미지 촬영
   Future<void> takePhoto() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.camera);
+    try {
+      // 카메라 권한 확인
+      PermissionStatus status = await Permission.camera.status;
 
-    if (image != null) {
-      await cropImage(image.path);
+      if (!status.isGranted) {
+        // 권한이 없는 경우 요청
+        status = await Permission.camera.request();
+
+        if (!status.isGranted) {
+          // 사용자가 권한을 거부한 경우
+          errorMessage.value = '카메라 권한이 없어 사진을 촬영할 수 없습니다.';
+          Get.snackbar(
+            '권한 필요',
+            '카메라를 사용하려면 권한을 허용해주세요.',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.orange[100],
+            colorText: Colors.orange[800],
+            duration: const Duration(seconds: 3),
+            mainButton: TextButton(
+              onPressed: () async {
+                await openAppSettings();
+              },
+              child: const Text('설정으로 이동'),
+            ),
+          );
+          return;
+        }
+      }
+
+      // 권한이 있는 경우 카메라 실행
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: ImageSource.camera);
+
+      if (image != null) {
+        await cropImage(image.path);
+      }
+    } catch (e) {
+      debugPrint('❌ 카메라 사용 오류: $e');
+      errorMessage.value = '카메라를 사용하는 중 오류가 발생했습니다.';
+      Get.snackbar(
+        '오류',
+        '카메라를 사용할 수 없습니다.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red[100],
+        colorText: Colors.red[800],
+        duration: const Duration(seconds: 3),
+      );
     }
   }
 
