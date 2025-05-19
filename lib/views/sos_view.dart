@@ -226,7 +226,7 @@ class SOSController extends GetxController {
     void startSOS() async {
       isSOSActive.value = true;
       countdown.value = 30; // 항상 30초로 초기화
-      await _playSiren(); // SOS 시작 시 싸이렌 즉시 울림
+      _playSiren(); // await 제거: 사이렌 재생과 타이머를 동시에 시작
       _startCountdown();
     }
 
@@ -470,6 +470,7 @@ class _SOSViewState extends State<SOSView> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    controller.cancelSOS(); // 화면을 벗어날 때 SOS 완전 정지(타이머, 오디오 모두)
     super.dispose();
   }
 
