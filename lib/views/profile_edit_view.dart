@@ -31,6 +31,10 @@ class ProfileEditController extends GetxController {
   final Rx<File?> profileImage = Rx<File?>(null);
   final RxBool isImageSelected = false.obs;
 
+  // 국가 선택 관련 변수
+  final RxString selectedCountry = RxString('');
+  final RxString selectedCountryCode = RxString('');
+
   // TextEditingController
   final TextEditingController nicknameController = TextEditingController();
   final TextEditingController countryController = TextEditingController();
@@ -68,6 +72,18 @@ class ProfileEditController extends GetxController {
         // TextEditingController 초기화
         nicknameController.text = currentUser.nickname ?? '';
         countryController.text = currentUser.country ?? '';
+
+        // 국가 코드 초기화 시도
+        if (currentUser.country != null && currentUser.country!.isNotEmpty) {
+          final countries = _authService.getCountries();
+          final countryData = countries.firstWhere(
+            (c) => c['name'] == currentUser.country,
+            orElse: () => {'name': currentUser.country, 'code': ''},
+          );
+
+          selectedCountry.value = countryData['name'];
+          selectedCountryCode.value = countryData['code'];
+        }
       } else {
         debugPrint('⚠️ 현재 로그인된 사용자가 없습니다.');
         errorMessage.value = '로그인 후 이용해주세요.';
@@ -81,6 +97,31 @@ class ProfileEditController extends GetxController {
       debugPrint('⚠️ 사용자 데이터 초기화 오류: $e');
       errorMessage.value = '사용자 정보를 불러오는 중 오류가 발생했습니다.';
     }
+  }
+
+  // 국가 목록 가져오기
+  List<Map<String, dynamic>> getCountries() {
+    return _authService.getCountries();
+  }
+
+  // 국가 플래그 가져오기
+  String getCountryFlag(String countryCode) {
+    if (countryCode.isEmpty) return '🏳️';
+
+    final flagOffset = 0x1F1E6;
+    final asciiOffset = 0x41;
+
+    final firstChar = countryCode.codeUnitAt(0) - asciiOffset + flagOffset;
+    final secondChar = countryCode.codeUnitAt(1) - asciiOffset + flagOffset;
+
+    return String.fromCharCode(firstChar) + String.fromCharCode(secondChar);
+  }
+
+  // 선택된 국가 설정
+  void setSelectedCountry(String countryName, String countryCode) {
+    selectedCountry.value = countryName;
+    selectedCountryCode.value = countryCode;
+    countryController.text = countryName;
   }
 
   // 갤러리에서 이미지 선택
