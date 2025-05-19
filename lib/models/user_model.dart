@@ -5,6 +5,7 @@ class UserModel {
   String? nickname;
   DateTime? birthDate;
   String? country;
+  String? countryCode;
   String? userType;
   String? profileImageUrl;
   DateTime? lastActive;
@@ -16,6 +17,7 @@ class UserModel {
     this.nickname,
     this.birthDate,
     this.country,
+    this.countryCode,
     this.userType,
     this.profileImageUrl,
     this.lastActive,
@@ -29,6 +31,7 @@ class UserModel {
       'nickname': nickname,
       'birthDate': birthDate?.toIso8601String(),
       'country': country,
+      'countryCode': countryCode,
       'userType': userType,
       'profileImageUrl': profileImageUrl,
       'lastActive': lastActive?.toIso8601String(),
@@ -44,6 +47,7 @@ class UserModel {
       birthDate:
           json['birthDate'] != null ? DateTime.parse(json['birthDate']) : null,
       country: json['country'],
+      countryCode: json['countryCode'],
       userType: json['userType'],
       profileImageUrl: json['profileImageUrl'],
       lastActive: json['lastActive'] != null

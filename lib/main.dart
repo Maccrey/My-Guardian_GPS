@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uni_links/uni_links.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'services/auth_service.dart';
 import 'services/message_service.dart';
@@ -263,6 +264,16 @@ class _MyAppState extends State<MyApp> {
         brightness: Brightness.dark,
       ),
       themeMode: ThemeMode.system, // 시스템 설정 기본값
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('ko', 'KR'), // 한국어
+        Locale('en', 'US'), // 영어
+      ],
+      locale: const Locale('ko', 'KR'), // 기본 로케일 설정
       initialRoute: '/',
       getPages: [
         GetPage(name: '/', page: () => const LoginView()),

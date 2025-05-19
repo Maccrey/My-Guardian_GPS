@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
 
@@ -35,9 +36,13 @@ class ProfileEditController extends GetxController {
   final RxString selectedCountry = RxString('');
   final RxString selectedCountryCode = RxString('');
 
+  // 생년월일 관련 변수
+  final Rx<DateTime?> selectedBirthDate = Rx<DateTime?>(null);
+
   // TextEditingController
   final TextEditingController nicknameController = TextEditingController();
   final TextEditingController countryController = TextEditingController();
+  final TextEditingController birthDateController = TextEditingController();
 
   @override
   void onInit() {
@@ -60,6 +65,7 @@ class ProfileEditController extends GetxController {
   void onClose() {
     nicknameController.dispose();
     countryController.dispose();
+    birthDateController.dispose();
     super.onClose();
   }
 
@@ -72,6 +78,13 @@ class ProfileEditController extends GetxController {
         // TextEditingController 초기화
         nicknameController.text = currentUser.nickname ?? '';
         countryController.text = currentUser.country ?? '';
+
+        // 생년월일 초기화
+        if (currentUser.birthDate != null) {
+          selectedBirthDate.value = currentUser.birthDate;
+          birthDateController.text =
+              DateFormat('yyyy-MM-dd').format(currentUser.birthDate!);
+        }
 
         // 국가 코드 초기화 시도
         if (currentUser.country != null && currentUser.country!.isNotEmpty) {
@@ -122,6 +135,12 @@ class ProfileEditController extends GetxController {
     selectedCountry.value = countryName;
     selectedCountryCode.value = countryCode;
     countryController.text = countryName;
+  }
+
+  // 생년월일 설정
+  void setBirthDate(DateTime date) {
+    selectedBirthDate.value = date;
+    birthDateController.text = DateFormat('yyyy-MM-dd').format(date);
   }
 
   // 갤러리에서 이미지 선택
@@ -194,8 +213,11 @@ class ProfileEditController extends GetxController {
         uid: user.value.uid,
         email: user.value.email,
         nickname: nicknameController.text.trim(),
-        birthDate: user.value.birthDate,
-        country: countryController.text.trim(),
+        birthDate: selectedBirthDate.value ?? user.value.birthDate,
+        country: selectedCountry.value.isNotEmpty
+            ? selectedCountry.value
+            : countryController.text.trim(),
+        countryCode: selectedCountryCode.value,
         userType: user.value.userType,
         profileImageUrl: user.value.profileImageUrl,
         lastActive: DateTime.now(),
@@ -378,92 +400,133 @@ class ProfileEditView extends GetView<ProfileEditController> {
   }
 
   Widget _buildProfileForm() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // 이메일 (읽기 전용)
-        const Text(
-          '이메일',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 8),
-        TextFormField(
-          initialValue: controller.user.value.email,
-          readOnly: true,
-          decoration: InputDecoration(
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
+    return Builder(
+      builder: (BuildContext context) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 이메일 (읽기 전용)
+            const Text(
+              '이메일',
+              style: TextStyle(fontWeight: FontWeight.bold),
             ),
-            filled: true,
-            fillColor: Colors.grey[200],
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        // 닉네임
-        const Text(
-          '닉네임',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 8),
-        TextFormField(
-          controller: controller.nicknameController,
-          decoration: InputDecoration(
-            hintText: '닉네임을 입력하세요',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
+            const SizedBox(height: 8),
+            TextFormField(
+              initialValue: controller.user.value.email,
+              readOnly: true,
+              decoration: InputDecoration(
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                filled: true,
+                fillColor: Colors.grey[200],
+              ),
             ),
-          ),
-          validator: (value) {
-            if (value == null || value.isEmpty) {
-              return '닉네임을 입력해주세요';
-            }
-            return null;
-          },
-        ),
 
-        const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-        // 국가
-        const Text(
-          '국가',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 8),
-        TextFormField(
-          controller: controller.countryController,
-          decoration: InputDecoration(
-            hintText: '국가를 입력하세요',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
+            // 닉네임
+            const Text(
+              '닉네임',
+              style: TextStyle(fontWeight: FontWeight.bold),
             ),
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        // 생년월일 (읽기 전용)
-        const Text(
-          '생년월일',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 8),
-        TextFormField(
-          initialValue: controller.user.value.birthDate != null
-              ? DateFormat('yyyy-MM-dd')
-                  .format(controller.user.value.birthDate!)
-              : '',
-          readOnly: true,
-          decoration: InputDecoration(
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: controller.nicknameController,
+              decoration: InputDecoration(
+                hintText: '닉네임을 입력하세요',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return '닉네임을 입력해주세요';
+                }
+                return null;
+              },
             ),
-            filled: true,
-            fillColor: Colors.grey[200],
-          ),
-        ),
-      ],
+
+            const SizedBox(height: 16),
+
+            // 국가
+            const Text(
+              '국가',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: () => _showCountrySelectionBottomSheet(context),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade400),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Obx(() {
+                      final countryCode = controller.selectedCountryCode.value;
+                      return Text(
+                        countryCode.isNotEmpty
+                            ? controller.getCountryFlag(countryCode)
+                            : '🏳️',
+                        style: const TextStyle(fontSize: 24),
+                      );
+                    }),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Obx(() {
+                        return Text(
+                          controller.selectedCountry.value.isNotEmpty
+                              ? controller.selectedCountry.value
+                              : controller.countryController.text.isNotEmpty
+                                  ? controller.countryController.text
+                                  : '국가를 선택하세요',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: controller
+                                        .selectedCountry.value.isNotEmpty ||
+                                    controller.countryController.text.isNotEmpty
+                                ? Colors.black
+                                : Colors.grey.shade600,
+                          ),
+                        );
+                      }),
+                    ),
+                    const Icon(Icons.arrow_drop_down),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // 생년월일
+            const Text(
+              '생년월일',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: () => _showDatePicker(context),
+              child: AbsorbPointer(
+                child: TextFormField(
+                  controller: controller.birthDateController,
+                  decoration: InputDecoration(
+                    hintText: '생년월일을 선택하세요',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    suffixIcon: const Icon(Icons.calendar_today),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -500,5 +563,258 @@ class ProfileEditView extends GetView<ProfileEditController> {
         ],
       ),
     );
+  }
+
+  void _showCountrySelectionBottomSheet(BuildContext context) {
+    final scrollController = ScrollController();
+    final textController = TextEditingController();
+    final countries = controller.getCountries();
+    final RxList<Map<String, dynamic>> filteredCountries =
+        RxList<Map<String, dynamic>>(countries);
+
+    // 자주 사용하는 국가 (상위 5개)
+    final frequentCountries = countries.take(5).toList();
+
+    void onSearchChanged(String value) {
+      if (value.isEmpty) {
+        filteredCountries.value = countries;
+      } else {
+        filteredCountries.value = countries
+            .where((country) => country['name']
+                .toString()
+                .toLowerCase()
+                .contains(value.toLowerCase()))
+            .toList();
+      }
+    }
+
+    Get.bottomSheet(
+      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      SizedBox(
+        height: MediaQuery.of(context).size.height * 0.7,
+        child: Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 8, bottom: 4),
+              height: 4,
+              width: 40,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '국가 선택',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Get.back(),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: TextField(
+                      controller: textController,
+                      onChanged: onSearchChanged,
+                      decoration: InputDecoration(
+                        hintText: '국가 검색...',
+                        prefixIcon: const Icon(Icons.search),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 2,
+                          ),
+                        ),
+                        contentPadding:
+                            const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      autofocus: true,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: Obx(() {
+                if (filteredCountries.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.search_off,
+                          size: 48,
+                          color: Colors.grey.shade400,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          '검색 결과가 없습니다',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                if (textController.text.isEmpty) {
+                  return CustomScrollView(
+                    controller: scrollController,
+                    slivers: [
+                      // 자주 사용하는 국가 섹션
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Text(
+                            '자주 사용하는 국가',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            final country = frequentCountries[index];
+                            return _buildCountryListTile(country);
+                          },
+                          childCount: frequentCountries.length,
+                        ),
+                      ),
+                      // 구분선
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                          child: Column(
+                            children: [
+                              const Divider(),
+                              Text(
+                                '모든 국가',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      // 전체 국가 목록
+                      SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            final country = filteredCountries[index];
+                            // 자주 사용하는 국가는 이미 상단에 표시했으므로 제외
+                            if (frequentCountries
+                                .any((c) => c['code'] == country['code'])) {
+                              return const SizedBox.shrink();
+                            }
+                            return _buildCountryListTile(country);
+                          },
+                          childCount: filteredCountries.length,
+                        ),
+                      ),
+                    ],
+                  );
+                } else {
+                  return ListView.builder(
+                    controller: scrollController,
+                    itemCount: filteredCountries.length,
+                    itemBuilder: (context, index) {
+                      final country = filteredCountries[index];
+                      return _buildCountryListTile(country);
+                    },
+                  );
+                }
+              }),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCountryListTile(Map<String, dynamic> country) {
+    return ListTile(
+      leading: Text(
+        controller.getCountryFlag(country['code']),
+        style: const TextStyle(fontSize: 24),
+      ),
+      title: Text(country['name']),
+      onTap: () {
+        controller.setSelectedCountry(country['name'], country['code']);
+        Get.back();
+      },
+    );
+  }
+
+  void _showDatePicker(BuildContext context) async {
+    final DateTime now = DateTime.now();
+    final DateTime firstDate = DateTime(now.year - 100, 1, 1); // 100년 전
+    final DateTime lastDate = DateTime(now.year - 18, 12, 31); // 최소 18세 이상
+    final DateTime initialDate = controller.selectedBirthDate.value ??
+        controller.user.value.birthDate ??
+        DateTime(now.year - 20, now.month, now.day); // 기본값 20년 전
+
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
+      helpText: '생년월일 선택',
+      cancelText: '취소',
+      confirmText: '확인',
+      builder: (BuildContext context, Widget? child) {
+        return Theme(
+          data: ThemeData.light().copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Theme.of(context).primaryColor,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: Colors.black,
+            ),
+            dialogBackgroundColor: Colors.white,
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      controller.setBirthDate(picked);
+    }
   }
 }
