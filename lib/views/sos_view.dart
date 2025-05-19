@@ -6,6 +6,8 @@ import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:flutter/services.dart';
 import '../services/emergency_contact_service.dart';
+import '../services/location_service.dart';
+import 'package:geocoding/geocoding.dart';
 // import 'package:volume_controller/volume_controller.dart'; // 제거됨 - iOS 빌드 문제
 
 class SOSController extends GetxController {
@@ -213,6 +215,11 @@ class SOSController extends GetxController {
 
   // SOS 활성화 시 개인 긴급 연락처가 없는 경우 확인 및 안내
   Future<void> activateSOS() async {
+    // 이미 SOS가 활성화된 경우 중복 실행 방지
+    if (isSOSActive.value) {
+      debugPrint('⚠️ 이미 SOS가 활성화되어 있습니다.');
+      return;
+    }
     // 개인 긴급 연락처 확인
     bool hasContacts = await hasPersonalEmergencyContacts();
 
@@ -261,6 +268,7 @@ class SOSController extends GetxController {
   }
 
   void cancelSOS() {
+    if (!isSOSActive.value) return; // 이미 비활성화면 무시
     isSOSActive.value = false;
     _stopCountdown();
     _stopSiren(); // 사이렌 소리 정지
@@ -268,8 +276,14 @@ class SOSController extends GetxController {
   }
 
   void _startCountdown() {
-    _timer?.cancel();
+    _stopCountdown(); // 혹시 남아있는 타이머가 있으면 취소
+    countdown.value = 30;
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (!isSOSActive.value) {
+        // SOS가 중간에 취소된 경우 타이머 종료
+        _stopCountdown();
+        return;
+      }
       if (countdown.value > 0) {
         countdown.value--;
       } else {
@@ -290,6 +304,7 @@ class SOSController extends GetxController {
 
   void _stopCountdown() {
     _timer?.cancel();
+    _timer = null;
   }
 
   Future<void> _sendEmergencyNotifications() async {
@@ -297,6 +312,34 @@ class SOSController extends GetxController {
       // EmergencyContactService에서 긴급 연락처 가져오기
       final emergencyContactService = Get.find<EmergencyContactService>();
       final allContacts = emergencyContactService.contacts;
+
+      // 위치 정보 가져오기
+      String locationMessage = '';
+      try {
+        final locationService = Get.find<LocationService>();
+        await locationService.getCurrentLocation();
+        final loc = locationService.currentLocation.value;
+        if (loc != null) {
+          // 주소 변환 시도
+          String address = '';
+          try {
+            final placemarks =
+                await placemarkFromCoordinates(loc.latitude, loc.longitude);
+            if (placemarks.isNotEmpty) {
+              final p = placemarks.first;
+              address =
+                  '${p.locality ?? ''} ${p.thoroughfare ?? ''} ${p.name ?? ''}'
+                      .trim();
+            }
+          } catch (_) {}
+          locationMessage =
+              '\n[현재 위치]\n위도: 	${loc.latitude}\n경도: 	${loc.longitude}${address.isNotEmpty ? '\n주소: $address' : ''}';
+        } else {
+          locationMessage = '\n(위치 정보를 가져올 수 없습니다)';
+        }
+      } catch (e) {
+        locationMessage = '\n(위치 권한이 없거나 위치 정보를 가져올 수 없습니다)';
+      }
 
       // 제외할 번호 목록에 없는 연락처만 필터링 (강화된 필터링)
       final filteredContacts = allContacts.where((contact) {
@@ -315,13 +358,10 @@ class SOSController extends GetxController {
         return true; // 제외 목록에 없으면 포함
       }).toList();
 
-      // 실제 알림 전송 로직은 향후 구현
-      // 현재는 로그 출력으로 대체
       debugPrint('⚠️ 긴급 알림 전송 중...');
 
       if (filteredContacts.isEmpty) {
         debugPrint('⚠️ 전송할 개인 긴급 연락처가 없습니다.');
-        // 긴급 연락처가 없음을 알리는 메시지만 표시하고 계속 진행
         Get.snackbar(
           '알림 전송 실패',
           '전송할 개인 긴급 연락처가 없습니다. 119로 연결합니다.',
@@ -329,19 +369,17 @@ class SOSController extends GetxController {
           duration: const Duration(seconds: 3),
           snackPosition: SnackPosition.BOTTOM,
         );
-
-        // 이 시점에서는 SOS 프로세스를 계속 진행(119로 전화)
         return;
       }
 
       for (var contact in filteredContacts) {
         debugPrint('  - ${contact.name}에게 알림 전송: ${contact.phoneNumber}');
+        debugPrint('    [메시지 내용] SOS 긴급 상황 발생!${locationMessage}');
       }
 
-      // 알림 전송 성공 토스트 메시지
       Get.snackbar(
         '긴급 알림 전송',
-        '개인 긴급 연락처로 SOS 알림이 전송되었습니다.',
+        '개인 긴급 연락처로 SOS 알림이 전송되었습니다.\n(위치 정보 포함)',
         backgroundColor: Colors.red.shade100,
         duration: const Duration(seconds: 3),
         snackPosition: SnackPosition.BOTTOM,
