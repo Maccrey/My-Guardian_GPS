@@ -74,6 +74,7 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
   flutterfire_cli: ^0.1.1+2
+  flutter_launcher_icons: ^0.11.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -120,3 +121,13 @@ flutter:
 # - Android/iOS 모두에서 테스트 후 배포할 것
 # - 플러그인 충돌 발생 시 cross_platform_compatibility.md 참조
 # - 플랫폼별 설정은 android_development_guide.md 및 ios_setup.md 참조
+
+# 앱 아이콘 설정
+flutter_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon/watch_over.jpeg"
+  min_sdk_android: 21 # Android 5.0
+  remove_alpha_ios: true
+  adaptive_icon_background: "#ffffff"
+  adaptive_icon_foreground: "assets/icon/watch_over.jpeg"

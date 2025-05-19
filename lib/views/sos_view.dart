@@ -490,7 +490,7 @@ class _SOSViewState extends State<SOSView> with WidgetsBindingObserver {
               ),
               const SizedBox(height: 10),
               const Text(
-                '버튼을 누르면 10초 후 자동으로 개인 긴급 연락처에 알림이 전송되고 119로 연결됩니다.',
+                '버튼을 누르면 30초 후 자동으로 개인 긴급 연락처에 알림이 전송되고 119로 연결됩니다.',
                 style: TextStyle(fontSize: 14),
                 textAlign: TextAlign.center,
               ),
