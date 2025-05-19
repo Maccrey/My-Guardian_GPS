@@ -455,7 +455,11 @@ class _SOSViewState extends State<SOSView> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    controller = Get.put(SOSController());
+    if (Get.isRegistered<SOSController>()) {
+      controller = Get.find<SOSController>();
+    } else {
+      controller = Get.put(SOSController());
+    }
 
     // 첫 화면 로드 시 연락처 확인
     WidgetsBinding.instance.addPostFrameCallback((_) {
