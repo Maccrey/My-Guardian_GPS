@@ -1544,9 +1544,76 @@ class _SOSViewState extends State<SOSView> with WidgetsBindingObserver {
 
                 // 직접 119 전화 버튼
                 ElevatedButton.icon(
-                  onPressed: () {
+                  onPressed: () async {
+                    // 로컬 UI 상태 즉시 업데이트 - SOS 버튼 상태로 되돌림
+                    if (mounted) {
+                      setState(() {
+                        isSosActive = false;
+                        countdownValue = 30;
+                      });
+
+                      // 화면 상태가 즉시 반영되도록 추가 지연 업데이트
+                      Future.delayed(const Duration(milliseconds: 100), () {
+                        if (mounted) {
+                          setState(() {
+                            // 상태 재확인
+                            isSosActive = false;
+                            countdownValue = 30;
+                          });
+                        }
+                      });
+                    }
+
                     try {
                       if (_controller != null && !_controller!._isDisposed) {
+                        // 1. SOS 취소 기능 호출 (모든 타이머와 오디오 중지, 상태 초기화)
+                        try {
+                          // cancelSOS 메서드 호출로 모든 리소스 정리
+                          _controller!.cancelSOS();
+                          debugPrint('✅ 119 버튼: SOS 취소 호출 성공');
+
+                          // 오디오 플레이어 상태 한 번 더 확인
+                          if (_controller!._audioPlayer != null &&
+                              _controller!._audioPlayer!.playing) {
+                            // 먼저 볼륨을 0으로 설정하여 소리 즉시 중단
+                            await _controller!._audioPlayer!.setVolume(0);
+                            // 오디오 중지
+                            await _controller!._audioPlayer!.stop();
+                            debugPrint('✅ 119 버튼: 추가 사이렌 중지 확인');
+                          }
+
+                          // 상태 변수 재확인
+                          _controller!.setIsAudioPlaying(false);
+                          _controller!.setSOSActive(false);
+                          _controller!.setCountdown(30);
+                        } catch (e) {
+                          debugPrint('⚠️ 119 버튼: 사이렌 중지 오류: $e');
+
+                          // 오류 발생 시 다시 한번 취소 시도
+                          try {
+                            _controller!.cancelSOS();
+                          } catch (_) {}
+
+                          // 어떤 경우든 상태 변수는 변경
+                          _controller!.setIsAudioPlaying(false);
+                          _controller!.setSOSActive(false);
+                          _controller!.setCountdown(30);
+
+                          // 상태변수 변경 후 컨트롤러 초기화 시도
+                          try {
+                            _controller!._initAudioPlayer();
+                          } catch (_) {}
+                        }
+
+                        // 2. 긴급 알림 전송
+                        try {
+                          await _controller!._sendEmergencyNotifications();
+                          debugPrint('✅ 119 버튼: 긴급 알림 전송됨');
+                        } catch (e) {
+                          debugPrint('⚠️ 119 버튼: 긴급 알림 전송 오류: $e');
+                        }
+
+                        // 3. 119 전화 연결
                         _controller!.callEmergencyNumber('119');
                       } else {
                         // 컨트롤러 사용 불가능 시 직접 전화 걸기 시도
