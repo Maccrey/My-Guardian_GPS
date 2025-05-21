@@ -34,6 +34,7 @@ import 'services/settings_service.dart';
 import 'views/messages/shared_location_view.dart';
 import 'utils/url_handler.dart';
 import 'views/profile_edit_view.dart';
+import 'services/map_api_service.dart';
 
 import 'firebase_options.dart'; // 임시로 주석 처리
 
@@ -106,6 +107,19 @@ void main() async {
         context: ErrorDescription('.env 파일 로드 중 오류'),
       ),
     );
+  }
+
+  // Google Maps API 키 설정 - 플랫폼별 처리
+  try {
+    // 플랫폼에 맞게 API 키 설정
+    final result = await MapApiService.setGoogleMapsApiKeyForPlatform();
+    if (result) {
+      debugPrint('✅ Google Maps API 키 설정 완료');
+    } else {
+      debugPrint('⚠️ Google Maps API 키 설정 실패');
+    }
+  } catch (e) {
+    debugPrint('❌ Google Maps API 키 설정 중 오류: $e');
   }
 
   try {

@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../services/location_service.dart';
+import '../services/map_api_service.dart';
+import 'dart:io' show Platform;
 
-class MapView extends StatelessWidget {
+class MapView extends StatefulWidget {
   // LocationService 인스턴스 가져오기
   final LocationService locationService = Get.find<LocationService>();
 
@@ -14,6 +16,27 @@ class MapView extends StatelessWidget {
   final RxBool isSearchMode = false.obs;
 
   MapView({Key? key}) : super(key: key);
+
+  @override
+  State<MapView> createState() => _MapViewState();
+}
+
+class _MapViewState extends State<MapView> {
+  @override
+  void initState() {
+    super.initState();
+
+    // 플랫폼별 Google Maps API 키 설정
+    MapApiService.setGoogleMapsApiKeyForPlatform().then((success) {
+      if (success) {
+        debugPrint('✅ MapView에서 플랫폼별 API 키 설정 성공');
+      } else {
+        debugPrint('⚠️ MapView에서 플랫폼별 API 키 설정 실패');
+      }
+    }).catchError((e) {
+      debugPrint('❌ MapView에서 플랫폼별 API 키 설정 중 오류: $e');
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,18 +50,18 @@ class MapView extends StatelessWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
-        title: Obx(() => isSearchMode.value
+        title: Obx(() => widget.isSearchMode.value
             ? _buildSearchField(context)
             : Text('위치 지도',
                 style: TextStyle(
                     color: colorScheme.primary, fontWeight: FontWeight.bold))),
         leading: Obx(() {
-          if (isSearchMode.value) {
+          if (widget.isSearchMode.value) {
             return IconButton(
               icon: Icon(Icons.arrow_back, color: colorScheme.primary),
               onPressed: () {
-                isSearchMode.value = false;
-                searchController.clear();
+                widget.isSearchMode.value = false;
+                widget.searchController.clear();
               },
             );
           } else {
@@ -51,26 +74,26 @@ class MapView extends StatelessWidget {
         }),
         actions: [
           Obx(() {
-            if (isSearchMode.value) {
+            if (widget.isSearchMode.value) {
               return IconButton(
                 icon: Icon(Icons.search, color: colorScheme.primary),
-                onPressed: () => _searchPlace(searchController.text),
+                onPressed: () => _searchPlace(widget.searchController.text),
               );
             } else {
               return IconButton(
                 icon: Icon(Icons.search, color: colorScheme.primary),
-                onPressed: () => isSearchMode.value = true,
+                onPressed: () => widget.isSearchMode.value = true,
                 tooltip: '주소 검색',
               );
             }
           }),
           // 경로가 있을 때만 취소 버튼 표시
           Obx(() {
-            if (locationService.polylineCoordinates.isNotEmpty) {
+            if (widget.locationService.polylineCoordinates.isNotEmpty) {
               return IconButton(
                 icon: Icon(Icons.close, color: colorScheme.error),
                 onPressed: () {
-                  locationService.cancelDirections();
+                  widget.locationService.cancelDirections();
                   Get.snackbar(
                     '안내',
                     '경로가 취소되었습니다',
@@ -85,7 +108,7 @@ class MapView extends StatelessWidget {
           }),
           IconButton(
             icon: Icon(Icons.refresh, color: colorScheme.primary),
-            onPressed: () => locationService.resetMap(),
+            onPressed: () => widget.locationService.resetMap(),
             tooltip: '지도 초기화',
           ),
         ],
@@ -94,7 +117,7 @@ class MapView extends StatelessWidget {
         children: [
           // 지도 표시
           Obx(() {
-            if (locationService.currentLocation.value == null) {
+            if (widget.locationService.currentLocation.value == null) {
               return Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -114,11 +137,11 @@ class MapView extends StatelessWidget {
               // 변경 시 지도 기능이 비정상적으로 작동할 수 있습니다
               return GoogleMap(
                 initialCameraPosition: CameraPosition(
-                  target: locationService.currentLocation.value!,
+                  target: widget.locationService.currentLocation.value!,
                   zoom: 15,
                 ),
-                markers: locationService.markers,
-                polylines: locationService.polylines,
+                markers: widget.locationService.markers,
+                polylines: widget.locationService.polylines,
                 myLocationEnabled: true,
                 myLocationButtonEnabled: false, // 커스텀 버튼 사용
                 onTap: _onMapTap,
@@ -134,7 +157,7 @@ class MapView extends StatelessWidget {
                 },
                 onMapCreated: (GoogleMapController controller) {
                   // 지도 컨트롤러 설정
-                  locationService.setMapController(controller);
+                  widget.locationService.setMapController(controller);
                 },
               );
               // END IMPORTANT: 지도 관련 설정 끝
@@ -143,7 +166,7 @@ class MapView extends StatelessWidget {
 
           // 상태 정보 및 경로 정보 표시
           Obx(() {
-            if (locationService.isLoading.value) {
+            if (widget.locationService.isLoading.value) {
               return Positioned(
                 top: 100,
                 left: 0,
@@ -171,7 +194,7 @@ class MapView extends StatelessWidget {
                   ),
                 ),
               );
-            } else if (locationService.errorMsg.value.isNotEmpty) {
+            } else if (widget.locationService.errorMsg.value.isNotEmpty) {
               return Positioned(
                 top: 100,
                 left: 0,
@@ -190,7 +213,7 @@ class MapView extends StatelessWidget {
                           const SizedBox(width: 8),
                           Flexible(
                             child: Text(
-                              locationService.errorMsg.value,
+                              widget.locationService.errorMsg.value,
                               style: TextStyle(color: colorScheme.error),
                             ),
                           ),
@@ -207,8 +230,8 @@ class MapView extends StatelessWidget {
 
           // 경로 정보 카드
           Obx(() {
-            if (locationService.destinationAddress.value.isNotEmpty &&
-                !locationService.isLoading.value) {
+            if (widget.locationService.destinationAddress.value.isNotEmpty &&
+                !widget.locationService.isLoading.value) {
               return Positioned(
                 bottom: 66,
                 left: 0,
@@ -234,7 +257,7 @@ class MapView extends StatelessWidget {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                locationService.destinationAddress.value,
+                                widget.locationService.destinationAddress.value,
                                 style: theme.textTheme.titleMedium?.copyWith(
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -245,7 +268,7 @@ class MapView extends StatelessWidget {
                           ],
                         ),
                         const Divider(),
-                        if (locationService.routeDistance.value > 0)
+                        if (widget.locationService.routeDistance.value > 0)
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 4.0),
                             child: Row(
@@ -254,13 +277,13 @@ class MapView extends StatelessWidget {
                                     color: colorScheme.secondary, size: 20),
                                 const SizedBox(width: 8),
                                 Text(
-                                  '거리: ${(locationService.routeDistance.value / 1000).toStringAsFixed(2)} km',
+                                  '거리: ${(widget.locationService.routeDistance.value / 1000).toStringAsFixed(2)} km',
                                   style: theme.textTheme.bodyMedium,
                                 ),
                               ],
                             ),
                           ),
-                        if (locationService.routeDuration.value > 0)
+                        if (widget.locationService.routeDuration.value > 0)
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 4.0),
                             child: Row(
@@ -269,7 +292,7 @@ class MapView extends StatelessWidget {
                                     color: colorScheme.secondary, size: 20),
                                 const SizedBox(width: 8),
                                 Text(
-                                  '예상 소요 시간: ${locationService.routeDuration.value} 분',
+                                  '예상 소요 시간: ${widget.locationService.routeDuration.value} 분',
                                   style: theme.textTheme.bodyMedium,
                                 ),
                               ],
@@ -281,7 +304,7 @@ class MapView extends StatelessWidget {
                           child: Row(
                             children: [
                               // 추적 중이 아닐 때만 경로 안내 시작 버튼 표시
-                              if (!locationService.isTracking.value)
+                              if (!widget.locationService.isTracking.value)
                                 Expanded(
                                   flex: 2,
                                   child: ElevatedButton.icon(
@@ -296,7 +319,7 @@ class MapView extends StatelessWidget {
                                         '경로 안내를 시작합니다',
                                         snackPosition: SnackPosition.BOTTOM,
                                       );
-                                      locationService.startTracking();
+                                      widget.locationService.startTracking();
                                     },
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: colorScheme.primary,
@@ -310,7 +333,7 @@ class MapView extends StatelessWidget {
                                   ),
                                 ),
                               // 추적 중일 때는 추적 중지 버튼 표시
-                              if (locationService.isTracking.value)
+                              if (widget.locationService.isTracking.value)
                                 Expanded(
                                   flex: 2,
                                   child: ElevatedButton.icon(
@@ -319,7 +342,7 @@ class MapView extends StatelessWidget {
                                         style: TextStyle(
                                             fontWeight: FontWeight.bold)),
                                     onPressed: () {
-                                      locationService.stopTracking();
+                                      widget.locationService.stopTracking();
                                       Get.snackbar(
                                         '안내',
                                         '추적이 중지되었습니다',
@@ -340,7 +363,8 @@ class MapView extends StatelessWidget {
                                   ),
                                 ),
                               // 경로가 있을 때 취소 버튼 표시
-                              if (locationService.routeDistance.value > 0) ...[
+                              if (widget.locationService.routeDistance.value >
+                                  0) ...[
                                 const SizedBox(width: 8),
                                 Expanded(
                                   flex: 1,
@@ -350,7 +374,7 @@ class MapView extends StatelessWidget {
                                             fontWeight: FontWeight.bold)),
                                     onPressed: () {
                                       // 경로 안내 취소 - 완전히 초기화하도록 수정
-                                      locationService.cancelDirections();
+                                      widget.locationService.cancelDirections();
                                       Get.snackbar(
                                         '안내',
                                         '경로가 취소되었습니다',
@@ -413,8 +437,9 @@ class MapView extends StatelessWidget {
                     heroTag: 'zoomInButton',
                     mini: true,
                     onPressed: () {
-                      if (locationService.mapController.value != null) {
-                        locationService.mapController.value!.animateCamera(
+                      if (widget.locationService.mapController.value != null) {
+                        widget.locationService.mapController.value!
+                            .animateCamera(
                           CameraUpdate.zoomIn(),
                         );
                       }
@@ -449,8 +474,9 @@ class MapView extends StatelessWidget {
                     heroTag: 'zoomOutButton',
                     mini: true,
                     onPressed: () {
-                      if (locationService.mapController.value != null) {
-                        locationService.mapController.value!.animateCamera(
+                      if (widget.locationService.mapController.value != null) {
+                        widget.locationService.mapController.value!
+                            .animateCamera(
                           CameraUpdate.zoomOut(),
                         );
                       }
@@ -484,7 +510,7 @@ class MapView extends StatelessWidget {
               ),
               child: FloatingActionButton(
                 heroTag: 'locationButton',
-                onPressed: () => locationService.getCurrentLocation(),
+                onPressed: () => widget.locationService.getCurrentLocation(),
                 backgroundColor: colorScheme.primary,
                 foregroundColor: colorScheme.onPrimary,
                 elevation: 4,
@@ -509,7 +535,7 @@ class MapView extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return TextField(
-      controller: searchController,
+      controller: widget.searchController,
       decoration: InputDecoration(
         hintText: '목적지 주소 검색',
         hintStyle: TextStyle(color: colorScheme.onSurface.withOpacity(0.6)),
@@ -522,7 +548,7 @@ class MapView extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         suffixIcon: IconButton(
           icon: const Icon(Icons.clear),
-          onPressed: searchController.clear,
+          onPressed: widget.searchController.clear,
         ),
       ),
       style: TextStyle(color: colorScheme.onSurface),
@@ -546,11 +572,11 @@ class MapView extends StatelessWidget {
       );
 
       List<LatLng> results =
-          await locationService.searchPlacesByAddress(address);
+          await widget.locationService.searchPlacesByAddress(address);
 
       if (results.isNotEmpty) {
-        locationService.setDestination(results.first, address);
-        isSearchMode.value = false;
+        widget.locationService.setDestination(results.first, address);
+        widget.isSearchMode.value = false;
         debugPrint('✅ 검색 결과: ${results.first}, 주소: $address');
       } else {
         Get.snackbar(
@@ -580,7 +606,7 @@ class MapView extends StatelessWidget {
         duration: const Duration(seconds: 1),
       );
 
-      locationService.setDestination(position, '선택한 위치');
+      widget.locationService.setDestination(position, '선택한 위치');
       debugPrint('✅ 지도 탭 위치: $position');
     } catch (e) {
       Get.snackbar(

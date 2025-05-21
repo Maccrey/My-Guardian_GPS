@@ -1,18 +1,21 @@
-import 'dart:async';
-import 'dart:convert';
-import 'dart:math' show min, max, cos, pi;
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:get/get.dart';
+import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
-import 'package:http/http.dart' as http;
+import 'package:get/get.dart';
+import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import '../constants/api_keys.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import 'dart:async';
+import 'dart:io' show Platform;
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/shared_location_model.dart';
+import '../constants/api_keys.dart';
+import 'map_api_service.dart';
 
 // 검색 결과 항목 클래스
 class SearchResult {
@@ -116,6 +119,17 @@ class LocationService extends GetxController {
         _apiKey = envApiKey;
         debugPrint('✅ Google Maps API 키 로드 성공 (.env 파일)');
       }
+
+      // 플랫폼별 API 키 설정
+      MapApiService.setGoogleMapsApiKeyForPlatform().then((success) {
+        if (success) {
+          debugPrint('✅ LocationService에서 플랫폼별 API 키 설정 성공');
+        } else {
+          debugPrint('⚠️ LocationService에서 플랫폼별 API 키 설정 실패');
+        }
+      }).catchError((e) {
+        debugPrint('❌ LocationService에서 플랫폼별 API 키 설정 중 오류: $e');
+      });
     } catch (e) {
       // 예외 발생 시 상수 파일의 기본값 사용
       _apiKey = ApiKeys.googleMapsApiKey;
