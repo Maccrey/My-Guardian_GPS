@@ -36,7 +36,7 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
-  intl: ^0.19.0 # 날짜/시간 형식화 패키지
+  intl: ^0.19.0 # 날짜/시간 형식화 패키지 (flutter_localizations에 맞춤)
   get: ^4.6.6
   shared_preferences: ^2.5.3 # 네이티브 플러그인: Android와 iOS 모두 재빌드 필요
   uuid: ^4.5.1
@@ -55,6 +55,8 @@ dependencies:
   # 구글 로그인 디버깅용 패키지
   logger: ^2.0.2 # 구글 로그인을 위한 패키지
   image_cropper: ^9.1.0 # 이미지 크롭을 위한 패키지
+  path_provider: ^2.1.4 # 경로 제공자 패키지
+  crypto: ^3.0.3 # 암호화 패키지
 
   # Firebase 관련 패키지 - 테스트를 위해 임시 주석 처리
   firebase_core: ^3.13.0
@@ -78,8 +80,10 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
-  flutterfire_cli: ^0.1.1+2
   flutter_launcher_icons: ^0.11.0
+
+# flutterfire_cli가 intl과 버전 충돌을 일으키므로 제거함
+# 필요한 경우 별도 프로젝트에서 Firebase 설정 후 파일만 복사해 사용
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

@@ -63,6 +63,9 @@ class DefaultFirebaseOptions {
     messagingSenderId: '1071355933777',
     projectId: 'watch-over-55c0a',
     storageBucket: 'watch-over-55c0a.firebasestorage.app',
+    androidClientId: '1071355933777-ebrnqjd2kh0ibqnnirft4e04pjqigbac.apps.googleusercontent.com',
+    iosClientId: '1071355933777-m1i508qebs4no0fm10on2et5q61mbjig.apps.googleusercontent.com',
     iosBundleId: 'com.example.gpsSeach',
   );
+
 }

@@ -14,6 +14,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'services/auth_service.dart';
 import 'services/message_service.dart';
+import 'services/image_cache_service.dart';
 import 'views/login_view.dart';
 import 'views/register_view.dart';
 import 'views/forgot_password_view.dart';
@@ -234,6 +235,20 @@ class _MyAppState extends State<MyApp> {
       debugPrint('⚠️ LocationService 초기화 실패: $e');
     }
 
+    // 이미지 캐시 서비스 초기화
+    try {
+      if (!Get.isRegistered<ImageCacheService>()) {
+        debugPrint('🖼️ ImageCacheService 초기화 시작...');
+        final imageCacheService = ImageCacheService();
+        imageCacheService.init().then((service) {
+          Get.put(service, permanent: true);
+          debugPrint('✅ ImageCacheService 초기화 성공');
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ ImageCacheService 초기화 실패: $e');
+    }
+
     // 알림 서비스 초기화
     try {
       // NotificationService 초기화
@@ -319,3 +334,85 @@ class _MyAppState extends State<MyApp> {
     );
   }
 }
+
+// 미사용 함수이므로 주석 처리
+/*
+void initServices() async {
+  debugPrint('🚀 서비스 초기화 시작...');
+
+  // 설정 서비스 초기화 (반드시 SharedPreferences 이후에 초기화)
+  if (isSharedPreferencesAvailable) {
+    try {
+      final settingsService = SettingsService();
+      await settingsService.initialize(prefsInstance!);
+      Get.put(settingsService);
+      debugPrint('✅ SettingsService 초기화 성공');
+    } catch (e) {
+      debugPrint('⚠️ SettingsService 초기화 실패: $e');
+    }
+  }
+
+  // 인증 서비스 초기화
+  try {
+    final authService = AuthService();
+    await authService.init();
+    Get.put(authService);
+    debugPrint('✅ AuthService 초기화 성공');
+  } catch (e) {
+    debugPrint('⚠️ AuthService 초기화 실패: $e');
+  }
+
+  // 메시지 서비스 초기화
+  try {
+    final messageService = MessageService();
+    await messageService.init();
+    Get.put(messageService);
+    debugPrint('✅ MessageService 초기화 성공');
+  } catch (e) {
+    debugPrint('⚠️ MessageService 초기화 실패: $e');
+  }
+
+  // 위치 서비스 초기화
+  try {
+    final locationService = LocationService();
+    await locationService.init();
+    Get.put(locationService);
+    debugPrint('✅ LocationService 초기화 성공');
+  } catch (e) {
+    debugPrint('⚠️ LocationService 초기화 실패: $e');
+  }
+
+  // 비상 연락처 서비스 초기화
+  try {
+    final emergencyContactService = EmergencyContactService();
+    await emergencyContactService.init();
+    Get.put(emergencyContactService);
+    debugPrint('✅ EmergencyContactService 초기화 성공');
+  } catch (e) {
+    debugPrint('⚠️ EmergencyContactService 초기화 실패: $e');
+  }
+
+  // 이미지 캐시 서비스 초기화
+  try {
+    final imageCacheService = ImageCacheService();
+    await imageCacheService.init();
+    Get.put(imageCacheService);
+    debugPrint('✅ ImageCacheService 초기화 성공');
+  } catch (e) {
+    debugPrint('⚠️ ImageCacheService 초기화 실패: $e');
+  }
+
+  // 알림 서비스 초기화
+  try {
+    // NotificationService 초기화
+    NotificationService.getInstance().then((service) {
+      if (!Get.isRegistered<NotificationService>()) {
+        Get.put(service);
+      }
+      debugPrint('✅ NotificationService 초기화 성공');
+    });
+  } catch (e) {
+    debugPrint('⚠️ NotificationService 초기화 실패: $e');
+  }
+}
+*/

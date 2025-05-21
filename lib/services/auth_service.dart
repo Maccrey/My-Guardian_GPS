@@ -274,6 +274,19 @@ class AuthService extends GetxController {
       // 이미지 다운로드 URL 가져오기
       final downloadUrl = await snapshot.ref.getDownloadURL();
 
+      // 프로필 이미지 업로드 날짜 업데이트
+      final userData = await _firestore.collection('users').doc(uid).get();
+      if (userData.exists) {
+        await _firestore.collection('users').doc(uid).update({
+          'profileImageUploadDate': DateTime.now().toIso8601String(),
+        });
+
+        // 현재 사용자인 경우 로컬 정보도 업데이트
+        if (_currentUser.value?.uid == uid) {
+          _currentUser.value?.profileImageUploadDate = DateTime.now();
+        }
+      }
+
       debugPrint('✅ 프로필 이미지 업로드 성공: $downloadUrl');
       return downloadUrl;
     } catch (e) {

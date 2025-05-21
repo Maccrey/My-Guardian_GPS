@@ -10,6 +10,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
+import '../services/image_cache_service.dart';
 
 // ProfileEditController 바인딩 클래스
 class ProfileEditBinding implements Bindings {
@@ -283,6 +284,7 @@ class ProfileEditController extends GetxController {
         userType: user.value.userType,
         profileImageUrl: user.value.profileImageUrl,
         lastActive: DateTime.now(),
+        profileImageUploadDate: user.value.profileImageUploadDate,
       );
 
       // 이미지가 선택된 경우 업로드
@@ -295,6 +297,7 @@ class ProfileEditController extends GetxController {
 
         if (imageUrl != null) {
           updatedUser.profileImageUrl = imageUrl;
+          updatedUser.profileImageUploadDate = DateTime.now(); // 업로드 날짜 업데이트
         }
       }
 
@@ -318,6 +321,24 @@ class ProfileEditController extends GetxController {
       errorMessage.value = '오류가 발생했습니다: $e';
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  // 캐시된 프로필 이미지 가져오기
+  Future<String?> _getCachedProfileImage(
+      String uid, String imageUrl, DateTime? uploadDate) async {
+    try {
+      final imageCacheService = Get.find<ImageCacheService>();
+      final cachedImagePath = await imageCacheService.cacheProfileImage(
+        imageUrl,
+        uid,
+        uploadDate: uploadDate,
+        forceUpdate: isImageSelected.value, // 이미지가 새로 선택된 경우 캐시 강제 업데이트
+      );
+      return cachedImagePath;
+    } catch (e) {
+      debugPrint('⚠️ 프로필 이미지 캐싱 오류: $e');
+      return null;
     }
   }
 }
@@ -442,11 +463,37 @@ class ProfileEditView extends GetView<ProfileEditController> {
                   );
                 } else if (controller.user.value.profileImageUrl != null &&
                     controller.user.value.profileImageUrl!.isNotEmpty) {
-                  // Firebase에서 가져온 이미지
-                  image = CircleAvatar(
-                    radius: 64,
-                    backgroundImage:
-                        NetworkImage(controller.user.value.profileImageUrl!),
+                  // 캐시된 이미지 또는 네트워크 이미지 사용
+                  image = FutureBuilder<String?>(
+                    future: Get.find<ImageCacheService>().cacheProfileImage(
+                      controller.user.value.profileImageUrl!,
+                      controller.user.value.uid!,
+                      uploadDate: controller.user.value.profileImageUploadDate,
+                      forceUpdate: controller.isImageSelected.value,
+                    ),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return CircleAvatar(
+                          radius: 64,
+                          backgroundColor:
+                              theme.colorScheme.primary.withOpacity(0.3),
+                          child: const CircularProgressIndicator(),
+                        );
+                      } else if (snapshot.hasData && snapshot.data != null) {
+                        // 캐시된 이미지 사용
+                        return CircleAvatar(
+                          radius: 64,
+                          backgroundImage: FileImage(File(snapshot.data!)),
+                        );
+                      } else {
+                        // 네트워크 이미지 로드
+                        return CircleAvatar(
+                          radius: 64,
+                          backgroundImage: NetworkImage(
+                              controller.user.value.profileImageUrl!),
+                        );
+                      }
+                    },
                   );
                 } else {
                   // 기본 이미지

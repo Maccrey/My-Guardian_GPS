@@ -1,12 +1,14 @@
 import 'dart:convert';
 import 'dart:math';
 import 'dart:async'; // Timer를 위한 import 추가
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import '../../services/message_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/location_service.dart';
+import '../../services/image_cache_service.dart'; // 이미지 캐시 서비스 추가
 import '../../models/message_model.dart';
 import '../../models/user_model.dart';
 import '../../models/shared_location_model.dart';
@@ -15,7 +17,6 @@ import 'package:uuid/uuid.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/url_handler.dart';
-import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
@@ -1539,27 +1540,83 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                     child: InteractiveViewer(
                       minScale: 0.5,
                       maxScale: 3.0,
-                      child: Image.network(
-                        imageData['url'] as String,
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return Center(
-                            child: CircularProgressIndicator(
-                              value: loadingProgress.expectedTotalBytes != null
-                                  ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                  : null,
-                            ),
-                          );
-                        },
-                        errorBuilder: (context, error, stackTrace) {
-                          return const Center(
-                            child: Icon(
-                              Icons.broken_image,
-                              size: 48,
-                              color: Colors.grey,
-                            ),
-                          );
+                      child: FutureBuilder<String?>(
+                        future: _getCachedMessageImage(
+                          message.id,
+                          imageData['url'] as String,
+                        ),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          } else if (snapshot.hasData &&
+                              snapshot.data != null) {
+                            // 캐시된 이미지 사용
+                            return Image.file(
+                              File(snapshot.data!),
+                              errorBuilder: (context, error, stackTrace) {
+                                // 로컬 파일 로드 실패 시 네트워크 이미지로 폴백
+                                return Image.network(
+                                  imageData['url'] as String,
+                                  loadingBuilder:
+                                      (context, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
+                                    return Center(
+                                      child: CircularProgressIndicator(
+                                        value: loadingProgress
+                                                    .expectedTotalBytes !=
+                                                null
+                                            ? loadingProgress
+                                                    .cumulativeBytesLoaded /
+                                                loadingProgress
+                                                    .expectedTotalBytes!
+                                            : null,
+                                      ),
+                                    );
+                                  },
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return const Center(
+                                      child: Icon(
+                                        Icons.broken_image,
+                                        size: 48,
+                                        color: Colors.grey,
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            );
+                          } else {
+                            // 네트워크 이미지 로드
+                            return Image.network(
+                              imageData['url'] as String,
+                              loadingBuilder:
+                                  (context, child, loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return Center(
+                                  child: CircularProgressIndicator(
+                                    value: loadingProgress.expectedTotalBytes !=
+                                            null
+                                        ? loadingProgress
+                                                .cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
+                                        : null,
+                                  ),
+                                );
+                              },
+                              errorBuilder: (context, error, stackTrace) {
+                                return const Center(
+                                  child: Icon(
+                                    Icons.broken_image,
+                                    size: 48,
+                                    color: Colors.grey,
+                                  ),
+                                );
+                              },
+                            );
+                          }
                         },
                       ),
                     ),
@@ -1595,43 +1652,121 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                     ),
                   ),
 
-                  // 이미지 표시
-                  Image.network(
-                    imageData['url'] as String,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Center(
-                        child: SizedBox(
-                          width: 30,
-                          height: 30,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            value: loadingProgress.expectedTotalBytes != null
-                                ? loadingProgress.cumulativeBytesLoaded /
-                                    loadingProgress.expectedTotalBytes!
-                                : null,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                                isCurrentUserSender
-                                    ? Colors.blue.shade200
-                                    : Colors.grey.shade400),
+                  // 이미지 표시 - 캐시 사용
+                  FutureBuilder<String?>(
+                    future: _getCachedMessageImage(
+                      message.id,
+                      imageData['url'] as String,
+                    ),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return Center(
+                          child: SizedBox(
+                            width: 30,
+                            height: 30,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                  isCurrentUserSender
+                                      ? Colors.blue.shade200
+                                      : Colors.grey.shade400),
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        width: 150,
-                        height: 100,
-                        color: Colors.grey.shade300,
-                        child: const Center(
-                          child: Icon(
-                            Icons.broken_image,
-                            size: 48,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      );
+                        );
+                      } else if (snapshot.hasData && snapshot.data != null) {
+                        // 캐시된 이미지 사용
+                        return Image.file(
+                          File(snapshot.data!),
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            // 로컬 파일 로드 실패 시 네트워크 이미지로 폴백
+                            return Image.network(
+                              imageData['url'] as String,
+                              fit: BoxFit.cover,
+                              loadingBuilder:
+                                  (context, child, loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return Center(
+                                  child: SizedBox(
+                                    width: 30,
+                                    height: 30,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      value:
+                                          loadingProgress.expectedTotalBytes !=
+                                                  null
+                                              ? loadingProgress
+                                                      .cumulativeBytesLoaded /
+                                                  loadingProgress
+                                                      .expectedTotalBytes!
+                                              : null,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                          isCurrentUserSender
+                                              ? Colors.blue.shade200
+                                              : Colors.grey.shade400),
+                                    ),
+                                  ),
+                                );
+                              },
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  width: 150,
+                                  height: 100,
+                                  color: Colors.grey.shade300,
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.broken_image,
+                                      size: 48,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                        );
+                      } else {
+                        // 네트워크 이미지 로드
+                        return Image.network(
+                          imageData['url'] as String,
+                          fit: BoxFit.cover,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return Center(
+                              child: SizedBox(
+                                width: 30,
+                                height: 30,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  value: loadingProgress.expectedTotalBytes !=
+                                          null
+                                      ? loadingProgress.cumulativeBytesLoaded /
+                                          loadingProgress.expectedTotalBytes!
+                                      : null,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      isCurrentUserSender
+                                          ? Colors.blue.shade200
+                                          : Colors.grey.shade400),
+                                ),
+                              ),
+                            );
+                          },
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              width: 150,
+                              height: 100,
+                              color: Colors.grey.shade300,
+                              child: const Center(
+                                child: Icon(
+                                  Icons.broken_image,
+                                  size: 48,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      }
                     },
                   ),
 
@@ -2487,6 +2622,22 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       return jsonDecode(content) as Map<String, dynamic>;
     } catch (e) {
       debugPrint('⚠️ 이미지 메시지 파싱 오류: $e');
+      return null;
+    }
+  }
+
+  // 캐시된 메시지 이미지 가져오기
+  Future<String?> _getCachedMessageImage(
+      String messageId, String imageUrl) async {
+    try {
+      final imageCacheService = Get.find<ImageCacheService>();
+      final cachedImagePath = await imageCacheService.cacheMessageImage(
+        imageUrl,
+        messageId,
+      );
+      return cachedImagePath;
+    } catch (e) {
+      debugPrint('⚠️ 메시지 이미지 캐싱 오류: $e');
       return null;
     }
   }

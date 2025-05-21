@@ -9,12 +9,20 @@
       "client_info": {
         "mobilesdk_app_id": "1:1071355933777:android:7ac41bc5ce954cf3b3b470",
         "android_client_info": {
-          "package_name": "com.maccrey.watch_over"
+          "package_name": "com.example.gps_seach"
         }
       },
       "oauth_client": [
         {
-          "client_id": "1071355933777-sample12345abcdefghijklmnopqrst.apps.googleusercontent.com",
+          "client_id": "1071355933777-ebrnqjd2kh0ibqnnirft4e04pjqigbac.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.gps_seach",
+            "certificate_hash": "b84ad064ddfbea5e822c674e9121167d0ac61415"
+          }
+        },
+        {
+          "client_id": "1071355933777-m0h2ud9umafo496iptjf5fln8i0vjdsc.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
@@ -27,8 +35,15 @@
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "1071355933777-sample12345abcdefghijklmnopqrst.apps.googleusercontent.com",
+              "client_id": "1071355933777-m0h2ud9umafo496iptjf5fln8i0vjdsc.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "1071355933777-m1i508qebs4no0fm10on2et5q61mbjig.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.gpsSeach"
+              }
             }
           ]
         }
