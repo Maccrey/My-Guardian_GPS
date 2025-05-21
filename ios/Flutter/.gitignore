@@ -1,0 +1,14 @@
+# Flutter/Dart/Pub related
+Generated.xcconfig
+Debug.xcconfig
+Release.xcconfig
+Flutter.podspec
+App.framework
+Flutter.framework
+flutter_export_environment.sh
+GeneratedPluginRegistrant.*
+ephemeral/
+**/Generated.xcconfig
+**/Flutter/Generated.xcconfig
+**/Flutter/Debug.xcconfig
+**/Flutter/Release.xcconfig 
