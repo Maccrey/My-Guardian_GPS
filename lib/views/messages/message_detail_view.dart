@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:math';
+import 'dart:math' as math;
 import 'dart:async'; // Timer를 위한 import 추가
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -41,6 +41,11 @@ class _MessageDetailViewState extends State<MessageDetailView> {
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _imagePicker = ImagePicker(); // 이미지 피커 추가
 
+  // 스크롤 위치 유지를 위한 변수 추가
+  bool _isUserScrolling = false;
+  bool _shouldAutoScroll = true;
+  double _lastScrollPosition = 0.0;
+
   // 스캐폴드 키를 저장할 변수 - dispose에서 안전하게 액세스하기 위함
   ScaffoldMessengerState? _scaffoldMessenger;
 
@@ -50,12 +55,18 @@ class _MessageDetailViewState extends State<MessageDetailView> {
   final RxString _recipientStatusText = '오프라인'.obs; // 상대방 상태 텍스트
   final Rx<Color> _recipientStatusColor = Colors.grey.obs; // 상대방 상태 색상
 
+  // 검색으로 강조된 마지막 메시지 ID
+  String? _lastHighlightedMessageId;
+
   @override
   void initState() {
     super.initState();
 
     // 로깅 추가
     debugPrint('🔄 MessageDetailView initState 시작: ${widget.userId}');
+
+    // 스크롤 리스너 추가
+    _scrollController.addListener(_handleScrollListener);
 
     // 화면이 로드되면 읽지 않은 메시지를 읽음 상태로 변경
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -104,7 +115,35 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       if (mounted) {
         debugPrint('🔔 메시지 리스트 변경 감지 - UI 업데이트');
         _markMessagesAsRead();
-        _safelyScrollToBottom();
+
+        // 사용자가 스크롤 중이거나 스크롤 위치가 하단에서 멀리 떨어져 있다면 자동 스크롤하지 않음
+        if (_scrollController.hasClients) {
+          if (_shouldAutoScroll) {
+            // 사용자가 하단 근처에 있거나 자동 스크롤이 활성화된 경우에만 스크롤
+            debugPrint('🔄 메시지 변경 감지 - 자동 스크롤 수행');
+            _safelyScrollToBottom();
+          } else {
+            // 사용자가 위쪽을 보고 있는 경우 스크롤 위치 유지
+            debugPrint('🔒 스크롤 위치 유지 - 사용자가 이전 메시지를 보는 중');
+
+            // 지연 후 마지막으로 보던 위치로 복원
+            Future.delayed(const Duration(milliseconds: 50), () {
+              if (mounted && _scrollController.hasClients) {
+                // 현재 스크롤 위치보다 _lastScrollPosition이 더 크면 (더 아래에 있으면) 해당 위치로 복원
+                final currentPos = _scrollController.position.pixels;
+                if (_lastScrollPosition > currentPos &&
+                    _lastScrollPosition <=
+                        _scrollController.position.maxScrollExtent) {
+                  _scrollController.jumpTo(_lastScrollPosition);
+                  debugPrint('🔄 이전 스크롤 위치로 복원: $_lastScrollPosition');
+                }
+              }
+            });
+          }
+        } else {
+          // 클라이언트가 없는 경우(초기 로딩)에는 스크롤 이동
+          _safelyScrollToBottom();
+        }
       }
     });
   }
@@ -130,6 +169,9 @@ class _MessageDetailViewState extends State<MessageDetailView> {
     _activityUpdateTimer?.cancel();
     _statusCheckTimer?.cancel();
 
+    // 스크롤 리스너 제거
+    _scrollController.removeListener(_handleScrollListener);
+
     // mounted 상태 확인 없이 직접 컨트롤러 정리
     try {
       // dispose 메서드에서 BuildContext나 State에 의존하는 코드 제거
@@ -146,6 +188,37 @@ class _MessageDetailViewState extends State<MessageDetailView> {
     super.dispose();
 
     debugPrint('🧹 MessageDetailView dispose 완료: ${widget.userId}');
+  }
+
+  // 스크롤 이벤트 처리 메서드
+  void _handleScrollListener() {
+    if (!mounted) return;
+
+    if (_scrollController.hasClients) {
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      final currentScroll = _scrollController.position.pixels;
+
+      // 사용자가 스크롤 중인지 확인
+      if (_scrollController.position.isScrollingNotifier.value) {
+        _isUserScrolling = true;
+        _lastScrollPosition = currentScroll;
+
+        // 사용자가 스크롤하는 동안에는 자동 스크롤 비활성화
+        // 맨 아래에 가까운 경우에만 자동 스크롤 활성화
+        final threshold = maxScroll * 0.95;
+        _shouldAutoScroll = currentScroll >= threshold;
+
+        debugPrint(
+            '🖱️ 사용자 스크롤 감지: 위치=$currentScroll, 자동스크롤=${_shouldAutoScroll ? '활성화' : '비활성화'}');
+      } else {
+        // 스크롤이 멈춘 상태
+        if (_isUserScrolling) {
+          _isUserScrolling = false;
+          _lastScrollPosition = currentScroll;
+          debugPrint('🖱️ 사용자 스크롤 종료: 위치=$currentScroll');
+        }
+      }
+    }
   }
 
   // 메시지 전송
@@ -237,7 +310,8 @@ class _MessageDetailViewState extends State<MessageDetailView> {
           });
         }
 
-        // 스크롤을 맨 아래로 이동 - 별도 메서드로 추출하여 mounted 체크와 함께 호출
+        // 새 메시지 전송 시에는 항상 스크롤을 맨 아래로 이동
+        // (사용자가 직접 메시지를 보냈으므로 스크롤을 맨 아래로 이동시키는 것이 자연스러움)
         _safelyScrollToBottom();
       } else if (mounted) {
         // 전송 실패 시 사용자에게 알림
@@ -255,17 +329,29 @@ class _MessageDetailViewState extends State<MessageDetailView> {
   void _safelyScrollToBottom() {
     if (!mounted) return;
 
-    // 약간의 딜레이 후 스크롤 (메시지 렌더링 시간 확보)
-    Future.delayed(const Duration(milliseconds: 300), () {
-      // 딜레이 후 다시 mounted 체크
-      if (!mounted) {
-        debugPrint('⚠️ 스크롤 시도 시 위젯이 dispose되어 중단');
-        return;
-      }
+    // 스크롤 지연 시간을 더 다양하게 변경하여 여러 시도를 통해 성공률 높임
+    for (int delay in [50, 150, 300, 600]) {
+      Future.delayed(Duration(milliseconds: delay), () {
+        // 딜레이 후 다시 mounted 체크
+        if (!mounted) {
+          debugPrint('⚠️ 스크롤 시도 시 위젯이 dispose되어 중단');
+          return;
+        }
 
-      debugPrint('🔄 스크롤 맨 아래로 이동 시도');
-      _scrollToBottom();
-    });
+        debugPrint('🔄 스크롤 맨 아래로 이동 시도 (delay: ${delay}ms)');
+        _scrollToBottom();
+
+        // 마지막 스크롤 시도 후 추가로 한번 더 시도 (일부 장치에서 늦게 렌더링되는 경우 대비)
+        if (delay == 600) {
+          Future.delayed(const Duration(milliseconds: 800), () {
+            if (mounted) {
+              debugPrint('🔄 스크롤 맨 아래로 마지막 추가 이동 시도');
+              _scrollToBottom();
+            }
+          });
+        }
+      });
+    }
   }
 
   // 에러 스낵바 표시 헬퍼 메서드
@@ -525,7 +611,7 @@ class _MessageDetailViewState extends State<MessageDetailView> {
     final cleanUserId = userId.replaceAll(RegExp(r'[0-9-_]+$'), '');
     return cleanUserId.isNotEmpty
         ? (cleanUserId.capitalize ?? cleanUserId)
-        : '사용자 ${userId.substring(0, min(userId.length, 8))}';
+        : '사용자 ${userId.substring(0, math.min(userId.length, 8))}';
   }
 
   // 안전하게 스크롤을 맨 아래로 이동하는 메서드
@@ -535,16 +621,33 @@ class _MessageDetailViewState extends State<MessageDetailView> {
         final maxScroll = _scrollController.position.maxScrollExtent;
         debugPrint('🔄 스크롤 이동: maxScrollExtent=$maxScroll');
 
-        _scrollController.animateTo(
-          maxScroll,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+        // 스크롤 위치를 확인하여 즉시 이동할지 애니메이션 이동할지 결정
+        if (_scrollController.position.pixels >= maxScroll - 150) {
+          // 이미 거의 아래에 있으면 즉시 이동
+          _scrollController.jumpTo(maxScroll);
+        } else {
+          // 그렇지 않으면 애니메이션으로 부드럽게 이동
+          _scrollController.animateTo(
+            maxScroll,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
       } else {
         debugPrint('⚠️ 스크롤 컨트롤러에 클라이언트 없음');
+        // 클라이언트가 없는 경우 지연 후 다시 시도 (3번까지 재시도)
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) _scrollToBottom();
+        });
       }
     } catch (e) {
       debugPrint('⚠️ 스크롤 이동 중 오류 발생: $e');
+      // 오류 발생 시에도 지연 후 다시 시도
+      if (mounted) {
+        Future.delayed(const Duration(milliseconds: 200), () {
+          if (mounted) _scrollToBottom();
+        });
+      }
     }
   }
 
@@ -601,7 +704,35 @@ class _MessageDetailViewState extends State<MessageDetailView> {
 
       // 읽음 상태 갱신 및 스크롤 이동
       _markMessagesAsRead();
-      _safelyScrollToBottom();
+
+      // 마지막 읽은 위치 기억을 위해 현재 스크롤 위치 확인
+      if (_scrollController.hasClients) {
+        final maxScroll = _scrollController.position.maxScrollExtent;
+        final currentScroll = _scrollController.position.pixels;
+        final threshold = maxScroll * 0.9; // 스크롤이 90% 이상 내려간 경우에만 자동 스크롤
+
+        if (currentScroll >= threshold) {
+          // 사용자가 이미 하단 근처에 있을 때만 자동 스크롤
+          _safelyScrollToBottom();
+        } else {
+          debugPrint('🔒 새로고침 후 스크롤 위치 유지: 사용자가 위쪽을 보고 있습니다.');
+          // 현재 스크롤 위치의 비율을 계산하여 새로고침 후에도 동일한 비율 유지
+          final scrollRatio = maxScroll > 0 ? currentScroll / maxScroll : 0;
+
+          // 약간의 지연 후 스크롤 위치 복원 (새로운 콘텐츠 렌더링을 위한 시간 확보)
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (mounted && _scrollController.hasClients) {
+              // 새 maxScroll 기준으로 동일한 비율의 위치로 스크롤
+              final newMaxScroll = _scrollController.position.maxScrollExtent;
+              final newPosition = scrollRatio * newMaxScroll;
+              _scrollController.jumpTo(newPosition.clamp(0.0, newMaxScroll));
+            }
+          });
+        }
+      } else {
+        // 클라이언트가 없는 경우(초기 로딩)에는 스크롤 이동
+        _safelyScrollToBottom();
+      }
 
       // 결과에 따른 피드백
       if (_messageService.hasError.value) {
@@ -926,129 +1057,161 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                 return RefreshIndicator(
                   onRefresh: _refreshMessages,
                   color: Colors.blue.shade700,
-                  child: ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: conversation.length,
-                    itemBuilder: (context, index) {
-                      if (index >= conversation.length) {
-                        // 인덱스 범위 체크
-                        return const SizedBox.shrink();
-                      }
-
-                      final message = conversation[index];
-                      if (message == null) {
-                        debugPrint('⚠️ 대화 목록 인덱스 $index에 메시지가 null입니다');
-                        return const SizedBox.shrink();
-                      }
-
-                      // 날짜 구분선 표시 로직 추가
-                      final bool showDateSeparator = index == 0 ||
-                          !_isSameDay(
-                            conversation[index].timestamp,
-                            conversation[index - 1].timestamp,
-                          );
-
-                      // 안전하게 발신자 확인
-                      bool isCurrentUserSender = false;
-                      try {
-                        final currentUserId = _authService.uid ?? '';
-                        isCurrentUserSender = message.senderId == currentUserId;
-                      } catch (e) {
-                        debugPrint('⚠️ 발신자 확인 오류: $e');
-                      }
-
-                      return Column(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return Stack(
                         children: [
-                          // 날짜 구분선
-                          if (showDateSeparator)
-                            Container(
-                              margin: const EdgeInsets.symmetric(vertical: 16),
-                              child: Center(
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.shade200,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    _formatMessageDate(message.timestamp),
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey.shade700,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
+                          // 스크롤 가능한 최소 영역을 확보하기 위한 투명한 컨테이너
+                          Container(
+                            height: constraints.maxHeight,
+                            color: Colors.transparent,
+                          ),
+                          ListView.builder(
+                            controller: _scrollController,
+                            padding: const EdgeInsets.all(16),
+                            // 항상 스크롤 가능하도록 설정 + 바운스 효과 활성화 (더 자연스러운 스크롤 느낌 제공)
+                            physics: const AlwaysScrollableScrollPhysics(
+                              parent: BouncingScrollPhysics(
+                                decelerationRate: ScrollDecelerationRate.fast,
                               ),
                             ),
-
-                          // 메시지 슬라이드로 삭제/답장 기능
-                          Dismissible(
-                            key: Key(message.id),
-                            background: Container(
-                              color: Colors.red.shade400,
-                              alignment: Alignment.centerRight,
-                              padding: const EdgeInsets.only(right: 20),
-                              child:
-                                  const Icon(Icons.delete, color: Colors.white),
-                            ),
-                            secondaryBackground: Container(
-                              color: Colors.blue.shade400,
-                              alignment: Alignment.centerLeft,
-                              padding: const EdgeInsets.only(left: 20),
-                              child:
-                                  const Icon(Icons.reply, color: Colors.white),
-                            ),
-                            confirmDismiss: (direction) async {
-                              if (direction == DismissDirection.endToStart) {
-                                // 왼쪽으로 스와이프: 삭제
-                                final bool? result = await showDialog<bool>(
-                                  context: context,
-                                  builder: (BuildContext context) {
-                                    return AlertDialog(
-                                      title: const Text('메시지 삭제'),
-                                      content: const Text('이 메시지를 삭제하시겠습니까?'),
-                                      actions: <Widget>[
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.of(context).pop(false),
-                                          child: const Text('취소'),
-                                        ),
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.of(context).pop(true),
-                                          child: const Text('삭제'),
-                                        ),
-                                      ],
-                                    );
-                                  },
-                                );
-
-                                if (result == true) {
-                                  await _messageService
-                                      .deleteMessage(message.id);
-                                }
-                                return false; // 삭제 후 Dismissible 효과는 보이지 않도록
-                              } else if (direction ==
-                                  DismissDirection.startToEnd) {
-                                // 오른쪽으로 스와이프: 답장
-                                _messageService.setReplyToMessage(message);
-                                return false; // Dismissible 효과는 보이지 않도록
+                            // 리스트 아이템 간 공간을 확보하여 메시지 겹침 방지
+                            itemExtent: null, // 가변 높이로 설정하여 메시지가 겹치지 않게 함
+                            itemCount: conversation.length,
+                            itemBuilder: (context, index) {
+                              if (index >= conversation.length) {
+                                // 인덱스 범위 체크
+                                return const SizedBox.shrink();
                               }
-                              return false;
+
+                              final message = conversation[index];
+                              if (message == null) {
+                                debugPrint('⚠️ 대화 목록 인덱스 $index에 메시지가 null입니다');
+                                return const SizedBox.shrink();
+                              }
+
+                              // 날짜 구분선 표시 로직 추가
+                              final bool showDateSeparator = index == 0 ||
+                                  !_isSameDay(
+                                    conversation[index].timestamp,
+                                    conversation[index - 1].timestamp,
+                                  );
+
+                              // 안전하게 발신자 확인
+                              bool isCurrentUserSender = false;
+                              try {
+                                final currentUserId = _authService.uid ?? '';
+                                isCurrentUserSender =
+                                    message.senderId == currentUserId;
+                              } catch (e) {
+                                debugPrint('⚠️ 발신자 확인 오류: $e');
+                              }
+
+                              return Column(
+                                children: [
+                                  // 날짜 구분선
+                                  if (showDateSeparator)
+                                    Container(
+                                      margin: const EdgeInsets.symmetric(
+                                          vertical: 16),
+                                      child: Center(
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.grey.shade200,
+                                            borderRadius:
+                                                BorderRadius.circular(20),
+                                          ),
+                                          child: Text(
+                                            _formatMessageDate(
+                                                message.timestamp),
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey.shade700,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+
+                                  // 메시지 슬라이드로 삭제/답장 기능
+                                  Dismissible(
+                                    key: Key(message.id),
+                                    background: Container(
+                                      color: Colors.red.shade400,
+                                      alignment: Alignment.centerRight,
+                                      padding: const EdgeInsets.only(right: 20),
+                                      child: const Icon(Icons.delete,
+                                          color: Colors.white),
+                                    ),
+                                    secondaryBackground: Container(
+                                      color: Colors.blue.shade400,
+                                      alignment: Alignment.centerLeft,
+                                      padding: const EdgeInsets.only(left: 20),
+                                      child: const Icon(Icons.reply,
+                                          color: Colors.white),
+                                    ),
+                                    confirmDismiss: (direction) async {
+                                      if (direction ==
+                                          DismissDirection.endToStart) {
+                                        // 왼쪽으로 스와이프: 삭제
+                                        final bool? result =
+                                            await showDialog<bool>(
+                                          context: context,
+                                          builder: (BuildContext context) {
+                                            return AlertDialog(
+                                              title: const Text('메시지 삭제'),
+                                              content: const Text(
+                                                  '이 메시지를 삭제하시겠습니까?'),
+                                              actions: <Widget>[
+                                                TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.of(context)
+                                                          .pop(false),
+                                                  child: const Text('취소'),
+                                                ),
+                                                TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.of(context)
+                                                          .pop(true),
+                                                  child: const Text('삭제'),
+                                                ),
+                                              ],
+                                            );
+                                          },
+                                        );
+
+                                        if (result == true) {
+                                          await _messageService
+                                              .deleteMessage(message.id);
+                                        }
+                                        return false; // 삭제 후 Dismissible 효과는 보이지 않도록
+                                      } else if (direction ==
+                                          DismissDirection.startToEnd) {
+                                        // 오른쪽으로 스와이프: 답장
+                                        _messageService
+                                            .setReplyToMessage(message);
+                                        return false; // Dismissible 효과는 보이지 않도록
+                                      }
+                                      return false;
+                                    },
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        // 메시지 클릭 시 답장 모드
+                                        _messageService
+                                            .setReplyToMessage(message);
+                                      },
+                                      child: _buildMessageItem(
+                                          message, isCurrentUserSender),
+                                    ),
+                                  ),
+                                ],
+                              );
                             },
-                            child: GestureDetector(
-                              onTap: () {
-                                // 메시지 클릭 시 답장 모드
-                                _messageService.setReplyToMessage(message);
-                              },
-                              child: _buildMessageItem(
-                                  message, isCurrentUserSender),
-                            ),
                           ),
                         ],
                       );
@@ -1263,6 +1426,9 @@ class _MessageDetailViewState extends State<MessageDetailView> {
 
   // 메시지 아이템 위젯
   Widget _buildMessageItem(Message message, bool isCurrentUserSender) {
+    // 검색으로 찾은 메시지인지 확인
+    final bool isHighlighted = _lastHighlightedMessageId == message.id;
+
     // 답장 참조 메시지 표시
     Widget? replyReferenceWidget;
     if (message.replyToMessageId != null) {
@@ -1892,9 +2058,13 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                   decoration: message.messageType == 'location_share'
                       ? null // 위치 공유는 자체 장식 있음
                       : BoxDecoration(
-                          color: isCurrentUserSender
-                              ? Colors.blue.shade600
-                              : Colors.grey.shade100,
+                          color: isHighlighted
+                              ? (isCurrentUserSender
+                                  ? Colors.blue.shade800 // 강조된 내 메시지
+                                  : Colors.amber.shade100) // 강조된 상대 메시지
+                              : (isCurrentUserSender
+                                  ? Colors.blue.shade600
+                                  : Colors.grey.shade100),
                           borderRadius: BorderRadius.only(
                             topLeft:
                                 Radius.circular(isCurrentUserSender ? 16 : 4),
@@ -1905,8 +2075,13 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
-                              blurRadius: 3,
+                              color: isHighlighted
+                                  ? (isCurrentUserSender
+                                      ? Colors.blue.shade900.withOpacity(0.3)
+                                      : Colors.amber.shade300.withOpacity(0.5))
+                                  : Colors.black.withOpacity(0.05),
+                              blurRadius: isHighlighted ? 8 : 3,
+                              spreadRadius: isHighlighted ? 2 : 0,
                               offset: const Offset(0, 1),
                             ),
                           ],
@@ -2126,6 +2301,7 @@ class _MessageDetailViewState extends State<MessageDetailView> {
 
     // 지역 변수로 선언하여 dialog가 닫힐 때 자동으로 정리되도록 함
     List<Message> filteredMessages = [];
+    int selectedIndex = -1;
 
     showDialog(
       context: context,
@@ -2138,6 +2314,7 @@ class _MessageDetailViewState extends State<MessageDetailView> {
               if (searchQuery.isEmpty) {
                 setDialogState(() {
                   filteredMessages = [];
+                  selectedIndex = -1;
                 });
                 return;
               }
@@ -2148,6 +2325,24 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                     .where((msg) =>
                         msg.content.toLowerCase().contains(searchQuery))
                     .toList();
+                selectedIndex = -1;
+              });
+            }
+
+            // 이전/다음 검색 결과로 이동하는 함수
+            void navigateSearchResults(bool next) {
+              if (filteredMessages.isEmpty) return;
+
+              setDialogState(() {
+                if (next) {
+                  // 다음 검색 결과
+                  selectedIndex = (selectedIndex + 1) % filteredMessages.length;
+                } else {
+                  // 이전 검색 결과
+                  selectedIndex = selectedIndex <= 0
+                      ? filteredMessages.length - 1
+                      : selectedIndex - 1;
+                }
               });
             }
 
@@ -2170,11 +2365,72 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                         ),
                         filled: true,
                         fillColor: Colors.grey.shade50,
+                        // 검색어 지우기 버튼 추가
+                        suffixIcon: searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  setDialogState(() {
+                                    searchQuery = '';
+                                    filteredMessages = [];
+                                    selectedIndex = -1;
+                                  });
+                                },
+                              )
+                            : null,
                       ),
                       // controller를 사용하지 않고 직접 값 처리
                       onChanged: performSearch,
                     ),
-                    const SizedBox(height: 16),
+
+                    // 검색 결과 수와 네비게이션 버튼
+                    if (filteredMessages.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Row(
+                          children: [
+                            Text(
+                              '${filteredMessages.length}개 결과 찾음',
+                              style: TextStyle(
+                                color: Colors.blue.shade700,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const Spacer(),
+                            // 이전 버튼
+                            IconButton(
+                              icon: const Icon(Icons.arrow_upward),
+                              onPressed: filteredMessages.length > 1
+                                  ? () => navigateSearchResults(false)
+                                  : null,
+                              tooltip: '이전 결과',
+                              iconSize: 20,
+                            ),
+                            // 다음 버튼
+                            IconButton(
+                              icon: const Icon(Icons.arrow_downward),
+                              onPressed: filteredMessages.length > 1
+                                  ? () => navigateSearchResults(true)
+                                  : null,
+                              tooltip: '다음 결과',
+                              iconSize: 20,
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    // 선택된 결과 정보
+                    if (selectedIndex >= 0 && filteredMessages.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: Text(
+                          '결과 ${selectedIndex + 1}/${filteredMessages.length}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
 
                     // 검색 결과
                     Expanded(
@@ -2214,45 +2470,81 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                                     final isFromMe =
                                         message.senderId == _authService.uid;
 
-                                    // 결과 항목
-                                    return ListTile(
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 4),
-                                      leading: CircleAvatar(
-                                        backgroundColor: isFromMe
-                                            ? Colors.blue.shade100
-                                            : Colors.grey.shade200,
-                                        radius: 16,
-                                        child: Text(
-                                          isFromMe
-                                              ? '나'
-                                              : _getRecipientName(
-                                                      widget.userId)[0]
-                                                  .toUpperCase(),
-                                          style: TextStyle(
-                                            color: isFromMe
-                                                ? Colors.blue.shade800
-                                                : Colors.grey.shade800,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                      title: Text(message.content,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis),
-                                      subtitle: Text(
-                                          _formatMessageTime(message.timestamp),
-                                          style: const TextStyle(fontSize: 12)),
-                                      onTap: () {
-                                        // messageId만 저장하고 dialog 닫기
-                                        final messageId = message.id;
-                                        Navigator.of(context).pop();
+                                    // 현재 선택된 항목 강조 표시
+                                    final isSelected = index == selectedIndex;
 
-                                        // 메시지 ID로 스크롤
+                                    // 결과 항목
+                                    return InkWell(
+                                      onTap: () {
+                                        // 선택된 메시지 ID 저장
+                                        final messageId = message.id;
+                                        // 선택 상태 업데이트
+                                        setDialogState(() {
+                                          selectedIndex = index;
+                                        });
+
+                                        // 메시지 ID로 스크롤 (대화창은 그대로 유지)
                                         _scrollToMessageById(messageId);
                                       },
+                                      child: Container(
+                                        margin: const EdgeInsets.symmetric(
+                                            vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: isSelected
+                                              ? Colors.blue.shade100
+                                              : null,
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: ListTile(
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                  horizontal: 8, vertical: 4),
+                                          leading: CircleAvatar(
+                                            backgroundColor: isFromMe
+                                                ? Colors.blue.shade100
+                                                : Colors.grey.shade200,
+                                            radius: 16,
+                                            child: Text(
+                                              isFromMe
+                                                  ? '나'
+                                                  : _getRecipientName(
+                                                          widget.userId)[0]
+                                                      .toUpperCase(),
+                                              style: TextStyle(
+                                                color: isFromMe
+                                                    ? Colors.blue.shade800
+                                                    : Colors.grey.shade800,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                          title: Text(
+                                            message.content,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontWeight: isSelected
+                                                  ? FontWeight.bold
+                                                  : FontWeight.normal,
+                                            ),
+                                          ),
+                                          subtitle: Text(
+                                            _formatMessageTime(
+                                                message.timestamp),
+                                            style:
+                                                const TextStyle(fontSize: 12),
+                                          ),
+                                          trailing: isSelected
+                                              ? Icon(
+                                                  Icons.check_circle,
+                                                  color: Colors.blue.shade700,
+                                                  size: 18,
+                                                )
+                                              : null,
+                                        ),
+                                      ),
                                     );
                                   },
                                 ),
@@ -2265,6 +2557,20 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                   onPressed: () => Navigator.of(context).pop(),
                   child: const Text('닫기'),
                 ),
+                if (selectedIndex >= 0 && filteredMessages.isNotEmpty)
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.visibility, size: 16),
+                    label: const Text('보기'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade700,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () {
+                      final messageId = filteredMessages[selectedIndex].id;
+                      Navigator.of(context).pop();
+                      _scrollToMessageById(messageId);
+                    },
+                  ),
               ],
             );
           },
@@ -2282,22 +2588,66 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       final index = messages.indexWhere((m) => m.id == messageId);
 
       if (index != -1) {
+        // 자동 스크롤 기능 임시 비활성화
+        _shouldAutoScroll = false;
+
         // 메시지 위치로 스크롤하기 위한 지연
         Future.delayed(const Duration(milliseconds: 100), () {
           if (!mounted || !_scrollController.hasClients) return;
 
           try {
+            // 각 메시지 항목의 예상 높이 (실제로는 다양할 수 있음)
+            const estimatedMessageHeight = 80.0;
+            // 날짜 구분선이 있는 경우 추가 높이
+            const estimatedDateSeparatorHeight = 40.0;
+
+            // 해당 메시지 항목의 대략적인 스크롤 위치 계산
+            // 이전 메시지들의 높이 합산 + 약간의 여유 공간
+            var scrollPosition = index * estimatedMessageHeight;
+
+            // 몇 개의 날짜 구분선이 있을지 대략적으로 추정
+            final distinctDates = messages
+                .take(index + 1)
+                .map((m) => DateTime(
+                        m.timestamp.year, m.timestamp.month, m.timestamp.day)
+                    .toString())
+                .toSet()
+                .length;
+
+            scrollPosition += distinctDates * estimatedDateSeparatorHeight;
+
+            // 스크롤 위치가 최대값을 넘지 않도록 제한
+            final maxScrollExtent = _scrollController.position.maxScrollExtent;
+            final clampedPosition = scrollPosition.clamp(0.0, maxScrollExtent);
+
+            // 메시지 항목이 화면 중앙에 오도록 추가 오프셋 계산
+            final screenCenter =
+                _scrollController.position.viewportDimension / 2;
+            final targetPosition =
+                (clampedPosition - screenCenter).clamp(0.0, maxScrollExtent);
+
+            // 스크롤 애니메이션
             _scrollController.animateTo(
-              index * 100.0, // 대략적인 메시지 높이
-              duration: const Duration(milliseconds: 300),
+              targetPosition,
+              duration: const Duration(milliseconds: 500),
               curve: Curves.easeInOut,
             );
+
+            // 스크롤 후 위치 저장
+            _lastScrollPosition = targetPosition;
+
+            // 검색된 메시지 강조 표시 (지연 후)
+            Future.delayed(const Duration(milliseconds: 600), () {
+              if (mounted) {
+                _highlightMessage(messageId);
+              }
+            });
 
             // 메시지 찾았다고 알려주기
             Get.snackbar(
               '메시지 찾음',
-              '${index + 1}/${messages.length}번째 메시지를 표시합니다',
-              snackPosition: SnackPosition.BOTTOM,
+              '${index + 1}/${messages.length}번째 메시지입니다',
+              snackPosition: SnackPosition.TOP,
               duration: const Duration(seconds: 2),
               backgroundColor: Colors.blue.shade700,
               colorText: Colors.white,
@@ -2320,157 +2670,49 @@ class _MessageDetailViewState extends State<MessageDetailView> {
     }
   }
 
+  // 검색된 메시지 강조 표시
+  void _highlightMessage(String messageId) {
+    // 임시로 ID 저장 (Widget Tree에서 해당 메시지 식별용)
+    _lastHighlightedMessageId = messageId;
+
+    // 화면 갱신
+    setState(() {});
+
+    // 3초 후 강조 표시 제거
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted && _lastHighlightedMessageId == messageId) {
+        _lastHighlightedMessageId = null;
+        setState(() {});
+      }
+    });
+  }
+
   // 대화 삭제 확인 다이얼로그
   void _showClearConversationDialog() {
     if (!mounted) return;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('대화 삭제'),
-        content: const Text(
-          '이 대화의 모든 메시지를 삭제하시겠습니까?\n'
-          '이 작업은 되돌릴 수 없습니다.',
-          style: TextStyle(fontSize: 14),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('취소'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _clearConversation();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('대화 삭제'),
+          content: const Text('정말로 이 대화를 삭제하시겠습니까?'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('취소'),
             ),
-            child: const Text('삭제'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 대화 삭제 실행
-  Future<void> _clearConversation() async {
-    if (!mounted) return;
-
-    try {
-      // 로딩 표시
-      Get.dialog(
-        const Center(
-          child: CircularProgressIndicator(),
-        ),
-        barrierDismissible: false,
-      );
-
-      // 대화 삭제 실행 - clearConversationWith가 없으므로 deleteMessage로 대체
-      // 선택한 사용자와의 대화 메시지 가져오기
-      final messages = _messageService.getConversationWith(widget.userId);
-
-      // 모든 메시지 삭제
-      if (messages.isNotEmpty) {
-        for (final message in messages) {
-          await _messageService.deleteMessage(message.id);
-        }
-      }
-
-      // 로딩 닫기
-      Get.back();
-
-      // 성공 메시지
-      Get.snackbar(
-        '대화 삭제 완료',
-        '모든 메시지가 삭제되었습니다',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 2),
-      );
-
-      // 메시지 목록 새로고침
-      _refreshMessages();
-    } catch (e) {
-      // 로딩 닫기
-      if (Get.isDialogOpen == true) {
-        Get.back();
-      }
-
-      // 오류 메시지
-      Get.snackbar(
-        '대화 삭제 실패',
-        '오류: ${e.toString()}',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 3),
-      );
-    }
-  }
-
-  // 링크를 탐지하고 처리하는 메서드
-  void _handleTextWithLinks(String text) {
-    try {
-      // URL 패턴 - Google Maps URL 포함
-      final RegExp urlPattern = RegExp(
-        r'https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)',
-        caseSensitive: false,
-      );
-
-      final matches = urlPattern.allMatches(text);
-      if (matches.isNotEmpty) {
-        for (final match in matches) {
-          final url = text.substring(match.start, match.end);
-
-          // 특별히 Google Maps URL인지 확인
-          if (url.contains('maps.google.com') ||
-              url.contains('google.com/maps')) {
-            // Watch Over 앱 내에서 열기
-            if (mounted) {
-              _showOpenInAppMapDialog(url);
-            }
-            return;
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('⚠️ 링크 처리 오류: $e');
-    }
-  }
-
-  // Google Maps URL 앱 내에서 열기 제안 다이얼로그
-  void _showOpenInAppMapDialog(String url) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('지도 링크 감지'),
-        content: const Text('Google Maps 링크가 감지되었습니다. Watch Over 앱에서 열겠습니까?'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // 외부 브라우저에서 열기
-              launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-            },
-            child: const Text('브라우저에서 열기'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // URL 처리기로 앱 내에서 열기
-              UrlHandler.handleUrl(url);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue.shade700,
-              foregroundColor: Colors.white,
+            ElevatedButton(
+              onPressed: () {
+                // 대화 삭제 로직 구현
+                debugPrint('대화 삭제');
+                Navigator.of(context).pop();
+              },
+              child: const Text('삭제'),
             ),
-            child: const Text('앱에서 보기'),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 
@@ -2671,5 +2913,70 @@ class _MessageDetailViewState extends State<MessageDetailView> {
     } catch (e) {
       debugPrint('⚠️ 상대방 상태 확인 중 오류: $e');
     }
+  }
+
+  // 링크를 탐지하고 처리하는 메서드
+  void _handleTextWithLinks(String text) {
+    if (!mounted) return;
+
+    try {
+      // URL 패턴 - Google Maps URL 포함
+      final RegExp urlPattern = RegExp(
+        r'https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)',
+        caseSensitive: false,
+      );
+
+      final matches = urlPattern.allMatches(text);
+      if (matches.isNotEmpty) {
+        for (final match in matches) {
+          final url = text.substring(match.start, match.end);
+
+          // 특별히 Google Maps URL인지 확인
+          if (url.contains('maps.google.com') ||
+              url.contains('google.com/maps')) {
+            // Watch Over 앱 내에서 열기
+            _showOpenInAppMapDialog(url);
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ 링크 처리 오류: $e');
+    }
+  }
+
+  // Google Maps URL 앱 내에서 열기 제안 다이얼로그
+  void _showOpenInAppMapDialog(String url) {
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('지도 링크 감지'),
+        content: const Text('Google Maps 링크가 감지되었습니다. Watch Over 앱에서 열겠습니까?'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // 외부 브라우저에서 열기
+              launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+            },
+            child: const Text('브라우저에서 열기'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // URL 처리기로 앱 내에서 열기
+              UrlHandler.handleUrl(url);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue.shade700,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('앱에서 보기'),
+          ),
+        ],
+      ),
+    );
   }
 }
