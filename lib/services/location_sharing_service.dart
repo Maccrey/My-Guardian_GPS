@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/shared_location_model.dart'; // SharedLocation 모델
 import 'notification_service.dart';
+import 'message_service.dart'; // MessageService 추가
 
 class LocationSharingService extends GetxController {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -21,6 +22,9 @@ class LocationSharingService extends GetxController {
 
   // 위치 수신 스트림 구독 객체 저장
   final Map<String, StreamSubscription<Position>> _positionStreams = {};
+
+  // 폴백 타이머 저장 (추가)
+  final Map<String, Timer> _fallbackTimers = {};
 
   // 위치 업데이트 간격 (초)
   final RxInt updateIntervalSeconds = 5.obs;
@@ -265,6 +269,21 @@ class LocationSharingService extends GetxController {
         // 위치 공유 종료 메시지 전송
         _sendLocationSharingStatusMessage(receiverId, false);
 
+        // MessageService에게 위치 공유 종료 알림 (추가)
+        try {
+          final messageService = Get.find<MessageService>();
+          if (messageService != null) {
+            print('🔔 [서비스] MessageService에 위치 공유 종료 알림');
+            messageService.activeLocationSharing.remove(receiverId);
+            messageService.activeLocationSharing.refresh();
+          }
+        } catch (e) {
+          print('⚠️ [서비스] MessageService 업데이트 오류 (무시됨): $e');
+        }
+
+        // UI 갱신 (추가)
+        Get.forceAppUpdate();
+
         print('✅ [서비스] 위치 공유 중지 완료: receiverId=$receiverId');
         return true;
       } else {
@@ -340,10 +359,16 @@ class LocationSharingService extends GetxController {
 
   // 폴백 위치 타이머 시작 (스트림 실패 시 대체 메커니즘)
   void _startFallbackPositionTimer(String receiverId) {
-    Timer.periodic(Duration(seconds: updateIntervalSeconds.value * 2), (timer) {
+    // 기존 타이머가 있으면 취소
+    _stopFallbackPositionTimer(receiverId);
+
+    // 새 타이머 시작
+    _fallbackTimers[receiverId] = Timer.periodic(
+        Duration(seconds: updateIntervalSeconds.value * 2), (timer) {
       if (!_activeSharing.containsKey(receiverId) ||
           !_activeSharing[receiverId]!.isActive) {
         timer.cancel();
+        _fallbackTimers.remove(receiverId);
         return;
       }
 
@@ -353,6 +378,15 @@ class LocationSharingService extends GetxController {
         }
       });
     });
+  }
+
+  // 폴백 타이머 중지 (추가)
+  void _stopFallbackPositionTimer(String receiverId) {
+    if (_fallbackTimers.containsKey(receiverId)) {
+      _fallbackTimers[receiverId]?.cancel();
+      _fallbackTimers.remove(receiverId);
+      print('🛑 [서비스] 폴백 타이머 취소: receiverId=$receiverId');
+    }
   }
 
   // 안전하게 현재 위치 가져오기 (타임아웃 및 오류 처리 개선)
@@ -411,10 +445,15 @@ class LocationSharingService extends GetxController {
 
   // 위치 추적 중지
   void _stopPositionTracking(String receiverId) {
+    // 위치 스트림 구독 취소
     if (_positionStreams.containsKey(receiverId)) {
       _positionStreams[receiverId]?.cancel();
       _positionStreams.remove(receiverId);
+      print('🛑 [서비스] 위치 스트림 구독 취소: receiverId=$receiverId');
     }
+
+    // 폴백 타이머 취소 (추가)
+    _stopFallbackPositionTimer(receiverId);
   }
 
   // 위치 정보 업데이트
@@ -739,10 +778,27 @@ class LocationSharingService extends GetxController {
   // 앱 종료 시 리소스 해제
   @override
   void onClose() {
+    print('🧹 [서비스] LocationSharingService 종료 - 리소스 정리');
+
+    // 모든 위치 스트림 구독 취소
     for (var stream in _positionStreams.values) {
       stream.cancel();
     }
     _positionStreams.clear();
+
+    // 모든 폴백 타이머 취소
+    for (var timer in _fallbackTimers.values) {
+      timer.cancel();
+    }
+    _fallbackTimers.clear();
+
+    // 필요시 모든 공유 중지
+    if (isSharingLocation.value) {
+      print('🛑 [서비스] 앱 종료 시 모든 위치 공유 중지');
+      stopAllLocationSharing();
+    }
+
+    print('✅ [서비스] 모든 리소스 정리 완료');
     super.onClose();
   }
 
