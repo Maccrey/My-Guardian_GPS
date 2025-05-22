@@ -11,12 +11,15 @@ import '../models/message_model.dart';
 import '../models/user_model.dart';
 import 'auth_service.dart';
 import 'notification_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../models/location_message_model.dart';
 
 class MessageService extends GetxController {
   static const String _localStorageKey = 'local_messages';
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final AuthService _authService = Get.find<AuthService>();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // 테스트 모드 플래그 (Firebase 연결 전 테스트 목적)
   final bool _useMockAuth = kDebugMode;
@@ -56,6 +59,13 @@ class MessageService extends GetxController {
   // 백그라운드 상태 여부
   RxBool isInBackground = false.obs;
 
+  // 메시지 목록 (사용자별)
+  final RxMap<String, RxList<LocationMessage>> _messagesByUser =
+      <String, RxList<LocationMessage>>{}.obs;
+
+  // 현재 진행 중인 위치 공유 정보 (사용자별)
+  final RxMap<String, String> activeLocationSharing = <String, String>{}.obs;
+
   @override
   void onInit() {
     super.onInit();
@@ -74,6 +84,8 @@ class MessageService extends GetxController {
 
     // Firebase 권한 관련 로그 출력
     _checkFirebasePermissions();
+
+    _initMessagesListener();
   }
 
   @override
@@ -1586,5 +1598,170 @@ class MessageService extends GetxController {
         debugPrint('✅ Firestore 업데이트가 다시 활성화되었습니다.');
       }
     }
+  }
+
+  // 메시지 리스너 초기화
+  void _initMessagesListener() {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      // 현재 사용자에게 온 메시지 구독
+      _messagesSubscription = _firestore
+          .collection('messages')
+          .where('receiverId', isEqualTo: currentUser.uid)
+          .orderBy('timestamp', descending: true)
+          .snapshots()
+          .listen((snapshot) {
+        _processMessages(snapshot);
+      });
+
+      debugPrint('✅ 메시지 리스너 초기화 완료');
+    } catch (e) {
+      debugPrint('⚠️ 메시지 리스너 초기화 오류: $e');
+    }
+  }
+
+  // 메시지 처리
+  void _processMessages(QuerySnapshot snapshot) {
+    try {
+      // 읽지 않은 메시지 수 초기화
+      int unreadCount = 0;
+
+      // 활성 위치 공유 목록 초기화
+      Map<String, String> activeLocationMap = {};
+
+      // 사용자별 메시지 맵 초기화
+      Map<String, List<LocationMessage>> messageMap = {};
+
+      // 스냅샷의 모든 메시지 처리
+      for (var doc in snapshot.docs) {
+        final message = LocationMessage.fromFirestore(doc);
+
+        // 사용자별 메시지 목록에 추가
+        if (!messageMap.containsKey(message.senderId)) {
+          messageMap[message.senderId] = [];
+        }
+        messageMap[message.senderId]!.add(message);
+
+        // 읽지 않은 메시지 카운트
+        if (!message.isRead) {
+          unreadCount++;
+        }
+
+        // 위치 공유 메시지 처리
+        if (message.type == 'location_sharing') {
+          if (message.action == 'start' && message.locationId != null) {
+            // 가장 최근 메시지만 처리
+            if (!activeLocationMap.containsKey(message.senderId) ||
+                message.timestamp.isAfter(_messagesByUser[message.senderId]
+                        ?.firstWhere(
+                            (m) =>
+                                m.type == 'location_sharing' &&
+                                m.action == 'start',
+                            orElse: () => message)
+                        .timestamp ??
+                    DateTime(1970))) {
+              activeLocationMap[message.senderId] = message.locationId!;
+            }
+          } else if (message.action == 'stop') {
+            // 종료 메시지가 시작 메시지보다 최신인 경우 활성 목록에서 제거
+            if (activeLocationMap.containsKey(message.senderId)) {
+              final startMessage = _messagesByUser[message.senderId]
+                  ?.firstWhere(
+                      (m) =>
+                          m.type == 'location_sharing' && m.action == 'start',
+                      orElse: () => message);
+
+              if (startMessage != null &&
+                  message.timestamp.isAfter(startMessage.timestamp)) {
+                activeLocationMap.remove(message.senderId);
+              }
+            }
+          }
+        }
+      }
+
+      // 상태 업데이트
+      unreadMessageCount.value = unreadCount;
+      activeLocationSharing.value = activeLocationMap;
+
+      // 사용자별 메시지 목록 업데이트
+      messageMap.forEach((userId, messages) {
+        if (!_messagesByUser.containsKey(userId)) {
+          _messagesByUser[userId] = <LocationMessage>[].obs;
+        }
+        _messagesByUser[userId]!.value = messages;
+      });
+
+      debugPrint('✅ 메시지 처리 완료: ${snapshot.docs.length}개, 읽지 않음: $unreadCount개');
+    } catch (e) {
+      debugPrint('⚠️ 메시지 처리 오류: $e');
+    }
+  }
+
+  // 특정 사용자와의 메시지 목록 조회
+  RxList<LocationMessage> getMessagesWithUser(String userId) {
+    if (!_messagesByUser.containsKey(userId)) {
+      _messagesByUser[userId] = <LocationMessage>[].obs;
+
+      // 해당 사용자와의 메시지 데이터 불러오기
+      _loadMessagesWithUser(userId);
+    }
+
+    return _messagesByUser[userId]!;
+  }
+
+  // 특정 사용자와의 메시지 데이터 불러오기
+  Future<void> _loadMessagesWithUser(String userId) async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      // 현재 사용자와 대화 상대 간의 메시지 조회
+      final sentMessages = await _firestore
+          .collection('messages')
+          .where('senderId', isEqualTo: currentUser.uid)
+          .where('receiverId', isEqualTo: userId)
+          .orderBy('timestamp', descending: true)
+          .get();
+
+      final receivedMessages = await _firestore
+          .collection('messages')
+          .where('senderId', isEqualTo: userId)
+          .where('receiverId', isEqualTo: currentUser.uid)
+          .orderBy('timestamp', descending: true)
+          .get();
+
+      // 메시지 목록 생성
+      List<LocationMessage> messages = [
+        ...sentMessages.docs.map((doc) => LocationMessage.fromFirestore(doc)),
+        ...receivedMessages.docs
+            .map((doc) => LocationMessage.fromFirestore(doc)),
+      ];
+
+      // 날짜순 정렬
+      messages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+      // 상태 업데이트
+      if (!_messagesByUser.containsKey(userId)) {
+        _messagesByUser[userId] = <LocationMessage>[].obs;
+      }
+      _messagesByUser[userId]!.value = messages;
+
+      debugPrint('✅ ${userId}와의 메시지 로드 완료: ${messages.length}개');
+    } catch (e) {
+      debugPrint('⚠️ 메시지 로드 오류: $e');
+    }
+  }
+
+  // 위치 공유 상태 확인
+  bool isLocationSharingActive(String userId) {
+    return activeLocationSharing.containsKey(userId);
+  }
+
+  // 위치 공유 ID 가져오기
+  String? getLocationSharingId(String userId) {
+    return activeLocationSharing[userId];
   }
 }

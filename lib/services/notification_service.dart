@@ -102,7 +102,25 @@ class NotificationService extends GetxController {
     if (response.payload != null) {
       if (response.payload!.startsWith('message:')) {
         // 메시지 알림인 경우 메시지 화면으로 이동
-        Get.toNamed('/messages');
+        final senderId = response.payload!.substring(8);
+        Get.toNamed('/messages', arguments: {'senderId': senderId});
+      } else if (response.payload!.startsWith('location:')) {
+        // 위치 공유 알림인 경우 위치 추적 화면으로 이동
+        // 형식: location:start/stop:senderId:locationId
+        final parts = response.payload!.split(':');
+        if (parts.length >= 3) {
+          final action = parts[1]; // start 또는 stop
+          final senderId = parts[2]; // 위치 공유 발신자 ID
+
+          if (action == 'start') {
+            // 위치 추적 화면으로 이동
+            Get.toNamed('/location-tracking', arguments: {
+              'userId': senderId,
+              // 사용자 이름은 이동 후 화면에서 조회
+            });
+            debugPrint('🗺️ 위치 추적 화면으로 이동: userId=$senderId');
+          }
+        }
       }
     }
   }
@@ -290,6 +308,68 @@ class NotificationService extends GetxController {
       debugPrint('✅ 메시지 알림 표시: $senderName - $displayContent');
     } catch (e) {
       debugPrint('⚠️ 메시지 알림 표시 오류: $e');
+    }
+  }
+
+  // 위치 공유 알림 표시
+  Future<void> showLocationSharingNotification({
+    required String senderName,
+    required String message,
+    required String senderId,
+    required bool isStarting,
+    String? locationId,
+    int id = 2,
+  }) async {
+    // 알림이 비활성화된 경우 무시
+    if (!isNotificationEnabled.value) {
+      debugPrint('⚠️ 알림이 비활성화되어 있어 위치 공유 알림이 표시되지 않습니다.');
+      return;
+    }
+
+    try {
+      // 안드로이드용 알림 세부 설정
+      AndroidNotificationDetails androidPlatformChannelSpecifics =
+          AndroidNotificationDetails(
+        _channelId,
+        '위치 공유 알림',
+        channelDescription: '위치 공유 알림 채널',
+        importance: Importance.high,
+        priority: Priority.high,
+        showWhen: true,
+        enableVibration: true,
+        icon: '@mipmap/launcher_icon',
+        color: const Color(0xFF4285F4), // 파란색 (위치 관련)
+      );
+
+      // iOS용 알림 세부 설정
+      DarwinNotificationDetails iOSPlatformChannelSpecifics =
+          DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        badgeNumber: 1,
+        interruptionLevel: InterruptionLevel.timeSensitive,
+      );
+
+      // 플랫폼별 설정 통합
+      NotificationDetails platformChannelSpecifics = NotificationDetails(
+        android: androidPlatformChannelSpecifics,
+        iOS: iOSPlatformChannelSpecifics,
+      );
+
+      // 알림 표시
+      await flutterLocalNotificationsPlugin.show(
+        id,
+        '위치 공유 알림',
+        message,
+        platformChannelSpecifics,
+        payload:
+            'location:${isStarting ? "start" : "stop"}:$senderId:${locationId ?? ""}',
+      );
+
+      debugPrint('✅ 위치 공유 알림 표시: $senderName - $message');
+    } catch (e) {
+      debugPrint('⚠️ 위치 공유 알림 표시 오류: $e');
     }
   }
 }

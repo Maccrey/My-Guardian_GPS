@@ -487,8 +487,121 @@ class LocationSharingService extends GetxController {
   // 위치 공유 시작/종료 메시지 전송
   Future<void> _sendLocationSharingStatusMessage(
       String receiverId, bool isStarting) async {
-    // 메시지 서비스 연동 코드 (구현 필요)
-    // MessageService의 인스턴스를 통해 메시지 전송
+    print(
+        '✉️ [서비스] 위치 공유 ${isStarting ? "시작" : "종료"} 메시지 전송 시도: receiverId=$receiverId');
+
+    try {
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        print('⚠️ [서비스] 메시지 전송 실패: 로그인된 사용자 없음');
+        return;
+      }
+
+      // 현재 사용자 정보 가져오기
+      final userDoc =
+          await _firestore.collection('users').doc(currentUser.uid).get();
+      final userName =
+          userDoc.data()?['nickname'] ?? currentUser.displayName ?? '사용자';
+
+      // 위치 공유 ID (시작할 때만 사용)
+      String? locationId = isStarting ? _activeSharing[receiverId]?.id : null;
+
+      // 메시지 내용 생성
+      final message = isStarting
+          ? '$userName님이 위치 공유를 시작했습니다.'
+          : '$userName님이 위치 공유를 중지했습니다.';
+
+      // Firestore에 메시지 저장
+      await _firestore.collection('messages').add({
+        'senderId': currentUser.uid,
+        'receiverId': receiverId,
+        'message': message,
+        'type': 'location_sharing',
+        'action': isStarting ? 'start' : 'stop',
+        'locationId': locationId,
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+      });
+
+      print('💾 [서비스] Firestore에 메시지 저장 완료');
+
+      // FCM 푸시 알림 전송
+      await _sendPushNotification(
+          receiverId, userName, message, isStarting, locationId);
+
+      print('✅ [서비스] 위치 공유 ${isStarting ? "시작" : "종료"} 메시지 전송 완료');
+    } catch (e) {
+      print('❌ [서비스] 메시지 전송 오류: $e');
+    }
+  }
+
+  // FCM 푸시 알림 전송
+  Future<void> _sendPushNotification(String receiverId, String senderName,
+      String message, bool isStarting, String? locationId) async {
+    print('📤 [서비스] 푸시 알림 전송 시도: receiverId=$receiverId');
+
+    try {
+      // 수신자의 FCM 토큰 가져오기
+      final tokenDoc =
+          await _firestore.collection('users').doc(receiverId).get();
+      final fcmToken = tokenDoc.data()?['fcmToken'];
+      final currentUserId = _auth.currentUser?.uid ?? '';
+
+      if (fcmToken == null) {
+        print('⚠️ [서비스] 수신자의 FCM 토큰 없음');
+
+        // 로컬 알림 보내기 (백그라운드 서비스용)
+        try {
+          // 로컬 알림 사용을 위한 NotificationService 인스턴스 가져오기
+          final notificationService = await Get.putAsync(
+              () async => await NotificationService.getInstance(),
+              permanent: true);
+
+          // 위치 공유 알림 표시
+          await notificationService.showLocationSharingNotification(
+            senderName: senderName,
+            message: message,
+            senderId: currentUserId,
+            isStarting: isStarting,
+            locationId: locationId,
+          );
+
+          print('🔔 [서비스] 위치 공유 알림 전송 완료 (FCM 대체)');
+        } catch (e) {
+          print('⚠️ [서비스] 위치 공유 알림 전송 오류: $e');
+        }
+
+        return;
+      }
+
+      // FCM 기능이 구현되어 있다면 여기서 Firebase Cloud Functions를 통해 FCM 메시지 전송
+      // 현재는 로컬 알림으로 대체
+
+      // 로컬 알림 보내기
+      try {
+        // 로컬 알림 사용을 위한 NotificationService 인스턴스 가져오기
+        final notificationService = await Get.putAsync(
+            () async => await NotificationService.getInstance(),
+            permanent: true);
+
+        // 위치 공유 알림 표시
+        await notificationService.showLocationSharingNotification(
+          senderName: senderName,
+          message: message,
+          senderId: currentUserId,
+          isStarting: isStarting,
+          locationId: locationId,
+        );
+
+        print('🔔 [서비스] 위치 공유 알림 전송 완료');
+      } catch (e) {
+        print('⚠️ [서비스] 위치 공유 알림 전송 오류: $e');
+      }
+
+      print('✅ [서비스] 푸시 알림 전송 완료');
+    } catch (e) {
+      print('❌ [서비스] 푸시 알림 전송 오류: $e');
+    }
   }
 
   // 앱 사용자와 위치 공유 시작 (UID로 공유)
