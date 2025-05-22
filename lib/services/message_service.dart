@@ -1348,4 +1348,42 @@ class MessageService extends GetxController {
   void updateUnreadCount() {
     _updateUnreadCount();
   }
+
+  // 특정 사용자와의 모든 읽지 않은 메시지를 읽음 처리
+  Future<void> markAllMessagesAsReadFromUser(String userId) async {
+    try {
+      if (_authService.uid == null) {
+        debugPrint('⚠️ 로그인되어 있지 않아 읽음 상태를 변경할 수 없습니다.');
+        return;
+      }
+
+      final currentUserId = _authService.uid!;
+
+      // 현재 사용자가 받은 해당 사용자의 읽지 않은 메시지 ID 목록 가져오기
+      final unreadMessageIds = messages
+          .where((m) =>
+              !m.isRead &&
+              m.receiverId == currentUserId &&
+              m.senderId == userId)
+          .map((m) => m.id)
+          .toList();
+
+      if (unreadMessageIds.isEmpty) {
+        debugPrint('✅ ${userId}로부터 읽지 않은 메시지가 없습니다.');
+        return;
+      }
+
+      debugPrint('🔄 ${userId}로부터 ${unreadMessageIds.length}개의 메시지를 읽음 처리합니다.');
+
+      // 읽음 처리
+      await markMultipleMessagesAsRead(unreadMessageIds);
+
+      // 즉시 업데이트
+      updateUnreadCount();
+
+      debugPrint('✅ ${userId}와의 모든 메시지 읽음 처리 완료');
+    } catch (e) {
+      debugPrint('⚠️ 사용자 메시지 일괄 읽음 처리 오류: $e');
+    }
+  }
 }

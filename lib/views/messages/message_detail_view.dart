@@ -65,7 +65,7 @@ class _MessageDetailViewState extends State<MessageDetailView> {
     // 스크롤 리스너 추가
     _scrollController.addListener(_handleScrollListener);
 
-    // 화면이 로드되면 읽지 않은 메시지를 읽음 상태로 변경
+    // 화면이 로드되면 즉시 읽지 않은 메시지를 읽음 상태로 변경
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // 위젯 생성 직후에만 실행되도록 보장
       if (!mounted) {
@@ -76,16 +76,20 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       try {
         debugPrint('🔄 메시지 화면 초기화 - 대화 상대 ID: ${widget.userId}');
 
-        // 1. 먼저 Firestore 구독 확인하고 실시간 업데이트 활성화
-        _messageService.ensureFirestoreSubscription();
+        // 1. 읽지 않은 메시지를 즉시 읽음 처리
+        _markMessagesAsRead();
+
+        // 1.1 즉시 UI 업데이트를 위해 메시지 서비스의 읽지 않은 메시지 수 업데이트
+        _messageService.updateUnreadCount();
 
         // 2. 그다음 Firebase에서 메시지 새로고침
         _messageService.refreshMessages().then((_) {
           if (!mounted) return;
 
-          // 읽음 상태로 변경 (내부에서 mounted 체크)
+          // 새로고침 후 다시 읽음 처리 (새로 로드된 메시지가 있을 수 있음)
           _markMessagesAsRead();
-          // 스크롤 이동 (내부에서 mounted 체크)
+
+          // 스크롤 이동
           _safelyScrollToBottom();
         });
 
@@ -459,7 +463,6 @@ class _MessageDetailViewState extends State<MessageDetailView> {
     }
 
     try {
-      final conversation = _messageService.getConversationWith(widget.userId);
       final currentUserId = _authService.uid;
 
       if (currentUserId == null || currentUserId.isEmpty) {
@@ -467,40 +470,20 @@ class _MessageDetailViewState extends State<MessageDetailView> {
         return;
       }
 
-      // 읽지 않은 메시지만 필터링 (수신한 메시지만)
-      final unreadMessageIds = conversation
-          .where((m) => !m.isRead && m.receiverId == currentUserId)
-          .map((m) => m.id)
-          .toList();
+      debugPrint('🔄 현재 대화 상대의 모든 읽지 않은 메시지를 읽음 상태로 변경합니다.');
 
-      if (unreadMessageIds.isEmpty) {
-        debugPrint('✅ 읽지 않은 메시지가 없습니다.');
-        return;
-      }
+      // 대화 상대의 모든 읽지 않은 메시지를 읽음 처리
+      await _messageService.markAllMessagesAsReadFromUser(widget.userId);
 
-      debugPrint('🔄 ${unreadMessageIds.length}개의 메시지를 읽음 상태로 변경합니다.');
-      debugPrint('📋 읽음 처리할 메시지 ID 목록: $unreadMessageIds');
+      // 메시지 목록 강제 갱신 (읽음 상태 즉시 반영)
+      _messageService.messages.refresh();
 
-      // 읽음 처리 직전에 알림
-      await _messageService.markMultipleMessagesAsRead(unreadMessageIds);
+      // 읽지 않은 메시지 수 강제 업데이트
+      _messageService.updateUnreadCount();
 
-      // 읽음 처리 후 로그 추가
-      debugPrint('✅ 메시지 읽음 처리 완료');
-
-      // 읽음 처리 후 메시지 새로고침 및 UI 업데이트를 위해 메시지 목록 갱신
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted) {
-          // 메시지 목록 강제 갱신 (읽음 상태 즉시 반영)
-          _messageService.messages.refresh();
-
-          // 읽지 않은 메시지 수 강제 업데이트
-          _messageService.updateUnreadCount();
-
-          debugPrint('🔄 읽음 처리 후 UI 업데이트 완료');
-        }
-      });
+      debugPrint('🔄 읽음 처리 후 UI 업데이트 완료');
     } catch (e) {
-      debugPrint('⚠️ 메시지 읽음 상태 변경 중 오류 발생: $e');
+      debugPrint('⚠️ 메시지 읽음 상태 변경 오류: $e');
     }
   }
 

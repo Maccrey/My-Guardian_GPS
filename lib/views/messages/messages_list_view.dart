@@ -33,6 +33,13 @@ class _MessagesListViewState extends State<MessagesListView> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 화면으로 돌아왔을 때도 읽지 않은 메시지 수 업데이트
+    _messageService.updateUnreadCount();
+  }
+
+  @override
   void dispose() {
     // 여기서 상태 업데이트 시도 금지
     super.dispose();
