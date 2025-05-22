@@ -456,6 +456,12 @@ class LocationSharingService extends GetxController {
       return;
     }
 
+    // 공유가 비활성화된 경우 타이머를 시작하지 않음
+    if (!_activeSharing[receiverId]!.isActive) {
+      print('⚠️ [서비스] 폴백 타이머 시작 불가: 비활성화된 공유 - receiverId=$receiverId');
+      return;
+    }
+
     // 기존 타이머가 있으면 취소
     _stopFallbackPositionTimer(receiverId);
 
@@ -464,10 +470,17 @@ class LocationSharingService extends GetxController {
     // 새 타이머 시작
     _fallbackTimers[receiverId] = Timer.periodic(
         Duration(seconds: updateIntervalSeconds.value * 2), (timer) {
-      // 매 타이머 실행 시 공유 상태 다시 확인
-      if (!_activeSharing.containsKey(receiverId) ||
-          !_activeSharing[receiverId]!.isActive) {
+      // 매 타이머 실행 시 공유 상태 다시 확인 (더 엄격한 검사)
+      if (!_activeSharing.containsKey(receiverId)) {
         print('🛑 [서비스] 위치 공유 취소됨: 폴백 타이머 중지 - receiverId=$receiverId');
+        timer.cancel();
+        _fallbackTimers.remove(receiverId);
+        return;
+      }
+
+      // 비활성화된 경우도 명시적으로 체크
+      if (!_activeSharing[receiverId]!.isActive) {
+        print('🛑 [서비스] 비활성화된 공유: 폴백 타이머 즉시 중지 - receiverId=$receiverId');
         timer.cancel();
         _fallbackTimers.remove(receiverId);
         return;
@@ -476,9 +489,11 @@ class LocationSharingService extends GetxController {
       print('🔄 [서비스] 폴백 타이머로 위치 업데이트 시도: receiverId=$receiverId');
 
       _getCurrentPositionSafely().then((position) {
-        // 위치 획득 후 다시 공유 상태 확인
-        if (!_activeSharing.containsKey(receiverId)) {
-          print('🛑 [서비스] 위치 공유 취소됨: 위치 업데이트 중지 - receiverId=$receiverId');
+        // 위치 획득 후 다시 공유 상태 확인 (더 엄격한 검사)
+        if (!_activeSharing.containsKey(receiverId) ||
+            !_activeSharing[receiverId]!.isActive) {
+          print(
+              '🛑 [서비스] 위치 공유 취소됨 또는 비활성화됨: 위치 업데이트 중지 - receiverId=$receiverId');
           timer.cancel();
           _fallbackTimers.remove(receiverId);
           return;
@@ -584,6 +599,15 @@ class LocationSharingService extends GetxController {
       return;
     }
 
+    // isActive 상태 추가 확인 - 비활성화된 경우 즉시 중단
+    if (!_activeSharing[receiverId]!.isActive) {
+      print('🛑 [위치 공유] 위치 업데이트 즉시 중단: 비활성화된 공유 - receiverId=$receiverId');
+      // 위치 추적 중지
+      _stopPositionTracking(receiverId);
+      _stopFallbackPositionTimer(receiverId);
+      return;
+    }
+
     final sharedLocation = _activeSharing[receiverId]!.copyWithNewLocation(
       position.latitude,
       position.longitude,
@@ -630,56 +654,30 @@ class LocationSharingService extends GetxController {
         return;
       }
 
-      // 문서가 있지만 이미 비활성화된 경우, 60분 이내인지 확인
+      // 문서가 있지만 이미 비활성화된 경우, 즉시 위치 업데이트 중단
       final docData = docSnapshot.data();
       if (docData != null && docData['isActive'] == false) {
-        // 비활성화된 문서인 경우 보존 시간 확인
-        final retentionTime = docData['retentionTime'];
-        if (retentionTime != null) {
-          // Timestamp나 DateTime 객체로 변환
-          DateTime retentionDateTime;
-          if (retentionTime is Timestamp) {
-            retentionDateTime = retentionTime.toDate();
-          } else if (retentionTime is DateTime) {
-            retentionDateTime = retentionTime;
-          } else {
-            // 기본값으로 현재 시간 설정 (타입 오류 방지)
-            retentionDateTime = DateTime.now();
-          }
+        print('🛑 [위치 공유] 비활성화된 공유: 위치 업데이트 즉시 중단');
 
-          // 보존 시간이 지났는지 확인
-          if (DateTime.now().isAfter(retentionDateTime)) {
-            print('⚠️ [위치 공유] 보존 기간(60분) 만료: 위치 업데이트 중단');
-            // 로컬 상태 정리
-            _activeSharing.remove(receiverId);
-            sharingToUserIds.remove(receiverId);
+        // 로컬 상태 정리
+        _activeSharing.remove(receiverId);
+        sharingToUserIds.remove(receiverId);
 
-            if (_activeSharing.isEmpty) {
-              isSharingLocation.value = false;
-            }
-
-            // 위치 추적 중지
-            _stopPositionTracking(receiverId);
-            _stopFallbackPositionTimer(receiverId);
-
-            // 로컬 저장소 업데이트
-            await _saveActiveSharingState();
-
-            // 보존 기간이 지난 문서 삭제
-            try {
-              await _firestore
-                  .collection('location_sharing')
-                  .doc(sharedLocation.id)
-                  .delete();
-              print('🗑️ [위치 공유] 보존 기간 만료된 문서 삭제 완료');
-            } catch (e) {
-              print('⚠️ [위치 공유] 만료 문서 삭제 오류: $e');
-            }
-            return;
-          } else {
-            print('📌 [위치 공유] 비활성화된 공유이지만 보존 기간(60분) 내: 업데이트 계속');
-          }
+        if (_activeSharing.isEmpty) {
+          isSharingLocation.value = false;
         }
+
+        // 위치 추적 중지
+        _stopPositionTracking(receiverId);
+        _stopFallbackPositionTimer(receiverId);
+
+        // 로컬 저장소 업데이트
+        await _saveActiveSharingState();
+
+        print('✅ [위치 공유] 공유 정지 후 위치 추적 완전 중단');
+
+        // 문서는 삭제하지 않고 60분 보존 기간 동안 유지 (표시 목적)
+        return;
       }
 
       // Firestore에 위치 업데이트
