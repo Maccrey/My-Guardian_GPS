@@ -6,13 +6,60 @@ import '../../services/emergency_contact_service.dart';
 import '../../services/location_sharing_service.dart';
 import '../../services/auth_service.dart';
 
-class EmergencyContactLocationView extends StatelessWidget {
+class EmergencyContactLocationView extends StatefulWidget {
+  const EmergencyContactLocationView({Key? key}) : super(key: key);
+
+  @override
+  State<EmergencyContactLocationView> createState() =>
+      _EmergencyContactLocationViewState();
+}
+
+class _EmergencyContactLocationViewState
+    extends State<EmergencyContactLocationView> with WidgetsBindingObserver {
   final EmergencyContactService _contactService =
       Get.find<EmergencyContactService>();
   final LocationSharingService _locationService =
       Get.find<LocationSharingService>();
 
-  EmergencyContactLocationView({Key? key}) : super(key: key);
+  @override
+  void initState() {
+    super.initState();
+    // 위젯 라이프사이클 관찰 시작
+    WidgetsBinding.instance.addObserver(this);
+
+    // 페이지 이동 시 매번 연락처 데이터 새로고침
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 내 긴급 연락처 화면으로부터 돌아올 때 데이터 새로고침을 위해
+      // 연락처 데이터 다시 로드
+      _contactService.loadContacts();
+    });
+  }
+
+  @override
+  void dispose() {
+    // 위젯 라이프사이클 관찰 종료
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 앱이 다시 활성화될 때 연락처 데이터 다시 로드
+    if (state == AppLifecycleState.resumed) {
+      // 연락처 데이터 새로고침
+      _contactService.loadContacts();
+      // 화면 갱신 - 최신 연락처 데이터 반영
+      setState(() {});
+    }
+  }
+
+  // 화면이 다시 포커스를 얻을 때 호출
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 화면이 다시 보여질 때 연락처 데이터 새로고침
+    _contactService.loadContacts();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -65,19 +112,45 @@ class EmergencyContactLocationView extends StatelessWidget {
         elevation: 0,
       ),
       body: Obx(() {
-        final contacts = _contactService.userContacts;
+        // 사용자 정의 연락처만 가져옴 (기본 긴급 연락처는 제외)
+        // 매번 최신 데이터 사용을 위해 .value로 접근
+        final userContacts = _contactService.userContacts.value;
+        // isDefault가 false인 사용자 정의 연락처만 필터링
+        final filteredUserContacts =
+            userContacts.where((contact) => !contact.isDefault).toList();
 
-        if (contacts.isEmpty) {
+        if (filteredUserContacts.isEmpty) {
           return _buildEmptyState();
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: contacts.length,
-          itemBuilder: (context, index) {
-            final contact = contacts[index];
-            return _buildContactCard(context, contact);
-          },
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // "내 긴급 연락처" 헤더 표시
+            Padding(
+              padding: const EdgeInsets.only(
+                  left: 16, top: 16, right: 16, bottom: 8),
+              child: Text(
+                '내 긴급 연락처',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
+                // 필터링된 목록 사용
+                itemCount: filteredUserContacts.length,
+                itemBuilder: (context, index) {
+                  final contact = filteredUserContacts[index];
+                  return _buildContactCard(context, contact);
+                },
+              ),
+            ),
+          ],
         );
       }),
     );
@@ -143,22 +216,34 @@ class EmergencyContactLocationView extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: () => _handleLocationSharing(contact),
+                  onPressed: contact.isDefault
+                      ? null // 기본 연락처는 버튼 비활성화
+                      : () => _handleLocationSharing(contact),
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     backgroundColor: isSharing
                         ? Theme.of(context).colorScheme.error
-                        : Theme.of(context).colorScheme.primary,
+                        : contact.isDefault
+                            ? Colors.grey.shade400 // 기본 연락처는 회색
+                            : Theme.of(context).colorScheme.primary,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
                   icon: Icon(
-                    isSharing ? Icons.location_off : Icons.location_on,
+                    contact.isDefault
+                        ? Icons.phone
+                        : isSharing
+                            ? Icons.location_off
+                            : Icons.location_on,
                     color: Colors.white,
                   ),
                   label: Text(
-                    isSharing ? '위치 공유 중지' : '위치 공유 시작',
+                    contact.isDefault
+                        ? '긴급 전화'
+                        : isSharing
+                            ? '위치 공유 중지'
+                            : '위치 공유 시작',
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -209,7 +294,7 @@ class EmergencyContactLocationView extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           const Text(
-            '등록된 긴급 연락처가 없습니다',
+            '등록된 내 긴급 연락처가 없습니다',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -217,7 +302,8 @@ class EmergencyContactLocationView extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            '위치를 공유하려면 먼저 긴급 연락처를 추가하세요',
+            '위치를 공유하려면 먼저 긴급 연락처 화면에서\n연락처를 추가하세요',
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14,
               color: Colors.grey,
@@ -225,9 +311,9 @@ class EmergencyContactLocationView extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: () => Get.toNamed('/emergency-contacts/add'),
+            onPressed: () => Get.toNamed('/emergency-contacts'),
             icon: const Icon(Icons.add),
-            label: const Text('연락처 추가'),
+            label: const Text('긴급 연락처로 이동'),
           ),
         ],
       ),

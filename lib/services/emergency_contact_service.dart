@@ -97,6 +97,7 @@ class EmergencyContactService extends GetxController
 
     _initDefaultContacts();
     loadContacts();
+    _loadContacts(); // 추가: 기본 연락처와 사용자 연락처 로드
     _verifyStorageState(); // 초기 상태 확인
   }
 
@@ -346,10 +347,24 @@ class EmergencyContactService extends GetxController
       ),
       EmergencyContact(
         id: const Uuid().v4(),
+        name: '해양경찰청',
+        phoneNumber: '122',
+        isDefault: true,
+        description: '해상 긴급 상황',
+      ),
+      EmergencyContact(
+        id: const Uuid().v4(),
         name: '마약 신고',
         phoneNumber: '1301',
         isDefault: true,
         description: '마약 범죄 신고 및 제보',
+      ),
+      EmergencyContact(
+        id: const Uuid().v4(),
+        name: '중앙재난안전상황실',
+        phoneNumber: '044-205-1542',
+        isDefault: true,
+        description: '자연재해 및 대형 사고',
       ),
     ];
   }
@@ -581,10 +596,50 @@ class EmergencyContactService extends GetxController
   // 연락처 목록 로드
   Future<void> _loadContacts() async {
     // 기본 제공 연락처 로드
-    defaultContacts.value = EmergencyContact.getDefaultContacts();
+    defaultContacts.value = [
+      // 모든 기본 연락처 명시적으로 추가
+      EmergencyContact(
+        id: '00000000-0000-0000-0000-000000000001',
+        name: '긴급 신고',
+        phoneNumber: '119',
+        isDefault: true,
+        description: '화재, 구조, 구급 등 긴급 상황',
+      ),
+      EmergencyContact(
+        id: '00000000-0000-0000-0000-000000000002',
+        name: '경찰청',
+        phoneNumber: '112',
+        isDefault: true,
+        description: '범죄 신고 및 위급 상황',
+      ),
+      EmergencyContact(
+        id: '00000000-0000-0000-0000-000000000003',
+        name: '해양경찰청',
+        phoneNumber: '122',
+        isDefault: true,
+        description: '해상 긴급 상황',
+      ),
+      EmergencyContact(
+        id: '00000000-0000-0000-0000-000000000004',
+        name: '마약 신고',
+        phoneNumber: '1301',
+        isDefault: true,
+        description: '마약 범죄 신고 및 제보',
+      ),
+      EmergencyContact(
+        id: '00000000-0000-0000-0000-000000000005',
+        name: '중앙재난안전상황실',
+        phoneNumber: '044-205-1542',
+        isDefault: true,
+        description: '자연재해 및 대형 사고',
+      ),
+    ];
 
     // 사용자 정의 연락처 로드
     await _loadUserContacts();
+
+    // 기본 연락처도 다시 초기화하여 확실하게 불러오기
+    await _initDefaultContacts();
   }
 
   // 사용자 정의 연락처 로드

@@ -67,24 +67,38 @@ class EmergencyContact {
   static List<EmergencyContact> getDefaultContacts() {
     return [
       EmergencyContact(
-        id: 'emergency_119',
-        name: '소방서(긴급구조)',
+        id: '00000000-0000-0000-0000-000000000001',
+        name: '긴급 신고',
         phoneNumber: '119',
         description: '화재, 구조, 구급 등 긴급 상황',
         isDefault: true,
       ),
       EmergencyContact(
-        id: 'emergency_112',
-        name: '경찰서(범죄신고)',
+        id: '00000000-0000-0000-0000-000000000002',
+        name: '경찰청',
         phoneNumber: '112',
         description: '범죄 신고 및 위급 상황',
         isDefault: true,
       ),
       EmergencyContact(
-        id: 'emergency_110',
-        name: '해양경찰(해상긴급)',
-        phoneNumber: '110',
+        id: '00000000-0000-0000-0000-000000000003',
+        name: '해양경찰청',
+        phoneNumber: '122',
         description: '해상 긴급 상황',
+        isDefault: true,
+      ),
+      EmergencyContact(
+        id: '00000000-0000-0000-0000-000000000004',
+        name: '마약 신고',
+        phoneNumber: '1301',
+        description: '마약 범죄 신고 및 제보',
+        isDefault: true,
+      ),
+      EmergencyContact(
+        id: '00000000-0000-0000-0000-000000000005',
+        name: '중앙재난안전상황실',
+        phoneNumber: '044-205-1542',
+        description: '자연재해 및 대형 사고',
         isDefault: true,
       ),
     ];
