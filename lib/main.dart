@@ -33,6 +33,8 @@ import 'utils/url_handler.dart';
 import 'views/profile_edit_view.dart';
 import 'services/map_api_service.dart';
 import 'views/home_arrival_view.dart';
+import 'services/location_sharing_service.dart';
+import 'controllers/location_sharing_controller.dart';
 
 import 'firebase_options.dart'; // 임시로 주석 처리
 
@@ -154,6 +156,10 @@ void main() async {
   } catch (e) {
     debugPrint('❌ HomeArrivalService 초기화 오류: $e');
   }
+
+  // 위치 공유 서비스 및 컨트롤러 초기화
+  Get.put(LocationSharingService());
+  Get.put(LocationSharingController());
 
   runApp(const MyApp());
 }

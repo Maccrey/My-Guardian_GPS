@@ -13,7 +13,7 @@ import 'dart:async';
 import 'dart:io' show Platform;
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/shared_location_model.dart';
+import '../models/shared_location_model.dart'; // SharedLocation 모델
 import '../constants/api_keys.dart';
 import 'map_api_service.dart';
 
@@ -98,8 +98,7 @@ class LocationService extends GetxController {
   final RxBool isLocationServiceEnabled = true.obs;
 
   // 메시지에서 공유된 위치 저장 목록
-  final RxList<SharedLocationModel> sharedLocations =
-      <SharedLocationModel>[].obs;
+  final RxList<SharedLocation> sharedLocations = <SharedLocation>[].obs;
 
   // 공유된 위치를 표시할지 여부
   final RxBool showSharedLocations = true.obs;
@@ -785,9 +784,9 @@ class LocationService extends GetxController {
   }
 
   // 공유된 위치 저장
-  Future<bool> saveSharedLocation(SharedLocationModel location) async {
+  Future<bool> saveSharedLocation(SharedLocation location) async {
     try {
-      debugPrint('🔄 공유된 위치 저장 시도: ${location.message}');
+      debugPrint('🔄 공유된 위치 저장 시도: ${location.toString()}');
 
       // Firestore에 위치 정보 저장 (옵션)
       try {
@@ -832,7 +831,7 @@ class LocationService extends GetxController {
   }
 
   // 공유된 위치로 이동
-  void moveToSharedLocation(SharedLocationModel location) {
+  void moveToSharedLocation(SharedLocation location) {
     if (mapController.value != null) {
       mapController.value!.animateCamera(
         CameraUpdate.newCameraPosition(
@@ -843,7 +842,7 @@ class LocationService extends GetxController {
         ),
       );
 
-      debugPrint('✅ 공유 위치로 이동: ${location.message}');
+      debugPrint('✅ 공유 위치로 이동: ${location.toString()}');
     }
   }
 
@@ -860,7 +859,7 @@ class LocationService extends GetxController {
 
         for (var doc in snapshot.docs) {
           try {
-            final location = SharedLocationModel.fromFirestore(doc);
+            final location = SharedLocation.fromFirestore(doc);
             sharedLocations.add(location);
           } catch (e) {
             debugPrint('⚠️ 위치 변환 오류 (무시됨): $e');
@@ -989,11 +988,11 @@ class LocationService extends GetxController {
   }
 
   // 위치 삭제 확인 다이얼로그
-  void _showDeleteLocationDialog(SharedLocationModel location) {
+  void _showDeleteLocationDialog(SharedLocation location) {
     Get.dialog(
       AlertDialog(
         title: const Text('위치 삭제'),
-        content: Text('${location.message}\n이 위치를 삭제하시겠습니까?'),
+        content: Text('이 위치를 삭제하시겠습니까?'),
         actions: [
           TextButton(
             onPressed: () => Get.back(),

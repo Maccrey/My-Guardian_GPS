@@ -11,6 +11,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/emergency_contact_model.dart';
 import '../main.dart'; // prefsInstance 접근용
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class EmergencyContactService extends GetxController
     with WidgetsBindingObserver {
@@ -23,6 +25,15 @@ class EmergencyContactService extends GetxController
   final bool useMemoryOnly;
   // 외부에서 주입된 SharedPreferences 인스턴스
   final SharedPreferences? prefs;
+
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // 사용자 정의 연락처 목록
+  final RxList<EmergencyContact> userContacts = <EmergencyContact>[].obs;
+
+  // 기본 제공 연락처 목록
+  final RxList<EmergencyContact> defaultContacts = <EmergencyContact>[].obs;
 
   // 생성자에서 메모리 모드 옵션과 SharedPreferences 인스턴스를 받음
   EmergencyContactService({
@@ -560,10 +571,79 @@ class EmergencyContactService extends GetxController
   }
 
   // 기본 연락처만 가져오기
-  List<EmergencyContact> get defaultContacts =>
+  List<EmergencyContact> get defaultContactsList =>
       contacts.where((contact) => contact.isDefault).toList();
 
   // 사용자 정의 연락처만 가져오기
   List<EmergencyContact> get customContacts =>
       contacts.where((contact) => !contact.isDefault).toList();
+
+  // 연락처 목록 로드
+  Future<void> _loadContacts() async {
+    // 기본 제공 연락처 로드
+    defaultContacts.value = EmergencyContact.getDefaultContacts();
+
+    // 사용자 정의 연락처 로드
+    await _loadUserContacts();
+  }
+
+  // 사용자 정의 연락처 로드
+  Future<void> _loadUserContacts() async {
+    try {
+      final userId = _auth.currentUser?.uid;
+      if (userId == null) return;
+
+      // 로컬 저장소에서 먼저 로드 (오프라인 지원)
+      await _loadContactsFromLocal();
+
+      // Firestore에서 로드
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('emergency_contacts')
+          .get();
+
+      final List<EmergencyContact> contacts = snapshot.docs
+          .map((doc) => EmergencyContact.fromFirestore(doc))
+          .toList();
+
+      userContacts.value = contacts;
+
+      // 로컬 저장소에 저장
+      _saveContactsToLocal();
+    } catch (e) {
+      print('연락처 로드 오류: $e');
+    }
+  }
+
+  // 로컬 저장소에서 연락처 로드
+  Future<void> _loadContactsFromLocal() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final contactsJson = prefs.getString('emergency_contacts');
+
+      if (contactsJson != null && contactsJson.isNotEmpty) {
+        final List<dynamic> decoded = jsonDecode(contactsJson);
+        final List<EmergencyContact> contacts =
+            decoded.map((item) => EmergencyContact.fromJson(item)).toList();
+
+        userContacts.value = contacts;
+      }
+    } catch (e) {
+      print('로컬 연락처 로드 오류: $e');
+    }
+  }
+
+  // 로컬 저장소에 연락처 저장
+  Future<void> _saveContactsToLocal() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final List<Map<String, dynamic>> contactsJson =
+          userContacts.map((contact) => contact.toJson()).toList();
+
+      prefs.setString('emergency_contacts', jsonEncode(contactsJson));
+    } catch (e) {
+      print('로컬 연락처 저장 오류: $e');
+    }
+  }
 }

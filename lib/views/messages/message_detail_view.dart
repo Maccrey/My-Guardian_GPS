@@ -10,7 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/message_model.dart';
-import '../../models/shared_location_model.dart';
+import '../../models/shared_location_model.dart'; // SharedLocation 모델
 import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
 import '../../services/location_service.dart';
@@ -2810,16 +2810,18 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       HapticFeedback.mediumImpact();
 
       // 공유 위치 저장 모델 생성
-      final sharedLocation = SharedLocationModel(
+      final sharedLocation = SharedLocation(
         id: const Uuid().v4(),
         senderId: message.senderId,
-        senderName:
-            isCurrentUserSender ? '나' : _getRecipientName(message.senderId),
+        receiverId: _authService.uid ?? '', // 현재 사용자를 수신자로 설정
         latitude: double.parse(locationData['latitude'].toString()),
         longitude: double.parse(locationData['longitude'].toString()),
-        message: locationData['message'] ?? '공유된 위치',
         timestamp: message.timestamp,
-        messageId: message.id,
+        isActive: true, // 활성 상태로 설정
+        startTime: DateTime.now(), // 현재 시간을 시작 시간으로 설정
+        message: locationData['message'] ?? '공유된 위치',
+        senderName:
+            isCurrentUserSender ? '나' : _getRecipientName(message.senderId),
       );
 
       // 위치 서비스에 저장

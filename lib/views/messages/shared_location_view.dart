@@ -381,15 +381,17 @@ class _SharedLocationViewState extends State<SharedLocationView> {
       );
 
       // 공유된 위치 모델 생성
-      final sharedLocation = SharedLocationModel(
+      final sharedLocation = SharedLocation(
         id: const Uuid().v4(), // 고유 ID 생성
         senderId: 'shared_from_message', // 메시지에서 공유된 위치임을 표시
-        senderName: widget.senderName,
+        receiverId: 'local_user', // 로컬 저장용
         latitude: widget.latitude,
         longitude: widget.longitude,
-        message: widget.message,
         timestamp: widget.timestamp,
-        messageId: 'direct_share', // 직접 공유시 메시지 ID 없음
+        isActive: true, // 활성 상태로 설정
+        startTime: DateTime.now(), // 현재 시간을 시작 시간으로 설정
+        message: widget.message,
+        senderName: widget.senderName,
       );
 
       // 위치 서비스에 저장
@@ -539,15 +541,17 @@ class _SharedLocationViewState extends State<SharedLocationView> {
         // 공유 위치로 이동하는 기능은 이미 구현된 위치 서비스 활용
         if (!_isSavedToMap) {
           // 아직 저장되지 않은 경우 위치 저장 후 이동
-          final sharedLocation = SharedLocationModel(
+          final sharedLocation = SharedLocation(
             id: const Uuid().v4(),
             senderId: 'temp_navigation',
-            senderName: widget.senderName,
+            receiverId: 'local_user', // 로컬 저장용
             latitude: widget.latitude,
             longitude: widget.longitude,
-            message: widget.message,
             timestamp: widget.timestamp,
-            messageId: 'direct_navigation',
+            isActive: true, // 활성 상태로 설정
+            startTime: DateTime.now(), // 현재 시간을 시작 시간으로 설정
+            message: widget.message,
+            senderName: widget.senderName,
           );
 
           // 임시로 저장하고 이동

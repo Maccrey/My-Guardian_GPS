@@ -2,79 +2,154 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 /// 메시지를 통해 공유된 위치 정보를 저장하는 모델 클래스
-class SharedLocationModel {
-  final String id; // 고유 ID
-  final String senderId; // 보낸 사람 ID
-  final String senderName; // 보낸 사람 이름
-  final double latitude; // 위도
-  final double longitude; // 경도
-  final String message; // 위치에 대한 메시지
-  final DateTime timestamp; // 공유 시간
-  final String messageId; // 관련 메시지 ID (원본 메시지 참조용)
+class SharedLocation {
+  final String id;
+  final String senderId;
+  final String receiverId;
+  final double latitude;
+  final double longitude;
+  final DateTime timestamp;
+  final bool isActive;
+  final DateTime startTime;
+  final DateTime? endTime;
+  final String message; // 위치 공유 메시지
+  final String senderName; // 발신자 이름
 
-  SharedLocationModel({
+  SharedLocation({
     required this.id,
     required this.senderId,
-    required this.senderName,
+    required this.receiverId,
     required this.latitude,
     required this.longitude,
-    required this.message,
     required this.timestamp,
-    required this.messageId,
+    required this.isActive,
+    required this.startTime,
+    this.endTime,
+    this.message = '', // 기본값 추가
+    this.senderName = '', // 기본값 추가
   });
 
   // LatLng 객체로 변환
   LatLng toLatLng() => LatLng(latitude, longitude);
 
-  // 파이어스토어 데이터로 변환
+  // SharedLocation을 JSON으로 변환
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'senderId': senderId,
-      'senderName': senderName,
+      'receiverId': receiverId,
       'latitude': latitude,
       'longitude': longitude,
-      'message': message,
-      'timestamp': timestamp,
-      'messageId': messageId,
+      'timestamp': timestamp.millisecondsSinceEpoch,
+      'isActive': isActive,
+      'startTime': startTime.millisecondsSinceEpoch,
+      'endTime': endTime?.millisecondsSinceEpoch,
+      'message': message, // 추가
+      'senderName': senderName, // 추가
     };
   }
 
-  // 파이어스토어 데이터에서 생성
-  factory SharedLocationModel.fromJson(Map<String, dynamic> json) {
-    return SharedLocationModel(
-      id: json['id'] as String,
-      senderId: json['senderId'] as String,
-      senderName: json['senderName'] as String,
-      latitude: (json['latitude'] as num).toDouble(),
-      longitude: (json['longitude'] as num).toDouble(),
-      message: json['message'] as String,
-      timestamp: (json['timestamp'] as Timestamp).toDate(),
-      messageId: json['messageId'] as String,
+  // JSON에서 SharedLocation으로 변환
+  factory SharedLocation.fromJson(Map<String, dynamic> json) {
+    return SharedLocation(
+      id: json['id'],
+      senderId: json['senderId'],
+      receiverId: json['receiverId'],
+      latitude: json['latitude'],
+      longitude: json['longitude'],
+      timestamp: DateTime.fromMillisecondsSinceEpoch(json['timestamp']),
+      isActive: json['isActive'],
+      startTime: DateTime.fromMillisecondsSinceEpoch(json['startTime']),
+      endTime: json['endTime'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(json['endTime'])
+          : null,
+      message: json['message'] ?? '', // 추가
+      senderName: json['senderName'] ?? '', // 추가
     );
   }
 
-  // Firestore DocumentSnapshot에서 생성
-  factory SharedLocationModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-
-    return SharedLocationModel(
+  // Firestore DocumentSnapshot에서 SharedLocation으로 변환
+  factory SharedLocation.fromFirestore(DocumentSnapshot doc) {
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    return SharedLocation(
       id: doc.id,
-      senderId: data['senderId'] as String,
-      senderName: data['senderName'] as String,
-      latitude: (data['latitude'] as num).toDouble(),
-      longitude: (data['longitude'] as num).toDouble(),
-      message: data['message'] as String,
-      timestamp: data['timestamp'] is Timestamp
-          ? (data['timestamp'] as Timestamp).toDate()
+      senderId: data['senderId'] ?? '',
+      receiverId: data['receiverId'] ?? '',
+      latitude: (data['latitude'] ?? 0.0).toDouble(),
+      longitude: (data['longitude'] ?? 0.0).toDouble(),
+      timestamp: data['timestamp'] != null
+          ? (data['timestamp'] is Timestamp
+              ? (data['timestamp'] as Timestamp).toDate()
+              : DateTime.fromMillisecondsSinceEpoch(data['timestamp']))
           : DateTime.now(),
-      messageId: data['messageId'] as String,
+      isActive: data['isActive'] ?? false,
+      startTime: data['startTime'] != null
+          ? (data['startTime'] is Timestamp
+              ? (data['startTime'] as Timestamp).toDate()
+              : DateTime.fromMillisecondsSinceEpoch(data['startTime']))
+          : DateTime.now(),
+      endTime: data['endTime'] != null
+          ? (data['endTime'] is Timestamp
+              ? (data['endTime'] as Timestamp).toDate()
+              : DateTime.fromMillisecondsSinceEpoch(data['endTime']))
+          : null,
+      message: data['message'] ?? '', // 추가
+      senderName: data['senderName'] ?? '', // 추가
+    );
+  }
+
+  // 경로 지점 객체
+  factory SharedLocation.locationPoint(
+      String id, String senderId, String receiverId, double lat, double lng) {
+    return SharedLocation(
+      id: id,
+      senderId: senderId,
+      receiverId: receiverId,
+      latitude: lat,
+      longitude: lng,
+      timestamp: DateTime.now(),
+      isActive: true,
+      startTime: DateTime.now(),
+    );
+  }
+
+  // 새 위치로 객체 업데이트
+  SharedLocation copyWithNewLocation(double lat, double lng) {
+    return SharedLocation(
+      id: this.id,
+      senderId: this.senderId,
+      receiverId: this.receiverId,
+      latitude: lat,
+      longitude: lng,
+      timestamp: DateTime.now(),
+      isActive: this.isActive,
+      startTime: this.startTime,
+      endTime: this.endTime,
+      message: this.message, // 추가
+      senderName: this.senderName, // 추가
+    );
+  }
+
+  // 공유 종료 시 객체 업데이트
+  SharedLocation copyWithEndSharing() {
+    return SharedLocation(
+      id: this.id,
+      senderId: this.senderId,
+      receiverId: this.receiverId,
+      latitude: this.latitude,
+      longitude: this.longitude,
+      timestamp: this.timestamp,
+      isActive: false,
+      startTime: this.startTime,
+      endTime: DateTime.now(),
+      message: this.message, // 추가
+      senderName: this.senderName, // 추가
     );
   }
 
   @override
   String toString() {
-    return 'SharedLocationModel(id: $id, senderId: $senderId, senderName: $senderName, '
-        'coordinates: ($latitude, $longitude), message: $message, timestamp: $timestamp)';
+    return 'SharedLocation(id: $id, senderId: $senderId, receiverId: $receiverId, '
+        'coordinates: ($latitude, $longitude), timestamp: $timestamp)';
   }
 }
