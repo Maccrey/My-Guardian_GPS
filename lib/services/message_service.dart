@@ -21,6 +21,9 @@ class MessageService extends GetxController {
   // 테스트 모드 플래그 (Firebase 연결 전 테스트 목적)
   final bool _useMockAuth = kDebugMode;
 
+  // Firebase 권한 오류 발생 시 Firestore 업데이트 건너뛰기 플래그
+  bool _skipFirestoreUpdates = false;
+
   // 읽지 않은 메시지 수
   final RxInt unreadMessageCount = 0.obs;
 
@@ -68,6 +71,9 @@ class MessageService extends GetxController {
 
     // 알림 서비스 초기화
     _initNotificationService();
+
+    // Firebase 권한 관련 로그 출력
+    _checkFirebasePermissions();
   }
 
   @override
@@ -536,6 +542,12 @@ class MessageService extends GetxController {
         return;
       }
 
+      // 개발 모드이거나 Firestore 업데이트 건너뛰기 플래그가 활성화된 경우 업데이트 시도하지 않음
+      if (kDebugMode || _useMockAuth || _skipFirestoreUpdates) {
+        debugPrint('⚠️ 개발 모드이거나 이전 권한 오류로 인해 Firestore 업데이트를 건너뜁니다.');
+        return;
+      }
+
       // Firestore 메시지 상태 업데이트 - 오류 발생해도 UI 영향 없음
       try {
         await _firestore.collection('messages').doc(messageId).update({
@@ -546,10 +558,12 @@ class MessageService extends GetxController {
         // Firebase 업데이트 실패는 UI에 영향을 주지 않음 (로컬 상태는 이미 업데이트됨)
         debugPrint('⚠️ Firestore 메시지 읽음 상태 업데이트 실패: $e');
 
-        // 권한 오류는 경고만 표시
+        // 권한 오류 발생 시 향후 시도를 건너뛰도록 플래그 설정
         if (e.toString().contains('permission-denied')) {
           debugPrint('🔒 Firebase 권한 오류: 메시지 읽음 상태를 업데이트할 권한이 없습니다.');
           debugPrint('🔒 로컬 UI 상태는 정상적으로 업데이트되었습니다.');
+          _skipFirestoreUpdates = true;
+          debugPrint('⚠️ 향후 Firestore 업데이트 시도를 중단합니다.');
         }
       }
     } catch (e) {
@@ -607,6 +621,12 @@ class MessageService extends GetxController {
         return;
       }
 
+      // 개발 모드이거나 Firestore 업데이트 건너뛰기 플래그가 활성화된 경우 업데이트 시도하지 않음
+      if (kDebugMode || _useMockAuth || _skipFirestoreUpdates) {
+        debugPrint('⚠️ 개발 모드이거나 이전 권한 오류로 인해 Firestore 업데이트를 건너뜁니다.');
+        return;
+      }
+
       // Firestore 메시지 상태 업데이트 (배치 작업) - 오류 발생해도 UI 영향 없음
       try {
         final batch = _firestore.batch();
@@ -630,10 +650,12 @@ class MessageService extends GetxController {
         // Firebase 업데이트 실패는 UI에 영향을 주지 않음 (로컬 상태는 이미 업데이트됨)
         debugPrint('⚠️ Firestore 메시지 읽음 상태 업데이트 실패: $e');
 
-        // 권한 오류는 경고만 표시
+        // 권한 오류 발생 시 향후 시도를 건너뛰도록 플래그 설정
         if (e.toString().contains('permission-denied')) {
           debugPrint('🔒 Firebase 권한 오류: 메시지 읽음 상태를 업데이트할 권한이 없습니다.');
           debugPrint('🔒 로컬 UI 상태는 정상적으로 업데이트되었습니다.');
+          _skipFirestoreUpdates = true;
+          debugPrint('⚠️ 향후 Firestore 업데이트 시도를 중단합니다.');
         }
       }
     } catch (e) {
@@ -1454,6 +1476,115 @@ class MessageService extends GetxController {
       debugPrint('✅ ${userId}와의 메시지 읽음 처리 완료');
     } catch (e) {
       debugPrint('⚠️ 사용자 메시지 일괄 읽음 처리 오류: $e');
+    }
+  }
+
+  // Firebase 권한 확인 메서드
+  Future<void> _checkFirebasePermissions() async {
+    try {
+      debugPrint('🔐 Firebase 권한 확인 중...');
+
+      // 로그인 상태 확인
+      if (_authService.currentUser == null || _authService.uid == null) {
+        debugPrint('⚠️ 로그인되어 있지 않아 권한 확인을 건너뜁니다.');
+        return;
+      }
+
+      final String currentUserId = _authService.uid!;
+
+      // 테스트용 문서 읽기 시도
+      try {
+        // 사용자 문서 읽기 시도
+        final userDoc =
+            await _firestore.collection('users').doc(currentUserId).get();
+        debugPrint(
+            '✅ 사용자 문서 읽기 권한 확인 완료: ${userDoc.exists ? '문서 존재' : '문서 없음'}');
+      } catch (e) {
+        if (e.toString().contains('permission-denied')) {
+          debugPrint('🔒 사용자 문서 읽기 권한 없음: Firebase 보안 규칙 확인 필요');
+        } else {
+          debugPrint('⚠️ 사용자 문서 읽기 중 오류: $e');
+        }
+      }
+
+      // 메시지 컬렉션 접근 권한 확인
+      try {
+        // 메시지 컬렉션 쿼리 시도 (단 1개만)
+        final msgQuery = await _firestore
+            .collection('messages')
+            .where('receiverId', isEqualTo: currentUserId)
+            .limit(1)
+            .get();
+
+        debugPrint(
+            '✅ 메시지 읽기 권한 확인 완료: ${msgQuery.docs.isEmpty ? '메시지 없음' : '메시지 있음'}');
+
+        // 메시지가 있으면 쓰기 권한도 확인
+        if (msgQuery.docs.isNotEmpty) {
+          try {
+            // 테스트 메시지 업데이트 시도
+            await _firestore
+                .collection('messages')
+                .doc(msgQuery.docs.first.id)
+                .update({
+              'testField': FieldValue.serverTimestamp(),
+            });
+            debugPrint('✅ 메시지 쓰기 권한 확인 완료');
+
+            // 테스트 필드 제거
+            await _firestore
+                .collection('messages')
+                .doc(msgQuery.docs.first.id)
+                .update({
+              'testField': FieldValue.delete(),
+            });
+          } catch (writeError) {
+            if (writeError.toString().contains('permission-denied')) {
+              debugPrint('🔒 메시지 쓰기 권한 없음: Firebase 보안 규칙 확인 필요');
+              _skipFirestoreUpdates = true;
+              debugPrint('⚠️ Firestore 업데이트를 건너뛰도록 설정되었습니다.');
+            } else {
+              debugPrint('⚠️ 메시지 쓰기 권한 확인 중 오류: $writeError');
+            }
+          }
+        }
+      } catch (e) {
+        if (e.toString().contains('permission-denied')) {
+          debugPrint('🔒 메시지 읽기 권한 없음: Firebase 보안 규칙 확인 필요');
+          _skipFirestoreUpdates = true;
+          debugPrint('⚠️ Firestore 업데이트를 건너뛰도록 설정되었습니다.');
+        } else {
+          debugPrint('⚠️ 메시지 읽기 권한 확인 중 오류: $e');
+        }
+      }
+
+      // 권한 확인 요약
+      if (_skipFirestoreUpdates) {
+        debugPrint('🚫 권한 검사 결과: Firestore 업데이트가 비활성화되었습니다. 로컬 상태만 유지합니다.');
+      } else {
+        debugPrint('✅ 권한 검사 결과: Firestore 읽기/쓰기 권한이 정상적으로 확인되었습니다.');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Firebase 권한 확인 중 예상치 못한 오류: $e');
+    }
+  }
+
+  // 공개 메서드: 권한 문제 감지 시 로컬 모드로 전환
+  void enableLocalOnlyMode() {
+    _skipFirestoreUpdates = true;
+    debugPrint('⚠️ 로컬 전용 모드가 활성화되었습니다. Firestore 업데이트를 시도하지 않습니다.');
+  }
+
+  // 공개 메서드: 권한 상태 확인 및 필요시 재설정
+  Future<void> checkAndResetPermissions() async {
+    if (_skipFirestoreUpdates) {
+      debugPrint('🔄 권한 상태 재확인 중...');
+      _skipFirestoreUpdates = false; // 일단 초기화
+      await _checkFirebasePermissions(); // 권한 다시 확인
+
+      if (!_skipFirestoreUpdates) {
+        debugPrint('✅ Firestore 업데이트가 다시 활성화되었습니다.');
+      }
     }
   }
 }

@@ -90,6 +90,14 @@ class _MessageDetailViewState extends State<MessageDetailView> {
 
           // 4. 스크롤 이동
           _safelyScrollToBottom();
+        }).catchError((error) {
+          // Firebase 오류 처리
+          debugPrint('⚠️ 메시지 새로고침 오류: $error');
+
+          // 권한 오류 확인
+          if (error.toString().contains('permission-denied')) {
+            _handleFirebasePermissionError();
+          }
         });
 
         // 5. 현재 사용자의 활동 상태 업데이트
@@ -107,6 +115,11 @@ class _MessageDetailViewState extends State<MessageDetailView> {
             const Duration(seconds: 30), (_) => _checkRecipientStatus());
       } catch (e) {
         debugPrint('⚠️ 초기화 중 오류 발생: $e');
+
+        // 권한 오류 확인
+        if (e.toString().contains('permission-denied')) {
+          _handleFirebasePermissionError();
+        }
       }
     });
 
@@ -371,6 +384,28 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       colorText: Colors.white,
       snackPosition: SnackPosition.BOTTOM,
       duration: const Duration(seconds: 3),
+    );
+  }
+
+  // Firebase 권한 오류 처리 메서드
+  void _handleFirebasePermissionError() {
+    if (!mounted) return;
+
+    // 로컬 전용 모드로 전환
+    _messageService.enableLocalOnlyMode();
+
+    // 사용자에게 안내 메시지 표시
+    Get.snackbar(
+      '서버 연결 제한',
+      '메시지 서버 접근 권한이 제한되어 로컬 모드로 작동합니다. 메시지 읽음 상태가 서버에 저장되지 않지만 앱 사용에는 지장이 없습니다.',
+      snackPosition: SnackPosition.TOP,
+      backgroundColor: Colors.orange.withOpacity(0.9),
+      colorText: Colors.white,
+      duration: const Duration(seconds: 5),
+      icon: const Icon(Icons.sync_disabled, color: Colors.white),
+      margin: const EdgeInsets.all(8),
+      borderRadius: 8,
+      isDismissible: true,
     );
   }
 
