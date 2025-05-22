@@ -12,8 +12,8 @@ import flutter_background_service_ios
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    // 백그라운드 서비스 등록
-    SwiftFlutterBackgroundServicePlugin.registerForBackgroundService(application)
+    // iOS에서 백그라운드 서비스 초기화
+    // 최신 버전에서는 별도 초기화 코드가 필요하지 않음 (플러그인 등록 시 자동으로 처리됨)
     
     let controller = self.window?.rootViewController as! FlutterViewController
     let mapChannel = FlutterMethodChannel(name: "com.gps_search.maps/api_key", 
