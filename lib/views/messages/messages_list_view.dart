@@ -1146,12 +1146,22 @@ class _MessagesListViewState extends State<MessagesListView> {
                                 ),
                               ),
                               onTap: () {
-                                // 컨트롤러 dispose 후 다이얼로그 닫기
+                                // 다이얼로그 닫기 전에 대화 상대 정보 저장
+                                final selectedUser = user;
+
+                                // 플래그를 설정하여 .then() 콜백에서 컨트롤러를 dispose하지 않도록 함
                                 isDialogActive = false;
-                                searchController.dispose();
-                                scrollController.dispose();
+
+                                // 먼저 다이얼로그를 닫고
                                 Navigator.of(context).pop();
-                                _startNewConversation(user);
+
+                                // 대화를 시작
+                                WidgetsBinding.instance
+                                    .addPostFrameCallback((_) {
+                                  if (mounted) {
+                                    _startNewConversation(selectedUser);
+                                  }
+                                });
                               },
                               trailing: Container(
                                 decoration: BoxDecoration(
