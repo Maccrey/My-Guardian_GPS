@@ -76,34 +76,33 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       try {
         debugPrint('🔄 메시지 화면 초기화 - 대화 상대 ID: ${widget.userId}');
 
-        // 1. 읽지 않은 메시지를 즉시 읽음 처리
-        _markMessagesAsRead();
+        // 1. 메시지를 읽음 처리하기 전에 먼저 메시지 서비스에서 데이터 확인
+        final currentMessages =
+            _messageService.getConversationWith(widget.userId);
+        debugPrint('📊 초기화 시 현재 메시지 수: ${currentMessages.length}');
 
-        // 1.1 즉시 UI 업데이트를 위해 메시지 서비스의 읽지 않은 메시지 수 업데이트
-        _messageService.updateUnreadCount();
-
-        // 2. 그다음 Firebase에서 메시지 새로고침
+        // 2. 먼저 Firebase에서 메시지 새로고침 - 데이터 로드 우선
         _messageService.refreshMessages().then((_) {
           if (!mounted) return;
 
-          // 새로고침 후 다시 읽음 처리 (새로 로드된 메시지가 있을 수 있음)
-          _markMessagesAsRead();
+          // 3. 새로고침 후에 읽음 처리 수행 (새로 로드된 메시지 포함)
+          _safelyMarkMessagesAsRead();
 
-          // 스크롤 이동
+          // 4. 스크롤 이동
           _safelyScrollToBottom();
         });
 
-        // 3. 현재 사용자의 활동 상태 업데이트
+        // 5. 현재 사용자의 활동 상태 업데이트
         _updateCurrentUserActivity();
 
-        // 4. 상대방의 상태 확인
+        // 6. 상대방의 상태 확인
         _checkRecipientStatus();
 
-        // 5. 주기적으로 현재 사용자의 활동 상태를 업데이트하는 타이머 설정 (1분마다)
+        // 7. 주기적으로 현재 사용자의 활동 상태를 업데이트하는 타이머 설정 (1분마다)
         _activityUpdateTimer = Timer.periodic(
             const Duration(minutes: 1), (_) => _updateCurrentUserActivity());
 
-        // 6. 주기적으로 상대방의 상태를 확인하는 타이머 설정 (30초마다)
+        // 8. 주기적으로 상대방의 상태를 확인하는 타이머 설정 (30초마다)
         _statusCheckTimer = Timer.periodic(
             const Duration(seconds: 30), (_) => _checkRecipientStatus());
       } catch (e) {
@@ -115,7 +114,9 @@ class _MessageDetailViewState extends State<MessageDetailView> {
     ever(_messageService.messages, (_) {
       if (mounted) {
         debugPrint('🔔 메시지 리스트 변경 감지 - UI 업데이트');
-        _markMessagesAsRead();
+
+        // 읽음 처리는 이미 리스트가 로드된 후에만 처리
+        _safelyMarkMessagesAsRead();
 
         // 사용자가 스크롤 중이거나 스크롤 위치가 하단에서 멀리 떨어져 있다면 자동 스크롤하지 않음
         if (_scrollController.hasClients) {
@@ -455,6 +456,22 @@ class _MessageDetailViewState extends State<MessageDetailView> {
     }
   }
 
+  // 안전하게 메시지 읽음 처리하는 메서드
+  Future<void> _safelyMarkMessagesAsRead() async {
+    // 메시지 데이터가 로드되었는지 확인
+    if (_messageService.messages.isEmpty) {
+      debugPrint('⚠️ 메시지 목록이 비어있어 읽음 처리를 연기합니다.');
+      return;
+    }
+
+    // 충분한 지연 후 읽음 처리 시도
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        _markMessagesAsRead();
+      }
+    });
+  }
+
   // 읽지 않은 메시지를 읽음 상태로 변경
   Future<void> _markMessagesAsRead() async {
     if (!mounted) {
@@ -470,10 +487,27 @@ class _MessageDetailViewState extends State<MessageDetailView> {
         return;
       }
 
-      debugPrint('🔄 현재 대화 상대의 모든 읽지 않은 메시지를 읽음 상태로 변경합니다.');
+      // 읽지 않은 메시지만 가져오기
+      final unreadMessages = _messageService.messages
+          .where((m) =>
+              !m.isRead &&
+              m.receiverId == currentUserId &&
+              m.senderId == widget.userId)
+          .toList();
 
-      // 대화 상대의 모든 읽지 않은 메시지를 읽음 처리
-      await _messageService.markAllMessagesAsReadFromUser(widget.userId);
+      if (unreadMessages.isEmpty) {
+        debugPrint('✅ 읽지 않은 메시지가 없습니다.');
+        return;
+      }
+
+      debugPrint(
+          '🔄 현재 대화 상대의 ${unreadMessages.length}개 읽지 않은 메시지를 읽음 상태로 변경합니다.');
+
+      // 읽지 않은 메시지 ID 목록 추출
+      final unreadMessageIds = unreadMessages.map((m) => m.id).toList();
+
+      // 다수의 메시지를 한 번에 처리하는 메서드 사용
+      await _messageService.markMultipleMessagesAsRead(unreadMessageIds);
 
       // 메시지 목록 강제 갱신 (읽음 상태 즉시 반영)
       _messageService.messages.refresh();
@@ -692,8 +726,40 @@ class _MessageDetailViewState extends State<MessageDetailView> {
         backgroundColor: Colors.blue.withOpacity(0.3),
       );
 
-      // Firebase에서 메시지 새로고침 및 구독 활성화
-      await _messageService.refreshMessages();
+      // Firebase에서 메시지 새로고침 - 타임아웃 처리 추가
+      bool refreshCompleted = false;
+
+      // 5초 타임아웃 설정
+      Future.delayed(const Duration(seconds: 5), () {
+        if (!refreshCompleted && mounted) {
+          debugPrint('⚠️ 메시지 새로고침 타임아웃');
+          // 타임아웃 처리
+          Get.snackbar(
+            '새로고침 지연',
+            '메시지 로드가 지연되고 있습니다. 잠시 기다려주세요.',
+            snackPosition: SnackPosition.BOTTOM,
+            duration: const Duration(seconds: 2),
+            backgroundColor: Colors.orange.withOpacity(0.7),
+          );
+        }
+      });
+
+      try {
+        await _messageService.refreshMessages();
+        refreshCompleted = true;
+      } catch (e) {
+        refreshCompleted = true;
+        if (mounted) {
+          Get.snackbar(
+            '새로고침 오류',
+            '메시지 로드 중 오류가 발생했습니다. 다시 시도해주세요.',
+            snackPosition: SnackPosition.BOTTOM,
+            duration: const Duration(seconds: 2),
+            backgroundColor: Colors.red.withOpacity(0.7),
+          );
+        }
+        rethrow; // 상위 catch 블록에서 처리
+      }
 
       if (!mounted) return;
 
@@ -702,8 +768,14 @@ class _MessageDetailViewState extends State<MessageDetailView> {
           _messageService.getConversationWith(widget.userId).length;
       final int diff = afterCount - beforeCount;
 
-      // 읽음 상태 갱신 및 스크롤 이동
-      _markMessagesAsRead();
+      // 읽음 상태 처리 (적은 양의 메시지만 있는 경우)
+      if (afterCount <= 50) {
+        // 적은 양의 메시지는 즉시 처리
+        _markMessagesAsRead();
+      } else {
+        // 많은 양의 메시지는 지연 처리
+        _safelyMarkMessagesAsRead();
+      }
 
       // 마지막 읽은 위치 기억을 위해 현재 스크롤 위치 확인
       if (_scrollController.hasClients) {

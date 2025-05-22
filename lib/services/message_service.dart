@@ -1359,7 +1359,49 @@ class MessageService extends GetxController {
 
       final currentUserId = _authService.uid!;
 
-      // 현재 사용자가 받은 해당 사용자의 읽지 않은 메시지 ID 목록 가져오기
+      // 메시지 목록이 너무 많은 경우 성능 문제 예방
+      if (messages.length > 1000) {
+        debugPrint('⚠️ 메시지가 너무 많아 일부만 처리합니다.');
+        // 최근 메시지 100개만 처리
+        final recentMessages = List<Message>.from(messages)
+          ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+        final recentUnreadIds = recentMessages
+            .take(100)
+            .where((m) =>
+                !m.isRead &&
+                m.receiverId == currentUserId &&
+                m.senderId == userId)
+            .map((m) => m.id)
+            .toList();
+
+        if (recentUnreadIds.isNotEmpty) {
+          debugPrint(
+              '🔄 ${userId}로부터 ${recentUnreadIds.length}개의 최근 메시지를 읽음 처리합니다.');
+          await markMultipleMessagesAsRead(recentUnreadIds);
+        }
+
+        // 남은 메시지는 백그라운드에서 처리
+        Future.microtask(() async {
+          final remainingUnreadIds = messages
+              .where((m) =>
+                  !m.isRead &&
+                  m.receiverId == currentUserId &&
+                  m.senderId == userId)
+              .map((m) => m.id)
+              .toList();
+
+          if (remainingUnreadIds.isNotEmpty) {
+            debugPrint(
+                '🔄 백그라운드에서 ${remainingUnreadIds.length}개의 추가 메시지를 읽음 처리합니다.');
+            await markMultipleMessagesAsRead(remainingUnreadIds);
+          }
+        });
+
+        return;
+      }
+
+      // 일반적인 경우: 현재 사용자가 받은 해당 사용자의 읽지 않은 메시지 ID 목록 가져오기
       final unreadMessageIds = messages
           .where((m) =>
               !m.isRead &&
@@ -1375,13 +1417,41 @@ class MessageService extends GetxController {
 
       debugPrint('🔄 ${userId}로부터 ${unreadMessageIds.length}개의 메시지를 읽음 처리합니다.');
 
-      // 읽음 처리
-      await markMultipleMessagesAsRead(unreadMessageIds);
+      // 읽음 처리 - 메시지가 많은 경우 배치 처리
+      if (unreadMessageIds.length > 50) {
+        final batches = <List<String>>[];
+        for (var i = 0; i < unreadMessageIds.length; i += 50) {
+          final end = (i + 50 < unreadMessageIds.length)
+              ? i + 50
+              : unreadMessageIds.length;
+          batches.add(unreadMessageIds.sublist(i, end));
+        }
+
+        debugPrint('🔄 메시지가 많아 ${batches.length}개의 배치로 나누어 처리합니다.');
+
+        // 첫 번째 배치는 즉시 처리
+        if (batches.isNotEmpty) {
+          await markMultipleMessagesAsRead(batches.first);
+
+          // 나머지 배치는 백그라운드에서 처리
+          if (batches.length > 1) {
+            for (int i = 1; i < batches.length; i++) {
+              final batch = batches[i];
+              Future.delayed(Duration(milliseconds: i * 300), () async {
+                await markMultipleMessagesAsRead(batch);
+              });
+            }
+          }
+        }
+      } else {
+        // 적은 수의 메시지는 한 번에 처리
+        await markMultipleMessagesAsRead(unreadMessageIds);
+      }
 
       // 즉시 업데이트
       updateUnreadCount();
 
-      debugPrint('✅ ${userId}와의 모든 메시지 읽음 처리 완료');
+      debugPrint('✅ ${userId}와의 메시지 읽음 처리 완료');
     } catch (e) {
       debugPrint('⚠️ 사용자 메시지 일괄 읽음 처리 오류: $e');
     }
