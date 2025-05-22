@@ -1,259 +1,263 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+import 'package:get/get.dart';
 
-import '../../controllers/location_sharing_controller.dart';
-import '../../models/shared_location_model.dart'; // SharedLocation 모델
-
+/// 위치 추적 화면
 class LocationTrackingView extends StatefulWidget {
-  final String userId; // 추적할 사용자 ID
-  final String userName; // 사용자 이름
-
-  const LocationTrackingView({
-    Key? key,
-    required this.userId,
-    required this.userName,
-  }) : super(key: key);
+  const LocationTrackingView({Key? key}) : super(key: key);
 
   @override
-  _LocationTrackingViewState createState() => _LocationTrackingViewState();
+  State<LocationTrackingView> createState() => _LocationTrackingViewState();
 }
 
 class _LocationTrackingViewState extends State<LocationTrackingView> {
-  final LocationSharingController _controller =
-      Get.find<LocationSharingController>();
+  // Google Maps 컨트롤러
+  final Completer<GoogleMapController> _controller = Completer();
 
-  // 구글 맵 컨트롤러
-  Completer<GoogleMapController> _mapController = Completer();
+  // Firestore 인스턴스
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // 마커와 폴리라인
+  // 공유 위치 스트림 구독 객체
+  StreamSubscription<DocumentSnapshot>? _locationSubscription;
+
+  // 현재 표시 중인 위치
+  LatLng _currentLocation = const LatLng(37.5665, 126.9780); // 서울 기본값
+
+  // 지도 마커
   final Set<Marker> _markers = {};
-  final Set<Polyline> _polylines = {};
-  final List<LatLng> _routePoints = [];
 
-  // 지도 초기 위치 (서울 시청)
-  CameraPosition _initialPosition = CameraPosition(
-    target: LatLng(37.5665, 126.9780),
-    zoom: 15,
-  );
+  // 위치 정보
+  String _locationInfo = '위치 정보 로딩 중...';
+  String _updatedTime = '';
 
-  // 경로 색상
-  Color _routeColor = Colors.blue;
-
-  // 최근 위치 정보
-  SharedLocation? _lastLocation;
-
-  // 위치 구독 취소 객체
-  StreamSubscription<SharedLocation>? _locationSubscription;
+  // 라우트 매개변수
+  String? _userId;
+  String? _contactName;
+  String? _locationId;
 
   @override
   void initState() {
     super.initState();
-    _subscribeToLocation();
+
+    // 라우트 매개변수 가져오기
+    final arguments = Get.arguments as Map<String, dynamic>?;
+    if (arguments != null) {
+      _userId = arguments['userId'] as String?;
+      _contactName = arguments['contactName'] as String?;
+      _locationId = arguments['locationId'] as String?;
+
+      print(
+          '📍 [지도] 위치 추적 화면 초기화: userId=$_userId, contactName=$_contactName, locationId=$_locationId');
+
+      // 위치 공유 데이터 구독
+      _subscribeToLocationUpdates();
+    }
   }
 
   @override
   void dispose() {
+    // 구독 취소
     _locationSubscription?.cancel();
     super.dispose();
   }
 
-  // 위치 정보 구독
-  void _subscribeToLocation() {
+  // 위치 업데이트 구독
+  void _subscribeToLocationUpdates() {
+    if (_locationId == null) {
+      setState(() {
+        _locationInfo = '위치 정보를 찾을 수 없습니다.';
+      });
+      return;
+    }
+
     try {
-      _locationSubscription = _controller
-          .subscribeToUserLocation(widget.userId)
-          .listen(_updateLocationOnMap);
+      print('📡 [지도] 위치 업데이트 구독 시작: locationId=$_locationId');
+
+      // Firestore 실시간 구독
+      _locationSubscription = _firestore
+          .collection('location_sharing')
+          .doc(_locationId)
+          .snapshots()
+          .listen(
+        (snapshot) {
+          if (!snapshot.exists) {
+            print('⚠️ [지도] 위치 데이터가 존재하지 않습니다.');
+            setState(() {
+              _locationInfo = '위치 공유가 중지되었거나 데이터가 없습니다.';
+            });
+            return;
+          }
+
+          final data = snapshot.data()!;
+          final latitude = data['latitude'] as double?;
+          final longitude = data['longitude'] as double?;
+          final timestamp = data['timestamp'] as Timestamp?;
+
+          if (latitude == null || longitude == null) {
+            print('⚠️ [지도] 위치 데이터 누락: lat=$latitude, lng=$longitude');
+            return;
+          }
+
+          final newLocation = LatLng(latitude, longitude);
+          print('📍 [지도] 위치 업데이트: lat=$latitude, lng=$longitude');
+
+          // 위치 및 마커 업데이트
+          setState(() {
+            _currentLocation = newLocation;
+            _markers.clear();
+            _markers.add(
+              Marker(
+                markerId: MarkerId(_locationId!),
+                position: newLocation,
+                infoWindow: InfoWindow(
+                  title: _contactName ?? '공유 위치',
+                  snippet: '최근 업데이트: ${_formatTimestamp(timestamp)}',
+                ),
+              ),
+            );
+
+            // 위치 정보 텍스트 업데이트
+            _locationInfo =
+                '위도: ${latitude.toStringAsFixed(6)}, 경도: ${longitude.toStringAsFixed(6)}';
+            _updatedTime = _formatTimestamp(timestamp);
+          });
+
+          // 카메라 이동
+          _moveCameraToLocation(newLocation);
+        },
+        onError: (error) {
+          print('❌ [지도] 위치 업데이트 구독 오류: $error');
+          setState(() {
+            _locationInfo = '위치 데이터를 불러오는 중 오류가 발생했습니다.';
+          });
+        },
+      );
     } catch (e) {
-      print('위치 구독 오류: $e');
-      Get.snackbar(
-        '위치 추적 오류',
-        '현재 위치 정보를 받아올 수 없습니다.',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      print('❌ [지도] 위치 구독 시작 실패: $e');
+      setState(() {
+        _locationInfo = '위치 추적을 시작할 수 없습니다: $e';
+      });
     }
   }
 
-  // 지도에 위치 업데이트
-  void _updateLocationOnMap(SharedLocation location) async {
-    if (!mounted) return;
-
-    setState(() {
-      _lastLocation = location;
-
-      // 위치 좌표
-      final position = LatLng(location.latitude, location.longitude);
-
-      // 경로에 포인트 추가
-      _routePoints.add(position);
-
-      // 마커 업데이트
-      _markers.clear();
-      _markers.add(
-        Marker(
-          markerId: MarkerId(widget.userId),
-          position: position,
-          infoWindow: InfoWindow(
-            title: widget.userName,
-            snippet: '마지막 업데이트: ${_formatTime(location.timestamp)}',
-          ),
-          icon:
-              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+  // 카메라 이동
+  Future<void> _moveCameraToLocation(LatLng location) async {
+    final controller = await _controller.future;
+    await controller.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: location,
+          zoom: 15.0,
         ),
-      );
-
-      // 폴리라인 업데이트
-      _updatePolylines();
-    });
-
-    // 카메라 이동
-    _animateToCurrent(location);
-  }
-
-  // 폴리라인 업데이트
-  void _updatePolylines() {
-    if (_routePoints.length < 2) return;
-
-    _polylines.clear();
-    _polylines.add(
-      Polyline(
-        polylineId: PolylineId('route'),
-        points: _routePoints,
-        color: _routeColor,
-        width: 5,
       ),
     );
   }
 
-  // 현재 위치로 카메라 이동
-  Future<void> _animateToCurrent(SharedLocation location) async {
-    final controller = await _mapController.future;
+  // 타임스탬프 포맷
+  String _formatTimestamp(Timestamp? timestamp) {
+    if (timestamp == null) return '시간 정보 없음';
 
-    controller.animateCamera(
-      CameraUpdate.newLatLng(
-        LatLng(location.latitude, location.longitude),
-      ),
-    );
-  }
+    final date = timestamp.toDate();
+    final now = DateTime.now();
+    final difference = now.difference(date);
 
-  // 시간 포맷
-  String _formatTime(DateTime time) {
-    return '${time.hour}:${time.minute.toString().padLeft(2, '0')}';
-  }
-
-  // 경로 전체 보기
-  void _showFullRoute() async {
-    if (_routePoints.length < 2) return;
-
-    final controller = await _mapController.future;
-
-    // 모든 경로를 보여주기 위한 경계 계산
-    final bounds = _calculateBounds();
-
-    controller.animateCamera(
-      CameraUpdate.newLatLngBounds(bounds, 50),
-    );
-  }
-
-  // 위도/경도 경계 계산
-  LatLngBounds _calculateBounds() {
-    double minLat = 90.0;
-    double maxLat = -90.0;
-    double minLng = 180.0;
-    double maxLng = -180.0;
-
-    for (final point in _routePoints) {
-      if (point.latitude < minLat) minLat = point.latitude;
-      if (point.latitude > maxLat) maxLat = point.latitude;
-      if (point.longitude < minLng) minLng = point.longitude;
-      if (point.longitude > maxLng) maxLng = point.longitude;
+    if (difference.inMinutes < 1) {
+      return '방금 전';
+    } else if (difference.inHours < 1) {
+      return '${difference.inMinutes}분 전';
+    } else if (difference.inDays < 1) {
+      return '${difference.inHours}시간 전';
+    } else {
+      return '${date.year}.${date.month}.${date.day} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
     }
-
-    return LatLngBounds(
-      southwest: LatLng(minLat, minLng),
-      northeast: LatLng(maxLat, maxLng),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('${widget.userName} 위치 추적'),
-        elevation: 0,
-        actions: [
-          // 경로 전체 보기 버튼
-          IconButton(
-            icon: Icon(Icons.map),
-            onPressed: _showFullRoute,
-            tooltip: '경로 전체 보기',
-          ),
-        ],
+        title: Text(_contactName != null ? '$_contactName님의 위치' : '위치 추적'),
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
       ),
-      body: Stack(
+      body: Column(
         children: [
-          // 구글 맵
-          GoogleMap(
-            initialCameraPosition: _initialPosition,
-            markers: _markers,
-            polylines: _polylines,
-            mapType: MapType.normal,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: true,
-            compassEnabled: true,
-            zoomControlsEnabled: false,
-            onMapCreated: (controller) {
-              _mapController.complete(controller);
-            },
-          ),
-
-          // 위치 정보 상태 패널
-          Positioned(
-            bottom: 16,
-            left: 16,
-            right: 16,
-            child: Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      widget.userName,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
+          // 위치 정보 표시 카드
+          Card(
+            margin: const EdgeInsets.all(8.0),
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.location_on, color: Colors.red),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _locationInfo,
+                          style: const TextStyle(fontSize: 14),
+                        ),
                       ),
+                    ],
+                  ),
+                  if (_updatedTime.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.access_time, color: Colors.grey, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          '최근 업데이트: $_updatedTime',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                      ],
                     ),
-                    SizedBox(height: 8),
-                    if (_lastLocation != null) ...[
-                      Text(
-                        '마지막 업데이트: ${_formatTime(_lastLocation!.timestamp)}',
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        '위치: ${_lastLocation!.latitude.toStringAsFixed(6)}, ${_lastLocation!.longitude.toStringAsFixed(6)}',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-                      ),
-                    ] else
-                      Text(
-                        '위치 정보를 받아오는 중...',
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
                   ],
-                ),
+                ],
               ),
             ),
           ),
+
+          // 지도 표시
+          Expanded(
+            child: GoogleMap(
+              mapType: MapType.normal,
+              initialCameraPosition: CameraPosition(
+                target: _currentLocation,
+                zoom: 15.0,
+              ),
+              markers: _markers,
+              onMapCreated: (GoogleMapController controller) {
+                _controller.complete(controller);
+              },
+              myLocationEnabled: true,
+              myLocationButtonEnabled: true,
+              zoomControlsEnabled: true,
+              compassEnabled: true,
+            ),
+          ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        child: const Icon(Icons.refresh),
+        onPressed: () {
+          // 위치 정보 새로고침
+          _subscribeToLocationUpdates();
+
+          Get.snackbar(
+            '새로고침',
+            '위치 정보를 새로고침합니다.',
+            snackPosition: SnackPosition.BOTTOM,
+            duration: const Duration(seconds: 2),
+          );
+        },
       ),
     );
   }

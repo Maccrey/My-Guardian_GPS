@@ -1762,6 +1762,16 @@ class MessageService extends GetxController {
 
   // 위치 공유 ID 가져오기
   String? getLocationSharingId(String userId) {
-    return activeLocationSharing[userId];
+    print('🔍 [메시지 서비스] 위치 공유 ID 조회: userId=$userId');
+
+    // 활성 위치 공유 맵에서 ID 확인
+    if (activeLocationSharing.containsKey(userId)) {
+      final id = activeLocationSharing[userId];
+      print('✅ [메시지 서비스] 위치 공유 ID 찾음: $id');
+      return id;
+    }
+
+    print('ℹ️ [메시지 서비스] 위치 공유 ID를 찾을 수 없음');
+    return null;
   }
 }

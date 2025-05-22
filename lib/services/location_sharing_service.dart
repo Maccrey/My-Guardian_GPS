@@ -435,7 +435,15 @@ class LocationSharingService extends GetxController {
     // 위치 데이터 캐시에 추가 (오프라인 지원)
     _addToLocationCache(sharedLocation);
 
+    // 위치 정보 로그 추가
+    print('📍 [위치 공유] 위치 정보 업데이트: receiverId=$receiverId');
+    print('📍 [위치 공유] 위도: ${position.latitude}, 경도: ${position.longitude}');
+    print('📍 [위치 공유] 정확도: ${position.accuracy}m, 속도: ${position.speed}m/s');
+    print('📍 [위치 공유] 타임스탬프: ${position.timestamp}');
+
     try {
+      print('📤 [위치 공유] Firebase에 위치 데이터 업데이트 시도...');
+
       // Firestore에 위치 업데이트
       await _firestore
           .collection('location_sharing')
@@ -446,10 +454,12 @@ class LocationSharingService extends GetxController {
         'timestamp': FieldValue.serverTimestamp(),
       });
 
+      print('✅ [위치 공유] Firebase 위치 데이터 업데이트 성공');
+
       // 캐시에서 성공적으로 업로드된 항목 제거
       _removeFromLocationCache(sharedLocation.id);
     } catch (e) {
-      print('위치 업데이트 오류: $e');
+      print('❌ [위치 공유] Firebase 위치 업데이트 오류: $e');
       // 오류 발생 시 캐시에 유지 (나중에 다시 시도)
     }
   }
@@ -507,15 +517,27 @@ class LocationSharingService extends GetxController {
       String? locationId = isStarting ? _activeSharing[receiverId]?.id : null;
 
       // 메시지 내용 생성
-      final message = isStarting
-          ? '$userName님이 위치 공유를 시작했습니다.'
+      final String message = isStarting
+          ? '$userName님이 실시간 위치 공유를 시작했습니다. 지도에서 확인하세요.'
           : '$userName님이 위치 공유를 중지했습니다.';
+
+      // 현재 위치 정보 (시작할 때만 포함)
+      String locationInfo = '';
+      if (isStarting && _lastKnownPosition != null) {
+        locationInfo =
+            '현재 위치: 위도 ${_lastKnownPosition!.latitude.toStringAsFixed(6)}, 경도 ${_lastKnownPosition!.longitude.toStringAsFixed(6)}';
+      }
+
+      // 전체 메시지 (위치 정보 포함)
+      final fullMessage = isStarting && locationInfo.isNotEmpty
+          ? '$message\n$locationInfo'
+          : message;
 
       // Firestore에 메시지 저장
       await _firestore.collection('messages').add({
         'senderId': currentUser.uid,
         'receiverId': receiverId,
-        'message': message,
+        'message': fullMessage,
         'type': 'location_sharing',
         'action': isStarting ? 'start' : 'stop',
         'locationId': locationId,
@@ -523,11 +545,11 @@ class LocationSharingService extends GetxController {
         'isRead': false,
       });
 
-      print('💾 [서비스] Firestore에 메시지 저장 완료');
+      print('💾 [서비스] Firestore에 메시지 저장 완료: $fullMessage');
 
       // FCM 푸시 알림 전송
       await _sendPushNotification(
-          receiverId, userName, message, isStarting, locationId);
+          receiverId, userName, fullMessage, isStarting, locationId);
 
       print('✅ [서비스] 위치 공유 ${isStarting ? "시작" : "종료"} 메시지 전송 완료');
     } catch (e) {
@@ -837,5 +859,19 @@ class LocationSharingService extends GetxController {
       );
       return false;
     }
+  }
+
+  /// 특정 사용자에 대한 위치 공유 ID 가져오기
+  String? getLocationId(String userId) {
+    print('🔍 [서비스] 위치 공유 ID 조회 시도: userId=$userId');
+
+    if (_activeSharing.containsKey(userId)) {
+      final id = _activeSharing[userId]?.id;
+      print('✅ [서비스] 위치 공유 ID 찾음: $id');
+      return id;
+    }
+
+    print('ℹ️ [서비스] 위치 공유 ID를 찾을 수 없음');
+    return null;
   }
 }

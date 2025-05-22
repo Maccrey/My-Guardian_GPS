@@ -348,15 +348,9 @@ class _MyAppState extends State<MyApp> {
         ),
         // 위치 추적 화면 라우트
         GetPage(
-          name: '/location-tracking/:userId/:userName',
-          page: () {
-            final userId = Get.parameters['userId'] ?? '';
-            final userName = Get.parameters['userName'] ?? '사용자';
-            return LocationTrackingView(
-              userId: userId,
-              userName: userName,
-            );
-          },
+          name: '/location-tracking',
+          page: () => const LocationTrackingView(),
+          transition: Transition.rightToLeft,
         ),
         // 앱 사용자 검색 및 긴급 연락처 추가 화면 라우트
         GetPage(

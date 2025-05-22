@@ -42,29 +42,103 @@ class LocationSharingButton extends StatelessWidget {
       print(
           '🔄 [버튼] 위치 공유 상태: isSharing=$isSharing, fromMessage=$isActiveSharingFromMessage, 최종=$isSharingActive');
 
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-        child: ElevatedButton.icon(
-          onPressed: () =>
-              _handleLocationSharingToggle(context, isSharingActive),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: isSharingActive ? Colors.red : Colors.blue,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
+      // 위치 공유 중일 때는 버튼 세트를 보여줌
+      if (isSharingActive) {
+        return Column(
+          children: [
+            Row(
+              children: [
+                // 지도 보기 버튼
+                Expanded(
+                  flex: 1,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _navigateToLocationMap(context, contactId),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    icon: const Icon(
+                      Icons.map,
+                      size: 20,
+                    ),
+                    label: const Text(
+                      '지도 보기',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // 공유 정지 버튼
+                Expanded(
+                  flex: 1,
+                  child: ElevatedButton.icon(
+                    onPressed: () =>
+                        _handleLocationSharingToggle(context, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    icon: const Icon(
+                      Icons.location_off,
+                      size: 20,
+                    ),
+                    label: const Text(
+                      '공유 정지',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            // 상태 표시
+            Padding(
+              padding: const EdgeInsets.only(top: 4.0),
+              child: Text(
+                '${contactName}님과 위치 공유 중',
+                style: TextStyle(
+                  color: Colors.green.shade700,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      } else {
+        // 위치 공유 중이 아닐 때는 단일 버튼 표시
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          child: ElevatedButton.icon(
+            onPressed: () => _handleLocationSharingToggle(context, false),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            icon: Icon(
+              Icons.location_on,
+              size: 20,
+            ),
+            label: Text(
+              '위치 공유 시작',
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
-          icon: Icon(
-            isSharingActive ? Icons.location_off : Icons.location_on,
-            size: 20,
-          ),
-          label: Text(
-            isSharingActive ? '위치 공유 정지' : '위치 공유 시작',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-        ),
-      );
+        );
+      }
     });
   }
 
@@ -78,6 +152,26 @@ class LocationSharingButton extends StatelessWidget {
       // 위치 공유 시작
       _showStartSharingConfirmDialog(context);
     }
+  }
+
+  // 위치 지도 화면으로 이동
+  void _navigateToLocationMap(BuildContext context, String userId) {
+    // 위치 공유 ID 가져오기
+    String? locationId = _messageService.getLocationSharingId(userId);
+
+    if (locationId == null) {
+      // MessageService에서 ID를 가져올 수 없는 경우 LocationSharingService에서 시도
+      locationId = _locationService.getLocationId(userId);
+    }
+
+    print('🗺️ [버튼] 위치 지도 화면으로 이동: userId=$userId, locationId=$locationId');
+
+    // 위치 추적 화면으로 이동
+    Get.toNamed('/location-tracking', arguments: {
+      'userId': userId,
+      'contactName': contactName,
+      'locationId': locationId,
+    });
   }
 
   // 위치 공유 시작 확인 다이얼로그
