@@ -37,6 +37,9 @@ class _LocationTrackingViewState extends State<LocationTrackingView> {
   String? _contactName;
   String? _locationId;
 
+  // 초기 위치 로드 완료 여부 추적
+  bool _initialLocationLoaded = false;
+
   @override
   void initState() {
     super.initState();
@@ -137,8 +140,14 @@ class _LocationTrackingViewState extends State<LocationTrackingView> {
             _updatedTime = _formatTimestamp(timestamp);
           });
 
-          // 카메라 이동
-          _moveCameraToLocation(newLocation);
+          // 초기 로드 시에만 카메라 이동 (이후 업데이트에서는 사용자의 확대/축소 상태 유지)
+          if (!_initialLocationLoaded) {
+            _moveCameraToLocation(newLocation);
+            _initialLocationLoaded = true;
+            print('📍 [지도] 초기 위치로 카메라 이동');
+          } else {
+            print('📍 [지도] 위치 업데이트 - 카메라 이동 생략 (확대/축소 상태 유지)');
+          }
         },
         onError: (error) {
           print('❌ [지도] 위치 업데이트 구독 오류: $error');
@@ -187,11 +196,54 @@ class _LocationTrackingViewState extends State<LocationTrackingView> {
     }
   }
 
+  // 지도 확대 함수
+  Future<void> _zoomIn() async {
+    final controller = await _controller.future;
+    controller.animateCamera(CameraUpdate.zoomIn());
+  }
+
+  // 지도 축소 함수
+  Future<void> _zoomOut() async {
+    final controller = await _controller.future;
+    controller.animateCamera(CameraUpdate.zoomOut());
+  }
+
+  // 컨트롤 버튼 위젯 생성 함수
+  Widget _buildMapControlButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    String? tooltip,
+    Color? color,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 1),
+          ),
+        ],
+        shape: BoxShape.circle,
+      ),
+      child: FloatingActionButton.small(
+        heroTag: 'mapControl_${icon.hashCode}',
+        onPressed: onPressed,
+        backgroundColor: color ?? Colors.white,
+        foregroundColor: color != null ? Colors.white : Colors.blue,
+        tooltip: tooltip,
+        child: Icon(icon, size: 20),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_contactName != null ? '$_contactName님의 위치' : '위치 추적'),
+        title: Text(_contactName != null ? '$_contactName님의 위치' : '나님의 위치'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
@@ -240,37 +292,49 @@ class _LocationTrackingViewState extends State<LocationTrackingView> {
 
           // 지도 표시
           Expanded(
-            child: GoogleMap(
-              mapType: MapType.normal,
-              initialCameraPosition: CameraPosition(
-                target: _currentLocation,
-                zoom: 15.0,
-              ),
-              markers: _markers,
-              onMapCreated: (GoogleMapController controller) {
-                _controller.complete(controller);
-              },
-              myLocationEnabled: true,
-              myLocationButtonEnabled: true,
-              zoomControlsEnabled: true,
-              compassEnabled: true,
+            child: Stack(
+              children: [
+                GoogleMap(
+                  mapType: MapType.normal,
+                  initialCameraPosition: CameraPosition(
+                    target: _currentLocation,
+                    zoom: 15.0,
+                  ),
+                  markers: _markers,
+                  onMapCreated: (GoogleMapController controller) {
+                    _controller.complete(controller);
+                  },
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: true,
+                  zoomControlsEnabled: false, // 기본 줌 컨트롤 비활성화
+                  compassEnabled: true,
+                ),
+
+                // 확대/축소 컨트롤 추가
+                Positioned(
+                  right: 16,
+                  bottom: 100,
+                  child: Column(
+                    children: [
+                      // 확대 버튼
+                      _buildMapControlButton(
+                        icon: Icons.add,
+                        tooltip: '확대',
+                        onPressed: _zoomIn,
+                      ),
+                      // 축소 버튼
+                      _buildMapControlButton(
+                        icon: Icons.remove,
+                        tooltip: '축소',
+                        onPressed: _zoomOut,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        child: const Icon(Icons.refresh),
-        onPressed: () {
-          // 위치 정보 새로고침
-          _subscribeToLocationUpdates();
-
-          Get.snackbar(
-            '새로고침',
-            '위치 정보를 새로고침합니다.',
-            snackPosition: SnackPosition.BOTTOM,
-            duration: const Duration(seconds: 2),
-          );
-        },
       ),
     );
   }
