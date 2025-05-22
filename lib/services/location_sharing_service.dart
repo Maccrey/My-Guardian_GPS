@@ -238,18 +238,15 @@ class LocationSharingService extends GetxController {
       // 위치 공유 종료 상태로 업데이트
       if (_activeSharing.containsKey(receiverId)) {
         print('🔍 [서비스] 활성 공유 정보 찾음: receiverId=$receiverId');
-        final sharedLocation = _activeSharing[receiverId]!.copyWithEndSharing();
+        final sharedLocation = _activeSharing[receiverId]!;
 
-        // Firestore 업데이트
-        print('💾 [서비스] Firestore 데이터 업데이트 시도');
+        // Firestore 문서 삭제
+        print('🗑️ [서비스] Firestore 데이터 삭제 시도: locationId=${sharedLocation.id}');
         await _firestore
             .collection('location_sharing')
             .doc(sharedLocation.id)
-            .update({
-          'isActive': false,
-          'endTime': FieldValue.serverTimestamp(),
-        });
-        print('✅ [서비스] Firestore 업데이트 성공');
+            .delete();
+        print('✅ [서비스] Firestore 위치 공유 데이터 삭제 성공');
 
         // 상태 업데이트
         _activeSharing.remove(receiverId);
@@ -523,9 +520,22 @@ class LocationSharingService extends GetxController {
 
       // 현재 위치 정보 (시작할 때만 포함)
       String locationInfo = '';
+      Map<String, dynamic> messageData = {
+        'message': message,
+        'type': 'location_sharing',
+        'action': isStarting ? 'start' : 'stop',
+        'locationId': locationId,
+        'senderName': userName,
+      };
+
       if (isStarting && _lastKnownPosition != null) {
         locationInfo =
             '현재 위치: 위도 ${_lastKnownPosition!.latitude.toStringAsFixed(6)}, 경도 ${_lastKnownPosition!.longitude.toStringAsFixed(6)}';
+
+        // 위치 데이터 추가
+        messageData['latitude'] = _lastKnownPosition!.latitude;
+        messageData['longitude'] = _lastKnownPosition!.longitude;
+        messageData['timestamp'] = DateTime.now().millisecondsSinceEpoch;
       }
 
       // 전체 메시지 (위치 정보 포함)
@@ -533,11 +543,12 @@ class LocationSharingService extends GetxController {
           ? '$message\n$locationInfo'
           : message;
 
-      // Firestore에 메시지 저장
+      // Firestore에 메시지 저장 - 이제 JSON 형식으로 저장
       await _firestore.collection('messages').add({
         'senderId': currentUser.uid,
         'receiverId': receiverId,
-        'message': fullMessage,
+        'message': fullMessage, // 텍스트 내용 (이전 호환성)
+        'messageData': messageData, // 구조화된 데이터 (앱 내 표시용)
         'type': 'location_sharing',
         'action': isStarting ? 'start' : 'stop',
         'locationId': locationId,

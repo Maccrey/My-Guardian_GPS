@@ -226,7 +226,7 @@ class LocationSharingButton extends StatelessWidget {
       builder: (context) => AlertDialog(
         title: const Text('위치 공유 중지'),
         content: Text(
-            '$contactName님과의 위치 공유를 중지하시겠습니까?\n\n상대방에게는 위치 공유가 중지되었다는 알림이 전송됩니다.'),
+            '$contactName님과의 위치 공유를 중지하시겠습니까?\n\n위치 공유 데이터가 삭제되고 상대방에게는 위치 공유가 중지되었다는 알림이 전송됩니다.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -241,7 +241,7 @@ class LocationSharingButton extends StatelessWidget {
               if (result) {
                 Get.snackbar(
                   '위치 공유 중지',
-                  '$contactName님과의 위치 공유가 중지되었습니다.',
+                  '$contactName님과의 위치 공유가 중지되고 데이터가 삭제되었습니다.',
                   snackPosition: SnackPosition.BOTTOM,
                   duration: const Duration(seconds: 2),
                   backgroundColor: Colors.blue.withOpacity(0.7),

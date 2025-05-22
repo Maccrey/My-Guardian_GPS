@@ -85,8 +85,21 @@ class _LocationTrackingViewState extends State<LocationTrackingView> {
           if (!snapshot.exists) {
             print('⚠️ [지도] 위치 데이터가 존재하지 않습니다.');
             setState(() {
-              _locationInfo = '위치 공유가 중지되었거나 데이터가 없습니다.';
+              _locationInfo = '위치 공유가 중지되었거나 데이터가 삭제되었습니다.';
+              _markers.clear();
+              _updatedTime = '데이터 없음';
             });
+
+            // 데이터가 없는 경우 사용자에게 알림
+            Get.snackbar(
+              '위치 데이터 없음',
+              '${_contactName ?? '상대방'}님의 위치 공유가 중지되었거나 데이터가 삭제되었습니다.',
+              snackPosition: SnackPosition.BOTTOM,
+              duration: const Duration(seconds: 3),
+              backgroundColor: Colors.red.withOpacity(0.7),
+              colorText: Colors.white,
+            );
+
             return;
           }
 
