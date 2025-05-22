@@ -381,6 +381,10 @@ class _EmergencyContactLocationViewState
 
   // 위치 공유 처리 함수
   void _handleLocationSharing(EmergencyContact contact) async {
+    // 연락처 정보 로깅
+    print(
+        '📞 [연락처 정보] id=${contact.id}, name=${contact.name}, userId=${contact.userId}, isAppUser=${contact.isAppUser}');
+
     final isSharing = _locationService.isShareLocationActive(contact.id);
 
     // 버튼 클릭 시 상태 로깅
@@ -417,6 +421,8 @@ class _EmergencyContactLocationViewState
       } else {
         // 위치 공유 시작
         print('▶️ [시작 요청] ${contact.name}님과의 위치 공유 시작 요청');
+        print(
+            '▶️ [시작 매개변수] contactId=${contact.id}, userId=${contact.userId}, isAppUser=${contact.isAppUser}');
 
         final result =
             await _locationService.startLocationSharingWithEmergencyContact(

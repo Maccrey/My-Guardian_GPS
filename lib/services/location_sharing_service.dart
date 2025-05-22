@@ -493,17 +493,33 @@ class LocationSharingService extends GetxController {
 
   // 앱 사용자와 위치 공유 시작 (UID로 공유)
   Future<bool> startLocationSharingWithUser(String receiverUid) async {
-    if (!await checkLocationPermission()) return false;
+    print('📡 [서비스] 앱 사용자와 위치 공유 시작: receiverUid=$receiverUid');
+
+    if (!await checkLocationPermission()) {
+      print('⚠️ [서비스] 위치 권한 없음: 공유 실패');
+      return false;
+    }
 
     final userId = _auth.currentUser?.uid;
-    if (userId == null) return false;
+    if (userId == null) {
+      print('⚠️ [서비스] 사용자 인증 안됨: 공유 실패');
+      return false;
+    }
 
     try {
       // 안전하게 위치 정보 가져오기
+      print('🔍 [서비스] 현재 위치 가져오기 시도');
       final position = await _getCurrentPositionSafely();
-      if (position == null) return false;
+      if (position == null) {
+        print('⚠️ [서비스] 위치 정보 획득 실패');
+        return false;
+      }
+
+      print(
+          '📍 [서비스] 위치 획득 성공: lat=${position.latitude}, lng=${position.longitude}');
 
       final locationId = const Uuid().v4();
+      print('🆔 [서비스] 새 위치 공유 ID 생성: $locationId');
 
       final sharedLocation = SharedLocation(
         id: locationId,
@@ -518,30 +534,37 @@ class LocationSharingService extends GetxController {
       );
 
       // Firestore에 초기 위치 정보 저장
+      print('💾 [서비스] Firestore에 위치 데이터 저장 시도');
       await _firestore
           .collection('location_sharing')
           .doc(locationId)
           .set(sharedLocation.toJson());
+      print('✅ [서비스] Firestore 저장 성공');
 
-      // 위치 공유 상태 업데이트
-      _activeSharing[receiverUid] = sharedLocation;
+      // 위치 공유 상태 업데이트 - 중요 변경: userId가 아닌 receiverId를 키로 사용
+      _activeSharing[receiverUid] = sharedLocation; // 키를 receiverUid로 사용
       isSharingLocation.value = true;
       if (!sharingToUserIds.contains(receiverUid)) {
         sharingToUserIds.add(receiverUid);
       }
+      print(
+          '🔄 [서비스] 메모리 상태 업데이트: receiverUid=$receiverUid 추가됨, 총 ${sharingToUserIds.length}개');
 
       // 로컬 저장소에 상태 저장
-      _saveActiveSharingState();
+      await _saveActiveSharingState();
+      print('💾 [서비스] 로컬 저장소에 상태 저장 완료');
 
       // 위치 추적 시작
       _startPositionTracking(receiverUid);
+      print('📡 [서비스] 위치 추적 시작: receiverUid=$receiverUid');
 
       // 위치 공유 시작 메시지 전송
       _sendLocationSharingStatusMessage(receiverUid, true);
 
+      print('✅ [서비스] 앱 사용자와 위치 공유 시작 완료: receiverUid=$receiverUid');
       return true;
     } catch (e) {
-      print('위치 공유 시작 오류: $e');
+      print('❌ [서비스] 앱 사용자와 위치 공유 시작 오류: $e');
       Get.snackbar(
         '위치 공유 오류',
         '위치 공유를 시작하는 중 오류가 발생했습니다: $e',
@@ -579,13 +602,37 @@ class LocationSharingService extends GetxController {
 
   // 위치 공유 여부 확인
   bool isShareLocationActive(String receiverId) {
-    final isActive = _activeSharing.containsKey(receiverId) &&
+    print('🔍 [서비스] 위치 공유 상태 확인: receiverId=$receiverId');
+
+    // 먼저 receiverId로 직접 확인
+    bool isActive = _activeSharing.containsKey(receiverId) &&
         _activeSharing[receiverId]!.isActive;
-    print('🔍 [서비스] 위치 공유 상태 확인: receiverId=$receiverId, isActive=$isActive');
+
+    // 직접 매칭되지 않는 경우, 활성 공유 목록의 모든 항목을 확인
+    if (!isActive && _activeSharing.isNotEmpty) {
+      // 모든 활성 공유 항목 검사 (userId가 키로 사용된 경우를 위해)
+      for (var entry in _activeSharing.entries) {
+        // receiverId가 userId와 일치하는지 확인 (앱 사용자인 경우)
+        if (entry.value.receiverId == receiverId && entry.value.isActive) {
+          isActive = true;
+          print(
+              '🔄 [서비스] userId를 통해 활성 공유 발견: key=${entry.key}, receiverId=$receiverId');
+          break;
+        }
+      }
+    }
+
+    print(
+        '🔍 [서비스] 위치 공유 상태 최종 결과: receiverId=$receiverId, isActive=$isActive');
 
     // 실제 공유 목록 출력 (디버깅용)
     if (_activeSharing.isNotEmpty) {
       print('📊 [서비스] 현재 활성 공유 목록: ${_activeSharing.keys.join(', ')}');
+      // 상세 정보 추가
+      _activeSharing.forEach((key, value) {
+        print(
+            '📋 [서비스] 공유 상세: key=$key, receiverId=${value.receiverId}, senderId=${value.senderId}, isActive=${value.isActive}');
+      });
     }
 
     return isActive;
@@ -606,9 +653,9 @@ class LocationSharingService extends GetxController {
 
   // 긴급 연락처 유형에 따라 위치 공유 시작
   Future<bool> startLocationSharingWithEmergencyContact(
-      String receiverId, String? userId, bool isAppUser) async {
+      String contactId, String? userId, bool isAppUser) async {
     print(
-        '🚀 [서비스] 긴급 연락처 위치 공유 시작: receiverId=$receiverId, isAppUser=$isAppUser');
+        '🚀 [서비스] 긴급 연락처 위치 공유 시작: contactId=$contactId, userId=$userId, isAppUser=$isAppUser');
 
     // 위치 권한 확인
     if (!await checkLocationPermission()) {
@@ -627,15 +674,36 @@ class LocationSharingService extends GetxController {
 
       bool result = false;
 
-      // Future.delayed 제거하고 바로 await로 처리
+      // 앱 사용자/일반 연락처 여부에 따라 공유 방식 결정
       if (isAppUser && userId != null) {
-        // 앱 사용자인 경우 UID로 공유
-        print('📱 [서비스] 앱 사용자와 공유 시도: userId=$userId');
+        // 앱 사용자인 경우 userId로 공유
+        print('📱 [서비스] 앱 사용자와 공유 시도: userId=$userId, contactId=$contactId');
+
+        // 중요: 앱 사용자의 경우 userId를 전달하지만 contactId를 키로 사용하도록 함
+        // userId는 내부적으로만 사용하고, UI에서는 항상 contactId로 상태를 확인할 수 있도록 함
         result = await startLocationSharingWithUser(userId);
+
+        // 만약 현재 위치 공유가 활성화되어 있지만 UI에서 인식하지 못하는 경우,
+        // 수동으로 contactId와 userId를 매핑
+        if (result &&
+            _activeSharing.containsKey(userId) &&
+            !_activeSharing.containsKey(contactId)) {
+          print('🔄 [서비스] ID 매핑 생성: userId=$userId -> contactId=$contactId');
+          // userId로 저장된 정보를 contactId로도 복제
+          _activeSharing[contactId] = _activeSharing[userId]!;
+
+          // 목록 업데이트
+          if (!sharingToUserIds.contains(contactId)) {
+            sharingToUserIds.add(contactId);
+          }
+
+          // 변경사항 저장
+          await _saveActiveSharingState();
+        }
       } else {
-        // 일반 연락처인 경우 전화번호로 공유
-        print('📞 [서비스] 일반 연락처와 공유 시도: receiverId=$receiverId');
-        result = await startLocationSharing(receiverId);
+        // 일반 연락처인 경우 contactId로 공유
+        print('📞 [서비스] 일반 연락처와 공유 시도: contactId=$contactId');
+        result = await startLocationSharing(contactId);
       }
 
       if (result) {
