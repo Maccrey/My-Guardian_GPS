@@ -9,6 +9,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 import '../models/emergency_contact_model.dart';
 import '../services/emergency_contact_service.dart';
+import '../models/user_model.dart';
+import '../services/auth_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class EmergencyContactsView extends StatefulWidget {
   const EmergencyContactsView({Key? key}) : super(key: key);
@@ -160,10 +163,17 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
           ],
         );
       }),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showAddContactDialog(context),
-        child: const Icon(Icons.add),
-        tooltip: '긴급 연락처 추가',
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 기존 연락처 추가 버튼
+          FloatingActionButton(
+            heroTag: 'addContact',
+            onPressed: () => _showAddContactDialog(context),
+            child: const Icon(Icons.add),
+            tooltip: '긴급 연락처 추가',
+          ),
+        ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
@@ -389,17 +399,39 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
 
   // 연락처 추가 다이얼로그
   void _showAddContactDialog(BuildContext context) {
-    final nameController = TextEditingController();
-    final phoneController = TextEditingController();
-    final descriptionController = TextEditingController();
+    _showContactAddForm(context);
+  }
+
+  // 긴급 연락처 추가 폼 다이얼로그
+  void _showContactAddForm(
+    BuildContext context, {
+    TextEditingController? nameCtrl,
+    TextEditingController? phoneCtrl,
+    TextEditingController? descCtrl,
+    TextEditingController? searchCtrl,
+    List<UserModel>? results,
+    bool? searching,
+    bool? appUserMode,
+    UserModel? selected,
+    bool? isLocationSharingEnabled,
+  }) {
+    final nameController = nameCtrl ?? TextEditingController();
+    final phoneController = phoneCtrl ?? TextEditingController();
+    final descriptionController = descCtrl ?? TextEditingController();
+    final searchController = searchCtrl ?? TextEditingController();
+    final searchResults = results ?? <UserModel>[];
+    final isSearching = searching ?? false;
+    final selectedUser = selected;
+    final canShareLocation = isLocationSharingEnabled ?? false;
 
     Get.dialog(
       AlertDialog(
-        title: const Text('긴급 연락처 추가'),
+        title: Text('긴급 연락처 추가'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // 기본 연락처 정보 입력 필드
               TextField(
                 controller: nameController,
                 decoration: const InputDecoration(
@@ -417,6 +449,147 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
                   hintText: '예: 가족, 주치의, 가까운 병원',
                 ),
               ),
+              const SizedBox(height: 24),
+
+              // 구분선
+              Divider(color: Colors.grey.shade300),
+
+              // 앱 사용자 검색 섹션
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '앱 사용자 검색',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '앱 사용자 검색으로 위치를 공유할 수 있는 연락처를 추가합니다',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // 앱 사용자 검색 버튼
+                    InkWell(
+                      onTap: () {
+                        // 검색 다이얼로그 표시
+                        _showUserSearchDialog(
+                          context,
+                          searchController,
+                          nameController,
+                          phoneController,
+                          descriptionController,
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                          horizontal: 16,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.search,
+                              color: Colors.blue,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                selectedUser != null
+                                    ? '${selectedUser.displayName} (${selectedUser.email})'
+                                    : '앱 사용자 검색하기',
+                                style: TextStyle(
+                                  color: selectedUser != null
+                                      ? Colors.black87
+                                      : Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
+                            if (selectedUser != null)
+                              IconButton(
+                                icon: Icon(Icons.close, size: 18),
+                                padding: EdgeInsets.zero,
+                                constraints: BoxConstraints(),
+                                onPressed: () {
+                                  Get.back();
+                                  _showContactAddForm(
+                                    context,
+                                    nameCtrl: nameController,
+                                    phoneCtrl: phoneController,
+                                    descCtrl: descriptionController,
+                                    searchCtrl: searchController,
+                                    isLocationSharingEnabled: canShareLocation,
+                                  );
+                                },
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // 위치 공유 옵션 (앱 사용자가 선택된 경우만 표시)
+                    if (selectedUser != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12.0),
+                        child: Row(
+                          children: [
+                            Checkbox(
+                              value: canShareLocation,
+                              onChanged: (value) {
+                                Get.back();
+                                _showContactAddForm(
+                                  context,
+                                  nameCtrl: nameController,
+                                  phoneCtrl: phoneController,
+                                  descCtrl: descriptionController,
+                                  searchCtrl: searchController,
+                                  selected: selectedUser,
+                                  isLocationSharingEnabled: value ?? false,
+                                );
+                              },
+                            ),
+                            Expanded(
+                              child: Text(
+                                '위치 공유 활성화',
+                                style: TextStyle(fontSize: 14),
+                              ),
+                            ),
+                            Icon(
+                              Icons.location_on,
+                              color: Colors.blue,
+                              size: 18,
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    if (selectedUser != null)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 32.0),
+                        child: Text(
+                          '이 연락처와 실시간 위치를 공유할 수 있습니다',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -427,6 +600,7 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
           ),
           TextButton(
             onPressed: () async {
+              // 이름과 전화번호 필수
               if (nameController.text.isEmpty || phoneController.text.isEmpty) {
                 Get.snackbar(
                   '오류',
@@ -436,30 +610,382 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
                 return;
               }
 
-              final contact = EmergencyContact(
-                id: const Uuid().v4(),
-                name: nameController.text.trim(),
-                phoneNumber: phoneController.text.trim(),
-                description: descriptionController.text.trim(),
-              );
-
               final service = Get.find<EmergencyContactService>();
-              bool success = await service.addContact(contact);
-              Get.back();
+              bool success = false;
 
-              // 성공 여부에 따라 메시지 표시
-              if (success) {
+              try {
+                if (selectedUser != null) {
+                  // 앱 사용자를 긴급 연락처로 추가
+                  final contact = EmergencyContact.fromAppUser(
+                    userId: selectedUser.uid,
+                    name: nameController.text.trim(),
+                    email: selectedUser.email,
+                    phoneNumber: phoneController.text.trim(),
+                    relationship: canShareLocation
+                        ? '앱 사용자 (위치 공유 가능)'
+                        : descriptionController.text.trim(),
+                  );
+                  success = await service.addContact(contact);
+                } else {
+                  // 일반 연락처 추가
+                  final contact = EmergencyContact(
+                    id: const Uuid().v4(),
+                    name: nameController.text.trim(),
+                    phoneNumber: phoneController.text.trim(),
+                    description: descriptionController.text.trim(),
+                  );
+                  success = await service.addContact(contact);
+                }
+
+                // 확실하게 다이얼로그 닫기 (중첩된 다이얼로그가 있을 수 있으므로)
+                Navigator.of(context).pop();
+
+                // 혹시 모든 다이얼로그가 닫히지 않았을 경우를 대비해 GetX 라우터로 모든 다이얼로그 닫기 시도
+                while (Get.isDialogOpen ?? false) {
+                  Get.back();
+                }
+
+                // 성공 여부에 따라 메시지 표시
+                if (success) {
+                  Get.snackbar(
+                    '성공',
+                    '연락처가 추가되었습니다.',
+                    snackPosition: SnackPosition.BOTTOM,
+                    backgroundColor: Colors.green.shade100,
+                    colorText: Colors.black87,
+                    duration: const Duration(seconds: 2),
+                  );
+                }
+              } catch (e) {
+                // 오류 발생 시 다이얼로그 닫기 확인 후 오류 메시지 표시
+                if (Navigator.of(context).canPop()) {
+                  Navigator.of(context).pop();
+                }
+
+                // 혹시 모든 다이얼로그가 닫히지 않았을 경우를 대비해 GetX 라우터로 모든 다이얼로그 닫기 시도
+                while (Get.isDialogOpen ?? false) {
+                  Get.back();
+                }
+
                 Get.snackbar(
-                  '성공',
-                  '연락처가 추가되었습니다.',
+                  '오류',
+                  '연락처 추가 중 오류가 발생했습니다: $e',
                   snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: Colors.green.shade100,
+                  backgroundColor: Colors.red.shade100,
                   colorText: Colors.black87,
-                  duration: const Duration(seconds: 2),
+                  duration: const Duration(seconds: 3),
                 );
               }
             },
             child: const Text('추가'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 사용자 검색 다이얼로그
+  void _showUserSearchDialog(
+    BuildContext context,
+    TextEditingController searchController,
+    TextEditingController nameController,
+    TextEditingController phoneController,
+    TextEditingController descriptionController,
+  ) {
+    List<UserModel> searchResults = [];
+    bool isSearching = false;
+
+    // 사용자 검색 함수
+    void performSearch(String query) async {
+      if (query.isEmpty) {
+        searchResults = [];
+        isSearching = false;
+        return;
+      }
+
+      isSearching = true;
+      Get.back(); // 이전 다이얼로그 닫기
+
+      // 검색 중 다이얼로그 다시 표시
+      Get.dialog(
+        AlertDialog(
+          title: Text('앱 사용자 검색'),
+          content: Container(
+            width: double.maxFinite,
+            height: 400,
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ),
+      );
+
+      try {
+        final FirebaseFirestore firestore = FirebaseFirestore.instance;
+        final AuthService authService = Get.find<AuthService>();
+
+        // 이름, 이메일 또는 전화번호로 검색
+        final nameQuery = await firestore
+            .collection('users')
+            .where('nickname', isGreaterThanOrEqualTo: query)
+            .where('nickname', isLessThan: query + 'z')
+            .get();
+
+        final emailQuery = await firestore
+            .collection('users')
+            .where('email', isGreaterThanOrEqualTo: query)
+            .where('email', isLessThan: query + 'z')
+            .get();
+
+        final phoneQuery = await firestore
+            .collection('users')
+            .where('phoneNumber', isGreaterThanOrEqualTo: query)
+            .where('phoneNumber', isLessThan: query + 'z')
+            .get();
+
+        // 결과 병합 및 중복 제거
+        final results = <UserModel>{};
+
+        for (var doc in nameQuery.docs) {
+          final user = UserModel.fromFirestore(doc);
+          if (user.uid != authService.currentUser?.uid) {
+            results.add(user);
+          }
+        }
+
+        for (var doc in emailQuery.docs) {
+          final user = UserModel.fromFirestore(doc);
+          if (user.uid != authService.currentUser?.uid) {
+            results.add(user);
+          }
+        }
+
+        for (var doc in phoneQuery.docs) {
+          final user = UserModel.fromFirestore(doc);
+          if (user.uid != authService.currentUser?.uid) {
+            results.add(user);
+          }
+        }
+
+        searchResults = results.toList();
+      } catch (e) {
+        print('사용자 검색 오류: $e');
+        Get.snackbar(
+          '검색 오류',
+          '사용자 검색 중 오류가 발생했습니다: $e',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.shade100,
+        );
+      } finally {
+        isSearching = false;
+        Get.back(); // 검색 중 다이얼로그 닫기
+
+        // 검색 결과 다이얼로그 표시
+        _showSearchResultsDialog(
+          context,
+          searchController,
+          searchResults,
+          isSearching,
+          nameController,
+          phoneController,
+          descriptionController,
+          performSearch,
+        );
+      }
+    }
+
+    // 초기 검색 다이얼로그 표시
+    _showSearchResultsDialog(
+      context,
+      searchController,
+      searchResults,
+      isSearching,
+      nameController,
+      phoneController,
+      descriptionController,
+      performSearch,
+    );
+  }
+
+  // 검색 결과 다이얼로그
+  void _showSearchResultsDialog(
+    BuildContext context,
+    TextEditingController searchController,
+    List<UserModel> searchResults,
+    bool isSearching,
+    TextEditingController nameController,
+    TextEditingController phoneController,
+    TextEditingController descriptionController,
+    Function(String) performSearch,
+  ) {
+    Get.dialog(
+      AlertDialog(
+        title: Text('앱 사용자 검색'),
+        content: Container(
+          width: double.maxFinite,
+          height: 400,
+          child: Column(
+            children: [
+              // 검색 바
+              TextField(
+                controller: searchController,
+                decoration: InputDecoration(
+                  hintText: '이름, 이메일 또는 전화번호로 검색',
+                  prefixIcon: Icon(Icons.search),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  suffixIcon: searchController.text.isNotEmpty
+                      ? IconButton(
+                          icon: Icon(Icons.clear),
+                          onPressed: () {
+                            searchController.clear();
+                            Get.back();
+                            _showSearchResultsDialog(
+                              context,
+                              searchController,
+                              [],
+                              false,
+                              nameController,
+                              phoneController,
+                              descriptionController,
+                              performSearch,
+                            );
+                          },
+                        )
+                      : null,
+                ),
+                onChanged: (value) {
+                  if (value.length >= 2) {
+                    performSearch(value);
+                  } else if (value.isEmpty) {
+                    Get.back();
+                    _showSearchResultsDialog(
+                      context,
+                      searchController,
+                      [],
+                      false,
+                      nameController,
+                      phoneController,
+                      descriptionController,
+                      performSearch,
+                    );
+                  }
+                },
+              ),
+              SizedBox(height: 16),
+
+              // 검색 상태 표시
+              if (isSearching)
+                Center(child: CircularProgressIndicator())
+              else if (searchResults.isEmpty && searchController.text.isEmpty)
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.search, size: 64, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text(
+                          '이름, 이메일 또는 전화번호로\n앱 사용자를 검색하세요',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else if (searchResults.isEmpty &&
+                  searchController.text.isNotEmpty)
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.person_off, size: 64, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text(
+                          '검색 결과가 없습니다',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          '다른 검색어로 다시 시도해보세요',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: searchResults.length,
+                    itemBuilder: (context, index) {
+                      final user = searchResults[index];
+                      return ListTile(
+                        leading: CircleAvatar(
+                          child: Text(user.displayName?.substring(0, 1) ?? '?'),
+                        ),
+                        title: Text(user.displayName ?? '이름 없음'),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (user.email != null && user.email!.isNotEmpty)
+                              Text(user.email!),
+                            if (user.phoneNumber != null &&
+                                user.phoneNumber!.isNotEmpty)
+                              Text(user.phoneNumber!),
+                          ],
+                        ),
+                        onTap: () {
+                          // 선택한 사용자 정보 설정
+                          Get.back();
+                          _showContactAddForm(
+                            context,
+                            nameCtrl: nameController
+                              ..text = user.displayName ?? '이름 없음',
+                            phoneCtrl: phoneController
+                              ..text = user.phoneNumber ?? '',
+                            descCtrl: descriptionController
+                              ..text = user.email ?? '',
+                            searchCtrl: searchController,
+                            appUserMode: true,
+                            selected: user,
+                          );
+                        },
+                        isThreeLine:
+                            user.email != null && user.phoneNumber != null,
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Get.back();
+              _showContactAddForm(
+                context,
+                nameCtrl: nameController,
+                phoneCtrl: phoneController,
+                descCtrl: descriptionController,
+                searchCtrl: searchController,
+                appUserMode: true,
+              );
+            },
+            child: Text('취소'),
           ),
         ],
       ),

@@ -108,8 +108,16 @@ class _EmergencyContactLocationViewState
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('긴급 연락처 위치 공유'),
+        title: const Text('위치 공유'),
         elevation: 0,
+        actions: [
+          // 사용자 검색 버튼
+          IconButton(
+            icon: const Icon(Icons.person_search),
+            tooltip: '다른 사용자 검색',
+            onPressed: () => Get.toNamed('/location-sharing/user-search'),
+          ),
+        ],
       ),
       body: Obx(() {
         // 사용자 정의 연락처만 가져옴 (기본 긴급 연락처는 제외)
@@ -178,7 +186,8 @@ class _EmergencyContactLocationViewState
                     backgroundColor:
                         Theme.of(context).colorScheme.primary.withOpacity(0.2),
                     child: Icon(
-                      Icons.person,
+                      // 앱 사용자와 일반 연락처를 구분하여 표시
+                      contact.isAppUser ? Icons.account_circle : Icons.person,
                       color: Theme.of(context).colorScheme.primary,
                     ),
                   ),
@@ -196,7 +205,10 @@ class _EmergencyContactLocationViewState
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          contact.phoneNumber,
+                          // 앱 사용자인 경우 표시 추가
+                          contact.isAppUser
+                              ? "${contact.phoneNumber} (앱 사용자)"
+                              : contact.phoneNumber,
                           style: TextStyle(
                             color: Theme.of(context)
                                 .colorScheme
@@ -205,6 +217,20 @@ class _EmergencyContactLocationViewState
                             fontSize: 14,
                           ),
                         ),
+                        // 앱 사용자인 경우 이메일 표시
+                        if (contact.isAppUser &&
+                            contact.description != null &&
+                            contact.description!.isNotEmpty)
+                          Text(
+                            contact.description!,
+                            style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withOpacity(0.5),
+                              fontSize: 12,
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -335,8 +361,13 @@ class _EmergencyContactLocationViewState
         );
       }
     } else {
-      // 위치 공유 시작
-      final result = await _locationService.startLocationSharing(contact.id);
+      // 위치 공유 시작 - 앱 사용자 여부에 따라 다른 방식 적용
+      final result =
+          await _locationService.startLocationSharingWithEmergencyContact(
+        contact.id,
+        contact.userId,
+        contact.isAppUser,
+      );
       if (result) {
         Get.snackbar(
           '위치 공유 시작',

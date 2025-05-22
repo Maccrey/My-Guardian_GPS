@@ -6,6 +6,7 @@ class SharedLocation {
   final String id;
   final String senderId;
   final String receiverId;
+  final String receiverType; // 'user' 또는 'emergency_contact'
   final double latitude;
   final double longitude;
   final DateTime timestamp;
@@ -19,6 +20,7 @@ class SharedLocation {
     required this.id,
     required this.senderId,
     required this.receiverId,
+    this.receiverType = 'emergency_contact', // 기본값은 emergency_contact
     required this.latitude,
     required this.longitude,
     required this.timestamp,
@@ -38,6 +40,7 @@ class SharedLocation {
       'id': id,
       'senderId': senderId,
       'receiverId': receiverId,
+      'receiverType': receiverType,
       'latitude': latitude,
       'longitude': longitude,
       'timestamp': timestamp.millisecondsSinceEpoch,
@@ -55,6 +58,7 @@ class SharedLocation {
       id: json['id'],
       senderId: json['senderId'],
       receiverId: json['receiverId'],
+      receiverType: json['receiverType'] ?? 'emergency_contact',
       latitude: json['latitude'],
       longitude: json['longitude'],
       timestamp: DateTime.fromMillisecondsSinceEpoch(json['timestamp']),
@@ -75,6 +79,7 @@ class SharedLocation {
       id: doc.id,
       senderId: data['senderId'] ?? '',
       receiverId: data['receiverId'] ?? '',
+      receiverType: data['receiverType'] ?? 'emergency_contact',
       latitude: (data['latitude'] ?? 0.0).toDouble(),
       longitude: (data['longitude'] ?? 0.0).toDouble(),
       timestamp: data['timestamp'] != null
@@ -100,11 +105,13 @@ class SharedLocation {
 
   // 경로 지점 객체
   factory SharedLocation.locationPoint(
-      String id, String senderId, String receiverId, double lat, double lng) {
+      String id, String senderId, String receiverId, double lat, double lng,
+      {String receiverType = 'emergency_contact'}) {
     return SharedLocation(
       id: id,
       senderId: senderId,
       receiverId: receiverId,
+      receiverType: receiverType,
       latitude: lat,
       longitude: lng,
       timestamp: DateTime.now(),
@@ -119,6 +126,7 @@ class SharedLocation {
       id: this.id,
       senderId: this.senderId,
       receiverId: this.receiverId,
+      receiverType: this.receiverType,
       latitude: lat,
       longitude: lng,
       timestamp: DateTime.now(),
@@ -136,6 +144,7 @@ class SharedLocation {
       id: this.id,
       senderId: this.senderId,
       receiverId: this.receiverId,
+      receiverType: this.receiverType,
       latitude: this.latitude,
       longitude: this.longitude,
       timestamp: this.timestamp,

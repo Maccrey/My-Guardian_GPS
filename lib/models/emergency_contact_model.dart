@@ -3,6 +3,7 @@
 // ****************************************************************************
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:uuid/uuid.dart';
 
 class EmergencyContact {
   final String id;
@@ -12,6 +13,8 @@ class EmergencyContact {
   final String? description;
   final bool isDefault; // 기본 제공 연락처 여부 (119, 112 등)
   final bool isActive; // 활성화 상태 여부
+  final String? userId; // 앱 사용자 UID (앱 사용자일 경우)
+  final bool isAppUser; // 앱 사용자 여부
 
   EmergencyContact({
     required this.id,
@@ -21,6 +24,8 @@ class EmergencyContact {
     this.description,
     this.isDefault = false,
     this.isActive = true,
+    this.userId, // 앱 사용자 UID
+    this.isAppUser = false, // 기본값은 일반 연락처
   });
 
   // JSON으로 변환
@@ -33,6 +38,8 @@ class EmergencyContact {
       'description': description,
       'isDefault': isDefault,
       'isActive': isActive,
+      'userId': userId, // 추가
+      'isAppUser': isAppUser, // 추가
     };
   }
 
@@ -46,6 +53,8 @@ class EmergencyContact {
       description: json['description'],
       isDefault: json['isDefault'] ?? false,
       isActive: json['isActive'] ?? true,
+      userId: json['userId'], // 추가
+      isAppUser: json['isAppUser'] ?? false, // 추가
     );
   }
 
@@ -60,6 +69,8 @@ class EmergencyContact {
       description: data['description'],
       isDefault: data['isDefault'] ?? false,
       isActive: data['isActive'] ?? true,
+      userId: data['userId'], // 추가
+      isAppUser: data['isAppUser'] ?? false, // 추가
     );
   }
 
@@ -111,6 +122,8 @@ class EmergencyContact {
     String? relationship,
     String? description,
     bool? isActive,
+    String? userId,
+    bool? isAppUser,
   }) {
     return EmergencyContact(
       id: this.id,
@@ -120,6 +133,29 @@ class EmergencyContact {
       description: description ?? this.description,
       isDefault: this.isDefault,
       isActive: isActive ?? this.isActive,
+      userId: userId ?? this.userId,
+      isAppUser: isAppUser ?? this.isAppUser,
+    );
+  }
+
+  // 앱 사용자를 긴급 연락처로 변환
+  factory EmergencyContact.fromAppUser({
+    required String userId,
+    required String name,
+    required String? email,
+    required String phoneNumber,
+    String? relationship,
+  }) {
+    return EmergencyContact(
+      id: const Uuid().v4(),
+      name: name,
+      phoneNumber: phoneNumber,
+      relationship: relationship,
+      description: email,
+      isDefault: false,
+      isActive: true,
+      userId: userId,
+      isAppUser: true,
     );
   }
 }

@@ -37,6 +37,8 @@ import 'services/location_sharing_service.dart';
 import 'controllers/location_sharing_controller.dart';
 import 'views/location_sharing/emergency_contact_location_view.dart';
 import 'views/location_sharing/location_tracking_view.dart';
+import 'views/location_sharing/user_search_location_view.dart';
+import 'views/user_search_contact_view.dart';
 
 import 'firebase_options.dart'; // 임시로 주석 처리
 
@@ -336,6 +338,14 @@ class _MyAppState extends State<MyApp> {
           name: '/location-sharing',
           page: () => EmergencyContactLocationView(),
         ),
+        // 사용자 검색 및 위치 공유 화면 라우트
+        GetPage(
+          name: '/user-search-location',
+          page: () => const UserSearchLocationView(),
+          binding: BindingsBuilder(() {
+            Get.put(LocationSharingService());
+          }),
+        ),
         // 위치 추적 화면 라우트
         GetPage(
           name: '/location-tracking/:userId/:userName',
@@ -347,6 +357,14 @@ class _MyAppState extends State<MyApp> {
               userName: userName,
             );
           },
+        ),
+        // 앱 사용자 검색 및 긴급 연락처 추가 화면 라우트
+        GetPage(
+          name: '/user-search-contact',
+          page: () => const UserSearchContactView(),
+          binding: BindingsBuilder(() {
+            Get.put(EmergencyContactService());
+          }),
         ),
       ],
     );

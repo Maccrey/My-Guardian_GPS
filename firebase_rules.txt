@@ -1,0 +1,49 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    match /messages/{messageId} {
+      allow read, delete: if request.auth != null && 
+        (resource.data.senderId == request.auth.uid || 
+         resource.data.receiverId == request.auth.uid);
+         
+      // 새로운 메시지 생성은 보낸 사람만 가능
+      allow create: if request.auth != null && 
+        request.resource.data.senderId == request.auth.uid;
+        
+      // 업데이트 규칙 개선 - 읽음 상태 변경 허용
+      allow update: if request.auth != null && (
+        // 보낸 사람은 모든 필드 업데이트 가능
+        request.resource.data.senderId == request.auth.uid ||
+        
+        // 받은 사람은 isRead 필드만 업데이트 가능
+        (resource.data.receiverId == request.auth.uid && 
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']))
+      );
+    }
+    
+    // 위치 공유 컬렉션에 대한 보안 규칙
+    match /location_sharing/{locationId} {
+      // 위치 공유 문서 읽기는 발신자 또는 수신자만 가능
+      allow read: if request.auth != null && 
+        (resource.data.senderId == request.auth.uid || 
+         resource.data.receiverId == request.auth.uid);
+      
+      // 위치 공유 문서 생성은 발신자만 가능
+      allow create: if request.auth != null && 
+        request.resource.data.senderId == request.auth.uid;
+      
+      // 위치 업데이트는 발신자만 가능
+      allow update: if request.auth != null && 
+        resource.data.senderId == request.auth.uid;
+      
+      // 위치 공유 문서 삭제는 발신자만 가능
+      allow delete: if request.auth != null && 
+        resource.data.senderId == request.auth.uid;
+    }
+  }
+} 
