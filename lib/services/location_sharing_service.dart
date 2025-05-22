@@ -64,60 +64,6 @@ class LocationSharingService extends GetxController {
     }
   }
 
-  // 안전하게 현재 위치 가져오기 (타임아웃 및 오류 처리 개선)
-  Future<Position?> _getCurrentPositionSafely() async {
-    try {
-      // 위치 권한 확인
-      final hasPermission = await checkLocationPermission();
-      if (!hasPermission) return null;
-
-      // 더 긴 타임아웃 설정 및 저정확도 위치도 허용
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
-        timeLimit: const Duration(seconds: 10),
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          print('위치 가져오기 타임아웃: 마지막 알려진 위치 사용');
-          // 타임아웃 시 마지막 알려진 위치 사용
-          if (_lastKnownPosition != null) {
-            return _lastKnownPosition!;
-          }
-          throw TimeoutException('위치 정보를 가져오는 시간이 초과되었습니다.');
-        },
-      );
-
-      // 성공적으로 가져온 위치를 마지막 알려진 위치로 캐싱
-      _lastKnownPosition = position;
-      return position;
-    } catch (e) {
-      print('현재 위치 가져오기 오류: $e');
-
-      // 오류 발생 시 최후의 수단으로 기본 위치 반환 (서울시청 좌표)
-      if (_lastKnownPosition == null) {
-        // 서울시청 좌표 (기본값)
-        Get.snackbar(
-          '위치 정보 오류',
-          '현재 위치를 가져올 수 없어 기본 위치를 사용합니다.',
-          snackPosition: SnackPosition.BOTTOM,
-        );
-        return Position(
-          longitude: 126.9780, // 서울시청 경도
-          latitude: 37.5665, // 서울시청 위도
-          timestamp: DateTime.now(),
-          accuracy: 0,
-          altitude: 0,
-          heading: 0,
-          speed: 0,
-          speedAccuracy: 0,
-          altitudeAccuracy: 0,
-          headingAccuracy: 0,
-        );
-      }
-      return _lastKnownPosition;
-    }
-  }
-
   // 위치 공유 상태 로드
   Future<void> _loadActiveSharing() async {
     final prefs = await SharedPreferences.getInstance();
@@ -193,17 +139,33 @@ class LocationSharingService extends GetxController {
 
   // 위치 공유 시작 (긴급 연락처와 공유)
   Future<bool> startLocationSharing(String receiverId) async {
-    if (!await checkLocationPermission()) return false;
+    print('📡 [서비스] 위치 공유 시작 요청: receiverId=$receiverId');
+
+    if (!await checkLocationPermission()) {
+      print('⚠️ [서비스] 위치 권한 없음: 공유 실패');
+      return false;
+    }
 
     final userId = _auth.currentUser?.uid;
-    if (userId == null) return false;
+    if (userId == null) {
+      print('⚠️ [서비스] 사용자 인증 안됨: 공유 실패');
+      return false;
+    }
 
     try {
       // 안전하게 위치 정보 가져오기
+      print('🔍 [서비스] 현재 위치 가져오기 시도');
       final position = await _getCurrentPositionSafely();
-      if (position == null) return false;
+      if (position == null) {
+        print('⚠️ [서비스] 위치 정보 획득 실패');
+        return false;
+      }
+
+      print(
+          '📍 [서비스] 위치 획득 성공: lat=${position.latitude}, lng=${position.longitude}');
 
       final locationId = const Uuid().v4();
+      print('🆔 [서비스] 새 위치 공유 ID 생성: $locationId');
 
       final sharedLocation = SharedLocation(
         id: locationId,
@@ -218,10 +180,12 @@ class LocationSharingService extends GetxController {
       );
 
       // Firestore에 초기 위치 정보 저장
+      print('💾 [서비스] Firestore에 위치 데이터 저장 시도');
       await _firestore
           .collection('location_sharing')
           .doc(locationId)
           .set(sharedLocation.toJson());
+      print('✅ [서비스] Firestore 저장 성공');
 
       // 위치 공유 상태 업데이트
       _activeSharing[receiverId] = sharedLocation;
@@ -229,19 +193,24 @@ class LocationSharingService extends GetxController {
       if (!sharingToUserIds.contains(receiverId)) {
         sharingToUserIds.add(receiverId);
       }
+      print(
+          '🔄 [서비스] 메모리 상태 업데이트: sharingToUserIds=${sharingToUserIds.length}개');
 
       // 로컬 저장소에 상태 저장
-      _saveActiveSharingState();
+      await _saveActiveSharingState();
+      print('💾 [서비스] 로컬 저장소에 상태 저장 완료');
 
       // 위치 추적 시작
       _startPositionTracking(receiverId);
+      print('📡 [서비스] 위치 추적 시작: receiverId=$receiverId');
 
       // 위치 공유 시작 메시지 전송
       _sendLocationSharingStatusMessage(receiverId, true);
 
+      print('✅ [서비스] 위치 공유 시작 완료: receiverId=$receiverId');
       return true;
     } catch (e) {
-      print('위치 공유 시작 오류: $e');
+      print('❌ [서비스] 위치 공유 시작 오류: $e');
       Get.snackbar(
         '위치 공유 오류',
         '위치 공유를 시작하는 중 오류가 발생했습니다: $e',
@@ -253,18 +222,26 @@ class LocationSharingService extends GetxController {
 
   // 위치 공유 중지
   Future<bool> stopLocationSharing(String receiverId) async {
+    print('🛑 [서비스] 위치 공유 중지 요청: receiverId=$receiverId');
+
     final userId = _auth.currentUser?.uid;
-    if (userId == null) return false;
+    if (userId == null) {
+      print('⚠️ [서비스] 사용자 인증 안됨: 중지 실패');
+      return false;
+    }
 
     try {
       // 위치 추적 중지
+      print('🔄 [서비스] 위치 추적 중지');
       _stopPositionTracking(receiverId);
 
       // 위치 공유 종료 상태로 업데이트
       if (_activeSharing.containsKey(receiverId)) {
+        print('🔍 [서비스] 활성 공유 정보 찾음: receiverId=$receiverId');
         final sharedLocation = _activeSharing[receiverId]!.copyWithEndSharing();
 
         // Firestore 업데이트
+        print('💾 [서비스] Firestore 데이터 업데이트 시도');
         await _firestore
             .collection('location_sharing')
             .doc(sharedLocation.id)
@@ -272,27 +249,33 @@ class LocationSharingService extends GetxController {
           'isActive': false,
           'endTime': FieldValue.serverTimestamp(),
         });
+        print('✅ [서비스] Firestore 업데이트 성공');
 
         // 상태 업데이트
         _activeSharing.remove(receiverId);
         sharingToUserIds.remove(receiverId);
+        print('🔄 [서비스] 메모리 상태 업데이트: receiverId=$receiverId 제거됨');
 
         if (_activeSharing.isEmpty) {
           isSharingLocation.value = false;
+          print('🔄 [서비스] 모든 공유 종료: isSharingLocation=false');
         }
 
         // 로컬 저장소 업데이트
-        _saveActiveSharingState();
+        await _saveActiveSharingState();
+        print('💾 [서비스] 로컬 저장소에 상태 저장 완료');
 
         // 위치 공유 종료 메시지 전송
         _sendLocationSharingStatusMessage(receiverId, false);
 
+        print('✅ [서비스] 위치 공유 중지 완료: receiverId=$receiverId');
         return true;
+      } else {
+        print('⚠️ [서비스] 활성 공유 정보 없음: receiverId=$receiverId');
+        return false;
       }
-
-      return false;
     } catch (e) {
-      print('위치 공유 중지 오류: $e');
+      print('❌ [서비스] 위치 공유 중지 오류: $e');
       return false;
     }
   }
@@ -315,10 +298,9 @@ class LocationSharingService extends GetxController {
       // 위치 추적 시작
       final stream = Geolocator.getPositionStream(
         locationSettings: LocationSettings(
-          accuracy: LocationAccuracy.medium, // 정확도 요구사항 완화
-          distanceFilter: 10,
-          timeLimit:
-              Duration(seconds: updateIntervalSeconds.value * 2), // 타임아웃 증가
+          accuracy: LocationAccuracy.low, // 정확도 요구사항 더 낮춤 (배터리 절약 및 타임아웃 방지)
+          distanceFilter: 20, // 더 큰 거리 필터 (불필요한 업데이트 감소)
+          timeLimit: Duration(seconds: 30), // 타임아웃 시간 증가 (10초 → 30초)
         ),
       );
 
@@ -330,6 +312,22 @@ class LocationSharingService extends GetxController {
         },
         onError: (error) {
           print('위치 스트림 오류: $error');
+
+          // 타임아웃 오류 발생 시 폴백 메커니즘
+          if (error is TimeoutException) {
+            print('위치 타임아웃 발생 - 대체 메커니즘 사용');
+
+            // 즉시 한 번 위치 가져오기 시도
+            _getCurrentPositionSafely().then((position) {
+              if (position != null) {
+                _updateLocationData(receiverId, position);
+              }
+            });
+
+            // 폴백: 대체 타이머로 위치 주기적 업데이트
+            _startFallbackPositionTimer(receiverId);
+          }
+
           // 오류 발생 시 마지막 알려진 위치 사용
           if (_lastKnownPosition != null) {
             _updateLocationData(receiverId, _lastKnownPosition!);
@@ -339,19 +337,78 @@ class LocationSharingService extends GetxController {
     } catch (e) {
       print('위치 스트림 초기화 오류: $e');
       // 실패 시 폴백: 주기적으로 한 번씩 위치 요청
-      Timer.periodic(Duration(seconds: updateIntervalSeconds.value), (timer) {
-        if (!_activeSharing.containsKey(receiverId) ||
-            !_activeSharing[receiverId]!.isActive) {
-          timer.cancel();
-          return;
-        }
+      _startFallbackPositionTimer(receiverId);
+    }
+  }
 
-        _getCurrentPositionSafely().then((position) {
-          if (position != null) {
-            _updateLocationData(receiverId, position);
-          }
-        });
+  // 폴백 위치 타이머 시작 (스트림 실패 시 대체 메커니즘)
+  void _startFallbackPositionTimer(String receiverId) {
+    Timer.periodic(Duration(seconds: updateIntervalSeconds.value * 2), (timer) {
+      if (!_activeSharing.containsKey(receiverId) ||
+          !_activeSharing[receiverId]!.isActive) {
+        timer.cancel();
+        return;
+      }
+
+      _getCurrentPositionSafely().then((position) {
+        if (position != null) {
+          _updateLocationData(receiverId, position);
+        }
       });
+    });
+  }
+
+  // 안전하게 현재 위치 가져오기 (타임아웃 및 오류 처리 개선)
+  Future<Position?> _getCurrentPositionSafely() async {
+    try {
+      // 위치 권한 확인
+      final hasPermission = await checkLocationPermission();
+      if (!hasPermission) return null;
+
+      // 더 긴 타임아웃 설정 및 저정확도 위치도 허용
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.low, // 정확도 요구사항 낮춤
+        timeLimit: const Duration(seconds: 15), // 시간 제한 증가
+      ).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          print('위치 가져오기 타임아웃: 마지막 알려진 위치 사용');
+          // 타임아웃 시 마지막 알려진 위치 사용
+          if (_lastKnownPosition != null) {
+            return _lastKnownPosition!;
+          }
+          throw TimeoutException('위치 정보를 가져오는 시간이 초과되었습니다.');
+        },
+      );
+
+      // 성공적으로 가져온 위치를 마지막 알려진 위치로 캐싱
+      _lastKnownPosition = position;
+      return position;
+    } catch (e) {
+      print('현재 위치 가져오기 오류: $e');
+
+      // 오류 발생 시 최후의 수단으로 기본 위치 반환 (서울시청 좌표)
+      if (_lastKnownPosition == null) {
+        // 서울시청 좌표 (기본값)
+        Get.snackbar(
+          '위치 정보 오류',
+          '현재 위치를 가져올 수 없어 기본 위치를 사용합니다.',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+        return Position(
+          longitude: 126.9780, // 서울시청 경도
+          latitude: 37.5665, // 서울시청 위도
+          timestamp: DateTime.now(),
+          accuracy: 0,
+          altitude: 0,
+          heading: 0,
+          speed: 0,
+          speedAccuracy: 0,
+          altitudeAccuracy: 0,
+          headingAccuracy: 0,
+        );
+      }
+      return _lastKnownPosition;
     }
   }
 
@@ -522,8 +579,16 @@ class LocationSharingService extends GetxController {
 
   // 위치 공유 여부 확인
   bool isShareLocationActive(String receiverId) {
-    return _activeSharing.containsKey(receiverId) &&
+    final isActive = _activeSharing.containsKey(receiverId) &&
         _activeSharing[receiverId]!.isActive;
+    print('🔍 [서비스] 위치 공유 상태 확인: receiverId=$receiverId, isActive=$isActive');
+
+    // 실제 공유 목록 출력 (디버깅용)
+    if (_activeSharing.isNotEmpty) {
+      print('📊 [서비스] 현재 활성 공유 목록: ${_activeSharing.keys.join(', ')}');
+    }
+
+    return isActive;
   }
 
   // 업데이트 간격 변경
@@ -542,23 +607,16 @@ class LocationSharingService extends GetxController {
   // 긴급 연락처 유형에 따라 위치 공유 시작
   Future<bool> startLocationSharingWithEmergencyContact(
       String receiverId, String? userId, bool isAppUser) async {
+    print(
+        '🚀 [서비스] 긴급 연락처 위치 공유 시작: receiverId=$receiverId, isAppUser=$isAppUser');
+
     // 위치 권한 확인
     if (!await checkLocationPermission()) {
+      print('⚠️ [서비스] 위치 권한 없음: 공유 실패');
       return false;
     }
 
     try {
-      // 지연 시간을 두고 위치 공유 시작
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (isAppUser && userId != null) {
-          // 앱 사용자인 경우 UID로 공유
-          startLocationSharingWithUser(userId);
-        } else {
-          // 일반 연락처인 경우 전화번호로 공유
-          startLocationSharing(receiverId);
-        }
-      });
-
       // 위치 정보 로드 중임을 알림
       Get.snackbar(
         '위치 공유 시작 중',
@@ -567,10 +625,30 @@ class LocationSharingService extends GetxController {
         duration: const Duration(seconds: 2),
       );
 
-      // 성공으로 간주 (비동기적으로 처리됨)
-      return true;
+      bool result = false;
+
+      // Future.delayed 제거하고 바로 await로 처리
+      if (isAppUser && userId != null) {
+        // 앱 사용자인 경우 UID로 공유
+        print('📱 [서비스] 앱 사용자와 공유 시도: userId=$userId');
+        result = await startLocationSharingWithUser(userId);
+      } else {
+        // 일반 연락처인 경우 전화번호로 공유
+        print('📞 [서비스] 일반 연락처와 공유 시도: receiverId=$receiverId');
+        result = await startLocationSharing(receiverId);
+      }
+
+      if (result) {
+        // UI 즉시 갱신을 위해 Get.forceAppUpdate() 호출
+        print('🔄 [서비스] 공유 성공 - UI 강제 갱신');
+        Get.forceAppUpdate();
+      } else {
+        print('⚠️ [서비스] 공유 실패');
+      }
+
+      return result;
     } catch (e) {
-      print('위치 공유 시작 오류: $e');
+      print('❌ [서비스] 위치 공유 시작 오류: $e');
       Get.snackbar(
         '위치 공유 오류',
         '위치 공유를 시작하는 중 오류가 발생했습니다: $e',
