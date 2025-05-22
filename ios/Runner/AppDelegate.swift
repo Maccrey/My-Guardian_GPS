@@ -1,6 +1,7 @@
 import Flutter
 import UIKit
 import GoogleMaps
+import flutter_background_service_ios
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -11,6 +12,9 @@ import GoogleMaps
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    // 백그라운드 서비스 등록
+    SwiftFlutterBackgroundServicePlugin.registerForBackgroundService(application)
+    
     let controller = self.window?.rootViewController as! FlutterViewController
     let mapChannel = FlutterMethodChannel(name: "com.gps_search.maps/api_key", 
                                          binaryMessenger: controller.binaryMessenger)
