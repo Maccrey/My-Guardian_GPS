@@ -258,6 +258,26 @@ class _MessagesListViewState extends State<MessagesListView> {
         // 파싱 실패 시 기본 메시지
         return '📍 위치를 공유했습니다';
       }
+    } else if (message.messageType == 'arrival_notification' ||
+        message.messageType == 'location_arrival') {
+      // 귀가 알림
+      try {
+        // 귀가 알림 메시지 파싱 시도
+        final arrivalData = jsonDecode(message.content) as Map<String, dynamic>;
+        final customMessage = arrivalData['message'] as String?;
+        final locationName = arrivalData['name'] as String?;
+
+        if (customMessage != null && customMessage.isNotEmpty) {
+          if (locationName != null && locationName.isNotEmpty) {
+            return '🏠 $locationName: $customMessage';
+          }
+          return '🏠 $customMessage';
+        }
+        return '🏠 안전하게 귀가했습니다';
+      } catch (e) {
+        // 파싱 실패 시 기본 메시지
+        return '🏠 귀가 알림이 도착했습니다';
+      }
     } else {
       // 기타 메시지 타입
       return message.content;

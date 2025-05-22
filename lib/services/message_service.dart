@@ -360,15 +360,24 @@ class MessageService extends GetxController {
 
   // 읽지 않은 메시지 수 계산
   void _updateUnreadCount() {
-    final String currentUserId = _authService.currentUser?.uid ?? '';
-    if (currentUserId.isEmpty) return;
+    try {
+      if (_authService.uid == null) {
+        debugPrint('⚠️ 로그인되어 있지 않아 읽지 않은 메시지 수를 계산할 수 없습니다.');
+        unreadMessageCount.value = 0;
+        return;
+      }
 
-    final int count = messages
-        .where((m) => m.receiverId == currentUserId && !m.isRead)
-        .length;
+      final unread = messages
+          .where((message) =>
+              !message.isRead && message.receiverId == _authService.uid)
+          .length;
 
-    unreadMessageCount.value = count;
-    debugPrint('✅ 읽지 않은 메시지 수: $count');
+      unreadMessageCount.value = unread;
+      debugPrint('📊 읽지 않은 메시지 수 업데이트: $unread');
+    } catch (e) {
+      debugPrint('⚠️ 읽지 않은 메시지 수 계산 오류: $e');
+      unreadMessageCount.value = 0;
+    }
   }
 
   // 새 메시지 전송 - Firebase 전송 중심으로 수정
@@ -558,10 +567,16 @@ class MessageService extends GetxController {
       if (updatedAny) {
         // UI 업데이트를 위해 메시지 목록 변경 알림
         messages.refresh();
-      }
 
-      // 읽지 않은 메시지 수 업데이트
-      _updateUnreadCount();
+        // 읽지 않은 메시지 수 업데이트 (즉시 처리)
+        _updateUnreadCount();
+
+        // 1초 후 다시 한번 읽지 않은 메시지 수 업데이트 (지연 처리)
+        Future.delayed(const Duration(seconds: 1), () {
+          _updateUnreadCount();
+          debugPrint('🔄 지연 처리: 읽지 않은 메시지 수 업데이트');
+        });
+      }
 
       // 현재 사용자가 로그인 되어있지 않은 경우 Firestore 업데이트 시도하지 않음
       if (_authService.currentUser == null || _authService.uid == null) {
@@ -583,10 +598,13 @@ class MessageService extends GetxController {
         if (batchCount > 0) {
           await batch.commit();
           debugPrint('✅ $batchCount개 메시지 읽음 상태가 Firestore에 업데이트되었습니다.');
+
+          // Firestore 업데이트 후 메시지 목록 다시 한번 refresh
+          messages.refresh();
         }
       } catch (e) {
         // Firebase 업데이트 실패는 UI에 영향을 주지 않음 (로컬 상태는 이미 업데이트됨)
-        debugPrint('⚠️ Firestore 다중 메시지 읽음 상태 업데이트 실패: $e');
+        debugPrint('⚠️ Firestore 메시지 읽음 상태 업데이트 실패: $e');
 
         // 권한 오류는 경고만 표시
         if (e.toString().contains('permission-denied')) {
@@ -595,7 +613,7 @@ class MessageService extends GetxController {
         }
       }
     } catch (e) {
-      debugPrint('⚠️ 다중 메시지 읽음 상태 변경 오류: $e');
+      debugPrint('⚠️ 메시지 읽음 상태 변경 오류: $e');
     }
   }
 
@@ -1122,6 +1140,37 @@ class MessageService extends GetxController {
       );
     } catch (e) {
       debugPrint('⚠️ 위치 공유 메시지 전송 오류: $e');
+      return false;
+    }
+  }
+
+  // 귀가 알림 메시지 보내기
+  Future<bool> sendArrivalNotification({
+    required String receiverId,
+    required double latitude,
+    required double longitude,
+    required String address,
+    required String name,
+    String message = '안전하게 귀가했습니다.',
+  }) async {
+    try {
+      final String arrivalData = jsonEncode({
+        'type': 'arrival_notification',
+        'latitude': latitude,
+        'longitude': longitude,
+        'address': address,
+        'name': name,
+        'message': message,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      });
+
+      return sendMessage(
+        receiverId: receiverId,
+        content: arrivalData,
+        messageType: 'arrival_notification',
+      );
+    } catch (e) {
+      debugPrint('⚠️ 귀가 알림 메시지 전송 오류: $e');
       return false;
     }
   }

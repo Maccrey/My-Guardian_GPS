@@ -1,24 +1,22 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:async'; // Timer를 위한 import 추가
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import '../../services/message_service.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:uuid/uuid.dart';
+import '../../models/message_model.dart';
+import '../../models/shared_location_model.dart';
+import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
 import '../../services/location_service.dart';
-import '../../services/image_cache_service.dart'; // 이미지 캐시 서비스 추가
-import '../../models/message_model.dart';
-import '../../models/user_model.dart';
-import '../../models/shared_location_model.dart';
-import 'shared_location_view.dart'; // 위치 공유 화면 import 추가
-import 'package:uuid/uuid.dart';
-import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../services/message_service.dart';
 import '../../utils/url_handler.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'shared_location_view.dart';
 
 class MessageDetailView extends StatefulWidget {
   final String userId; // 대화 상대 ID
@@ -39,7 +37,6 @@ class _MessageDetailViewState extends State<MessageDetailView> {
 
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final ImagePicker _imagePicker = ImagePicker(); // 이미지 피커 추가
 
   // 스크롤 위치 유지를 위한 변수 추가
   bool _isUserScrolling = false;
@@ -482,9 +479,21 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       }
 
       debugPrint('🔄 ${unreadMessageIds.length}개의 메시지를 읽음 상태로 변경합니다.');
+      debugPrint('📋 읽음 처리할 메시지 ID 목록: $unreadMessageIds');
+
+      // 읽음 처리 직전에 알림
       await _messageService.markMultipleMessagesAsRead(unreadMessageIds);
 
-      // 읽음 처리 후 위젯 상태 확인은 필요 없음 - UI가 자동으로 갱신됨
+      // 읽음 처리 후 로그 추가
+      debugPrint('✅ 메시지 읽음 처리 완료');
+
+      // 읽음 처리 후 메시지 새로고침 요청 제거 - 무한 루프 방지
+      // Future.delayed(const Duration(milliseconds: 500), () {
+      //   if (mounted) {
+      //     _messageService.refreshMessages();
+      //     debugPrint('🔄 읽음 처리 후 메시지 목록 새로고침 요청');
+      //   }
+      // });
     } catch (e) {
       debugPrint('⚠️ 메시지 읽음 상태 변경 중 오류 발생: $e');
     }
@@ -508,8 +517,11 @@ class _MessageDetailViewState extends State<MessageDetailView> {
   // 위치 메시지 파싱
   Map<String, dynamic>? _parseLocationMessage(String content) {
     try {
-      return jsonDecode(content) as Map<String, dynamic>;
+      final Map<String, dynamic> result = jsonDecode(content);
+      debugPrint('✅ 위치 메시지 파싱 성공: $result');
+      return result;
     } catch (e) {
+      debugPrint('⚠️ 위치 메시지 파싱 오류: $e');
       return null;
     }
   }
@@ -1667,327 +1679,194 @@ class _MessageDetailViewState extends State<MessageDetailView> {
           ),
         );
       } else {
-        messageContent = const Text('잘못된 위치 데이터');
+        // 위치 정보 파싱 실패 시 기본 텍스트 표시
+        messageContent = Text(
+          '위치 정보를 표시할 수 없습니다',
+          style: TextStyle(
+            color: isCurrentUserSender ? Colors.white : Colors.black87,
+            fontSize: 15,
+          ),
+        );
       }
-    } else if (message.messageType == 'image') {
-      // 이미지 메시지
-      final imageData = _parseImageMessage(message.content);
+    } else if (message.messageType == 'arrival_notification' ||
+        message.messageType == 'location_arrival') {
+      // 귀가 알림 메시지 파싱 및 표시
+      final arrivalData = _parseArrivalNotificationMessage(message.content);
 
-      if (imageData != null && imageData.containsKey('url')) {
+      if (arrivalData != null) {
         messageContent = GestureDetector(
           onTap: () {
-            // 이미지 전체 화면 보기
-            Get.to(() => Scaffold(
-                  backgroundColor: Colors.black,
-                  appBar: AppBar(
-                    backgroundColor: Colors.black,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    leading: IconButton(
-                      icon: const Icon(Icons.arrow_back),
-                      onPressed: () => Get.back(),
-                    ),
-                    actions: [
-                      IconButton(
-                        icon: const Icon(Icons.share),
-                        onPressed: () {
-                          // 이미지 공유 기능 (나중에 구현)
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.download),
-                        onPressed: () {
-                          // 이미지 다운로드 기능 (나중에 구현)
-                        },
-                      ),
-                    ],
-                  ),
-                  body: Center(
-                    child: InteractiveViewer(
-                      minScale: 0.5,
-                      maxScale: 3.0,
-                      child: FutureBuilder<String?>(
-                        future: _getCachedMessageImage(
-                          message.id,
-                          imageData['url'] as String,
-                        ),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const Center(
-                              child: CircularProgressIndicator(),
-                            );
-                          } else if (snapshot.hasData &&
-                              snapshot.data != null) {
-                            // 캐시된 이미지 사용
-                            return Image.file(
-                              File(snapshot.data!),
-                              errorBuilder: (context, error, stackTrace) {
-                                // 로컬 파일 로드 실패 시 네트워크 이미지로 폴백
-                                return Image.network(
-                                  imageData['url'] as String,
-                                  loadingBuilder:
-                                      (context, child, loadingProgress) {
-                                    if (loadingProgress == null) return child;
-                                    return Center(
-                                      child: CircularProgressIndicator(
-                                        value: loadingProgress
-                                                    .expectedTotalBytes !=
-                                                null
-                                            ? loadingProgress
-                                                    .cumulativeBytesLoaded /
-                                                loadingProgress
-                                                    .expectedTotalBytes!
-                                            : null,
-                                      ),
-                                    );
-                                  },
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return const Center(
-                                      child: Icon(
-                                        Icons.broken_image,
-                                        size: 48,
-                                        color: Colors.grey,
-                                      ),
-                                    );
-                                  },
-                                );
-                              },
-                            );
-                          } else {
-                            // 네트워크 이미지 로드
-                            return Image.network(
-                              imageData['url'] as String,
-                              loadingBuilder:
-                                  (context, child, loadingProgress) {
-                                if (loadingProgress == null) return child;
-                                return Center(
-                                  child: CircularProgressIndicator(
-                                    value: loadingProgress.expectedTotalBytes !=
-                                            null
-                                        ? loadingProgress
-                                                .cumulativeBytesLoaded /
-                                            loadingProgress.expectedTotalBytes!
-                                        : null,
-                                  ),
-                                );
-                              },
-                              errorBuilder: (context, error, stackTrace) {
-                                return const Center(
-                                  child: Icon(
-                                    Icons.broken_image,
-                                    size: 48,
-                                    color: Colors.grey,
-                                  ),
-                                );
-                              },
-                            );
-                          }
-                        },
-                      ),
-                    ),
-                  ),
-                ));
+            // 위치 정보가 있는 경우 지도 화면으로 이동
+            _openArrivalLocation(message, arrivalData, isCurrentUserSender);
           },
           child: Container(
-            constraints: const BoxConstraints(
-              maxHeight: 200,
-            ),
             decoration: BoxDecoration(
-              color: Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isCurrentUserSender
-                    ? Colors.blue.shade400
-                    : Colors.grey.shade300,
-                width: 1,
+              gradient: LinearGradient(
+                colors: isCurrentUserSender
+                    ? [Colors.indigo.shade700, Colors.indigo.shade500]
+                    : [Colors.blue.shade200, Colors.blue.shade100],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-            ),
-            child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // 이미지 로딩 표시
-                  const SizedBox(
-                    width: 30,
-                    height: 30,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.home_filled,
+                      size: 22,
+                      color: isCurrentUserSender
+                          ? Colors.white
+                          : Colors.blue.shade800,
                     ),
-                  ),
-
-                  // 이미지 표시 - 캐시 사용
-                  FutureBuilder<String?>(
-                    future: _getCachedMessageImage(
-                      message.id,
-                      imageData['url'] as String,
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        '귀가 알림',
+                        style: TextStyle(
+                          color: isCurrentUserSender
+                              ? Colors.white
+                              : Colors.blue.shade800,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
                     ),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return Center(
-                          child: SizedBox(
-                            width: 30,
-                            height: 30,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                  isCurrentUserSender
-                                      ? Colors.blue.shade200
-                                      : Colors.grey.shade400),
-                            ),
-                          ),
-                        );
-                      } else if (snapshot.hasData && snapshot.data != null) {
-                        // 캐시된 이미지 사용
-                        return Image.file(
-                          File(snapshot.data!),
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            // 로컬 파일 로드 실패 시 네트워크 이미지로 폴백
-                            return Image.network(
-                              imageData['url'] as String,
-                              fit: BoxFit.cover,
-                              loadingBuilder:
-                                  (context, child, loadingProgress) {
-                                if (loadingProgress == null) return child;
-                                return Center(
-                                  child: SizedBox(
-                                    width: 30,
-                                    height: 30,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      value:
-                                          loadingProgress.expectedTotalBytes !=
-                                                  null
-                                              ? loadingProgress
-                                                      .cumulativeBytesLoaded /
-                                                  loadingProgress
-                                                      .expectedTotalBytes!
-                                              : null,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                          isCurrentUserSender
-                                              ? Colors.blue.shade200
-                                              : Colors.grey.shade400),
-                                    ),
-                                  ),
-                                );
-                              },
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  width: 150,
-                                  height: 100,
-                                  color: Colors.grey.shade300,
-                                  child: const Center(
-                                    child: Icon(
-                                      Icons.broken_image,
-                                      size: 48,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                );
-                              },
-                            );
-                          },
-                        );
-                      } else {
-                        // 네트워크 이미지 로드
-                        return Image.network(
-                          imageData['url'] as String,
-                          fit: BoxFit.cover,
-                          loadingBuilder: (context, child, loadingProgress) {
-                            if (loadingProgress == null) return child;
-                            return Center(
-                              child: SizedBox(
-                                width: 30,
-                                height: 30,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  value: loadingProgress.expectedTotalBytes !=
-                                          null
-                                      ? loadingProgress.cumulativeBytesLoaded /
-                                          loadingProgress.expectedTotalBytes!
-                                      : null,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      isCurrentUserSender
-                                          ? Colors.blue.shade200
-                                          : Colors.grey.shade400),
-                                ),
-                              ),
-                            );
-                          },
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              width: 150,
-                              height: 100,
-                              color: Colors.grey.shade300,
-                              child: const Center(
-                                child: Icon(
-                                  Icons.broken_image,
-                                  size: 48,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            );
-                          },
-                        );
-                      }
-                    },
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  arrivalData['message'] ?? '안전하게 귀가했습니다',
+                  style: TextStyle(
+                    color: isCurrentUserSender
+                        ? Colors.white
+                        : Colors.blue.shade800,
+                    fontSize: 15,
                   ),
-
-                  // 이미지 제목 (옵션)
-                  if (imageData.containsKey('caption') &&
-                      imageData['caption'] != null &&
-                      imageData['caption'] != '이미지 공유')
-                    Positioned(
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 4,
-                          horizontal: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.topCenter,
-                            colors: [
-                              Colors.black.withOpacity(0.7),
-                              Colors.transparent,
-                            ],
-                          ),
-                        ),
+                ),
+                const SizedBox(height: 8),
+                // 주소 표시
+                if (arrivalData['address'] != null)
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.location_on,
+                        size: 14,
+                        color: isCurrentUserSender
+                            ? Colors.white.withOpacity(0.9)
+                            : Colors.blue.shade800.withOpacity(0.8),
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
                         child: Text(
-                          imageData['caption'] as String,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
+                          arrivalData['address'],
+                          style: TextStyle(
+                            color: isCurrentUserSender
+                                ? Colors.white.withOpacity(0.9)
+                                : Colors.blue.shade800.withOpacity(0.8),
+                            fontSize: 13,
                           ),
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                    ],
+                  ),
+                // 위치 이름 표시
+                if (arrivalData['name'] != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4.0),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.home,
+                          size: 14,
+                          color: isCurrentUserSender
+                              ? Colors.white.withOpacity(0.9)
+                              : Colors.blue.shade800.withOpacity(0.8),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          arrivalData['name'],
+                          style: TextStyle(
+                            color: isCurrentUserSender
+                                ? Colors.white.withOpacity(0.9)
+                                : Colors.blue.shade800.withOpacity(0.8),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
-                ],
-              ),
+                  ),
+                const SizedBox(height: 8),
+                // 지도에서 보기 버튼
+                Center(
+                  child: GestureDetector(
+                    onTap: () => _openInExternalMap({
+                      'latitude': arrivalData['latitude'],
+                      'longitude': arrivalData['longitude'],
+                    }),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 6, horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: isCurrentUserSender
+                            ? Colors.white.withOpacity(0.25)
+                            : Colors.blue.shade800.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.map,
+                            size: 16,
+                            color: isCurrentUserSender
+                                ? Colors.white
+                                : Colors.blue.shade800,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '지도에서 보기',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: isCurrentUserSender
+                                  ? Colors.white
+                                  : Colors.blue.shade800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         );
       } else {
-        messageContent = Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade300,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Icon(Icons.broken_image, size: 18),
-              SizedBox(width: 8),
-              Text('이미지를 표시할 수 없습니다'),
-            ],
+        // 데이터 파싱 실패 시 기본 텍스트 표시
+        messageContent = Text(
+          '귀가 알림 정보를 표시할 수 없습니다',
+          style: TextStyle(
+            color: isCurrentUserSender ? Colors.white : Colors.black87,
+            fontSize: 15,
           ),
         );
       }
@@ -2130,113 +2009,66 @@ class _MessageDetailViewState extends State<MessageDetailView> {
   }
 
   // 지도 앱에서 바로 열기
-  Future<void> _openInExternalMap(Map<String, dynamic> locationData) async {
+  void _openInExternalMap(Map<String, dynamic> locationData) {
     try {
       final double latitude = double.parse(locationData['latitude'].toString());
       final double longitude =
           double.parse(locationData['longitude'].toString());
 
-      // 지도 URL 생성
-      String urlString;
+      // 지도 앱 열기 - iOS는 Apple Maps, Android는 Google Maps
+      final String url = defaultTargetPlatform == TargetPlatform.iOS
+          ? 'https://maps.apple.com/?ll=$latitude,$longitude'
+          : 'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
 
-      if (Theme.of(context).platform == TargetPlatform.iOS) {
-        // iOS에서는 Apple Maps URL 스킴 사용
-        urlString =
-            'https://maps.apple.com/?ll=$latitude,$longitude&q=${Uri.encodeComponent(locationData['message'] ?? '공유된 위치')}';
-      } else {
-        // Android 및 기타 플랫폼에서는 Google Maps URL 스킴 사용
-        urlString =
-            'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
-      }
-
-      // 진동 피드백
-      HapticFeedback.mediumImpact();
-
-      // URL 파싱
-      final Uri url = Uri.parse(urlString);
-
-      // URL 실행 시도
-      final bool canLaunch = await canLaunchUrl(url);
-      if (canLaunch) {
-        await launchUrl(url, mode: LaunchMode.externalApplication);
-      } else {
-        if (mounted) {
-          Get.snackbar(
-            '오류',
-            '지도 앱을 열 수 없습니다',
-            snackPosition: SnackPosition.BOTTOM,
-            backgroundColor: Colors.red.withOpacity(0.8),
-            colorText: Colors.white,
-            duration: const Duration(seconds: 3),
-          );
-        }
-      }
+      launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     } catch (e) {
       debugPrint('⚠️ 외부 지도 앱 열기 오류: $e');
+      Get.snackbar(
+        '오류',
+        '지도를 열 수 없습니다',
+        snackPosition: SnackPosition.BOTTOM,
+      );
     }
   }
 
-  // 위치를 지도에 저장
-  Future<void> _saveLocationToMap(Message message,
-      Map<String, dynamic> locationData, bool isCurrentUserSender) async {
+  // 귀가 알림 위치 정보를 지도에서 표시
+  void _openArrivalLocation(Message message, Map<String, dynamic> arrivalData,
+      bool isCurrentUserSender) {
+    if (!mounted) return;
+
     try {
-      // 진동 피드백
-      HapticFeedback.mediumImpact();
+      final double latitude = double.parse(arrivalData['latitude'].toString());
+      final double longitude =
+          double.parse(arrivalData['longitude'].toString());
+      final String address = arrivalData['address'] ?? '위치 정보 없음';
+      final String locationName = arrivalData['name'] ?? '귀가 위치';
 
-      // 공유 위치 저장 모델 생성
-      final sharedLocation = SharedLocationModel(
-        id: const Uuid().v4(),
-        senderId: message.senderId,
-        senderName:
-            isCurrentUserSender ? '나' : _getRecipientName(message.senderId),
-        latitude: double.parse(locationData['latitude'].toString()),
-        longitude: double.parse(locationData['longitude'].toString()),
-        message: locationData['message'] ?? '공유된 위치',
-        timestamp: message.timestamp,
-        messageId: message.id,
+      // 발신자 이름 결정
+      final String senderName =
+          isCurrentUserSender ? '나' : _getRecipientName(message.senderId);
+
+      // 지도 화면으로 이동
+      Get.to(
+        () => SharedLocationView(
+          latitude: latitude,
+          longitude: longitude,
+          message: '${senderName}님의 귀가 위치',
+          timestamp: message.timestamp,
+          senderName: senderName,
+          address: address,
+          locationName: locationName,
+          fromMessageDetail: true,
+        ),
+        transition: Transition.rightToLeft,
+        duration: const Duration(milliseconds: 300),
       );
-
-      // 위치 서비스에 저장
-      final success = await _locationService.saveSharedLocation(sharedLocation);
-
-      if (success && mounted) {
-        Get.snackbar(
-          '저장 완료',
-          '위치가 지도에 저장되었습니다. 지도 메뉴에서 확인할 수 있습니다.',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green.shade600,
-          colorText: Colors.white,
-          margin: const EdgeInsets.all(8),
-          borderRadius: 8,
-          duration: const Duration(seconds: 2),
-        );
-      } else {
-        Get.snackbar(
-          '저장 실패',
-          '위치를 지도에 저장하지 못했습니다.',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red.shade600,
-          colorText: Colors.white,
-          margin: const EdgeInsets.all(8),
-          borderRadius: 8,
-          duration: const Duration(seconds: 2),
-        );
-      }
     } catch (e) {
-      debugPrint('⚠️ 위치 저장 오류: $e');
-
-      if (mounted) {
-        Get.snackbar(
-          '저장 오류',
-          '위치를 저장하는 중 오류가 발생했습니다',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red.shade600,
-          colorText: Colors.white,
-          margin: const EdgeInsets.all(8),
-          borderRadius: 8,
-          duration: const Duration(seconds: 2),
-        );
-      }
+      debugPrint('⚠️ 귀가 알림 위치 표시 오류: $e');
+      Get.snackbar(
+        '오류',
+        '귀가 위치를 표시할 수 없습니다',
+        snackPosition: SnackPosition.BOTTOM,
+      );
     }
   }
 
@@ -2724,138 +2556,15 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       return;
     }
 
-    try {
-      // 이미지 소스 선택 다이얼로그 표시
-      showModalBottomSheet(
-        context: context,
-        builder: (BuildContext context) {
-          return SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                ListTile(
-                  leading: const Icon(Icons.photo_camera),
-                  title: const Text('카메라로 촬영'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _getAndSendImage(ImageSource.camera);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.photo_library),
-                  title: const Text('갤러리에서 선택'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _getAndSendImage(ImageSource.gallery);
-                  },
-                ),
-              ],
-            ),
-          );
-        },
-      );
-    } catch (e) {
-      debugPrint('⚠️ 이미지 선택 다이얼로그 오류: $e');
-      if (mounted) {
-        _showErrorSnackBar('이미지 공유 중 오류가 발생했습니다');
-      }
-    }
-  }
-
-  // 이미지 선택 및 전송
-  Future<void> _getAndSendImage(ImageSource source) async {
-    if (!mounted) return;
-
-    try {
-      // 로딩 표시
-      Get.dialog(
-        const Center(
-          child: CircularProgressIndicator(),
-        ),
-        barrierDismissible: false,
-      );
-
-      // 로그인되지 않은 경우 테스트 로그인 시도 (개발용)
-      if (_authService.uid == null || _authService.uid!.isEmpty) {
-        debugPrint('⚠️ 로그인되지 않음 - 테스트 계정으로 자동 로그인 시도');
-        await _authService.login('test@example.com', 'Password1!');
-
-        // 로그인 후 mounted 체크
-        if (!mounted) {
-          Get.back(); // 로딩 종료
-          return;
-        }
-      }
-
-      // 이미지 선택
-      final XFile? pickedFile = await _imagePicker.pickImage(
-        source: source,
-        imageQuality: 70, // 이미지 품질 조정 (최적화)
-      );
-
-      if (pickedFile == null) {
-        // 이미지 선택 취소됨
-        if (Get.isDialogOpen == true) Get.back();
-        return;
-      }
-
-      // 파일 경로 및 이름 설정
-      final String fileName =
-          'chat_image_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final File imageFile = File(pickedFile.path);
-
-      // Firebase Storage에 이미지 업로드
-      final storageRef = FirebaseStorage.instance
-          .ref()
-          .child('chat_images')
-          .child(_authService.uid!)
-          .child(fileName);
-
-      final UploadTask uploadTask = storageRef.putFile(imageFile);
-      final TaskSnapshot taskSnapshot = await uploadTask;
-
-      // 업로드된 이미지 URL 가져오기
-      final String imageUrl = await taskSnapshot.ref.getDownloadURL();
-
-      // 이미지 메시지 데이터 생성
-      final imageData = {'type': 'image', 'url': imageUrl, 'caption': '이미지 공유'};
-
-      // 이미지 메시지 전송
-      final success = await _messageService.sendMessage(
-        receiverId: widget.userId,
-        content: jsonEncode(imageData),
-        messageType: 'image',
-      );
-
-      // 로딩 종료
-      if (Get.isDialogOpen == true) Get.back();
-
-      if (success) {
-        // 성공 메시지
-        Get.snackbar(
-          '이미지 공유 성공',
-          '이미지가 전송되었습니다',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green.shade600,
-          colorText: Colors.white,
-          duration: const Duration(seconds: 2),
-        );
-
-        // 스크롤을 맨 아래로 이동
-        _safelyScrollToBottom();
-      } else {
-        // 실패 메시지
-        _showErrorSnackBar('이미지 전송에 실패했습니다');
-      }
-    } catch (e) {
-      // 로딩 종료
-      if (Get.isDialogOpen == true) Get.back();
-
-      debugPrint('⚠️ 이미지 공유 중 오류 발생: $e');
-      if (mounted) {
-        _showErrorSnackBar('이미지 공유 중 오류가 발생했습니다: ${e.toString()}');
-      }
-    }
+    // 기능 준비 중 메시지 표시
+    Get.snackbar(
+      '기능 준비 중',
+      '이미지 공유 기능은 현재 준비 중입니다.',
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: Colors.orange.shade700,
+      colorText: Colors.white,
+      duration: const Duration(seconds: 3),
+    );
   }
 
   // 이미지 타입 메시지 파싱
@@ -2864,22 +2573,6 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       return jsonDecode(content) as Map<String, dynamic>;
     } catch (e) {
       debugPrint('⚠️ 이미지 메시지 파싱 오류: $e');
-      return null;
-    }
-  }
-
-  // 캐시된 메시지 이미지 가져오기
-  Future<String?> _getCachedMessageImage(
-      String messageId, String imageUrl) async {
-    try {
-      final imageCacheService = Get.find<ImageCacheService>();
-      final cachedImagePath = await imageCacheService.cacheMessageImage(
-        imageUrl,
-        messageId,
-      );
-      return cachedImagePath;
-    } catch (e) {
-      debugPrint('⚠️ 메시지 이미지 캐싱 오류: $e');
       return null;
     }
   }
@@ -2978,5 +2671,103 @@ class _MessageDetailViewState extends State<MessageDetailView> {
         ],
       ),
     );
+  }
+
+  // 귀가 알림 메시지 파싱
+  Map<String, dynamic>? _parseArrivalNotificationMessage(String content) {
+    try {
+      // JSON 형식인지 확인
+      if (content.trim().startsWith('{') && content.trim().endsWith('}')) {
+        final Map<String, dynamic> result = jsonDecode(content);
+        debugPrint('✅ 귀가 알림 메시지 파싱 성공: $result');
+        return result;
+      } else {
+        // JSON 형식이 아닌 경우 기본 데이터 반환
+        debugPrint('⚠️ 귀가 알림 메시지가 JSON 형식이 아닙니다: $content');
+        return {
+          'message': content,
+          'latitude': 0.0,
+          'longitude': 0.0,
+          'name': '알 수 없는 위치',
+          'address': '위치 정보 없음',
+        };
+      }
+    } catch (e) {
+      debugPrint('⚠️ 귀가 알림 메시지 파싱 오류: $e');
+      debugPrint('⚠️ 오류가 발생한 메시지 내용: $content');
+
+      // 오류 발생 시 기본 데이터 반환
+      return {
+        'message': '귀가 알림 메시지',
+        'latitude': 0.0,
+        'longitude': 0.0,
+        'name': '알 수 없는 위치',
+        'address': '위치 정보를 불러올 수 없습니다',
+      };
+    }
+  }
+
+  // 위치를 지도에 저장
+  Future<void> _saveLocationToMap(Message message,
+      Map<String, dynamic> locationData, bool isCurrentUserSender) async {
+    try {
+      // 진동 피드백
+      HapticFeedback.mediumImpact();
+
+      // 공유 위치 저장 모델 생성
+      final sharedLocation = SharedLocationModel(
+        id: const Uuid().v4(),
+        senderId: message.senderId,
+        senderName:
+            isCurrentUserSender ? '나' : _getRecipientName(message.senderId),
+        latitude: double.parse(locationData['latitude'].toString()),
+        longitude: double.parse(locationData['longitude'].toString()),
+        message: locationData['message'] ?? '공유된 위치',
+        timestamp: message.timestamp,
+        messageId: message.id,
+      );
+
+      // 위치 서비스에 저장
+      final success = await _locationService.saveSharedLocation(sharedLocation);
+
+      if (success && mounted) {
+        Get.snackbar(
+          '저장 완료',
+          '위치가 지도에 저장되었습니다. 지도 메뉴에서 확인할 수 있습니다.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green.shade600,
+          colorText: Colors.white,
+          margin: const EdgeInsets.all(8),
+          borderRadius: 8,
+          duration: const Duration(seconds: 2),
+        );
+      } else {
+        Get.snackbar(
+          '저장 실패',
+          '위치를 지도에 저장하지 못했습니다.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.shade600,
+          colorText: Colors.white,
+          margin: const EdgeInsets.all(8),
+          borderRadius: 8,
+          duration: const Duration(seconds: 2),
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ 위치 저장 오류: $e');
+
+      if (mounted) {
+        Get.snackbar(
+          '저장 오류',
+          '위치를 저장하는 중 오류가 발생했습니다',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.shade600,
+          colorText: Colors.white,
+          margin: const EdgeInsets.all(8),
+          borderRadius: 8,
+          duration: const Duration(seconds: 2),
+        );
+      }
+    }
   }
 }

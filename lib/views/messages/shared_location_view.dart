@@ -18,6 +18,8 @@ class SharedLocationView extends StatefulWidget {
   final DateTime timestamp;
   final String senderName;
   final bool fromMessageDetail; // 메시지 상세 화면에서 직접 넘어왔는지 여부
+  final String? address; // 주소 정보 추가
+  final String? locationName; // 위치 이름 추가
 
   // URL 파싱을 통한 위치 열기를 위한 정적 메서드 추가
   static Future<void> openFromMapsUrl(String url) async {
@@ -95,6 +97,8 @@ class SharedLocationView extends StatefulWidget {
     required this.timestamp,
     required this.senderName,
     this.fromMessageDetail = true, // 기본값은 메시지 상세에서 온 것으로 설정
+    this.address,
+    this.locationName,
   }) : super(key: key);
 
   @override
