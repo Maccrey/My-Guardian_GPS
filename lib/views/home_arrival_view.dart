@@ -523,7 +523,7 @@ class _HomeArrivalViewState extends State<HomeArrivalView> {
 
               // 알림 방법 선택
               Card(
-                margin: const EdgeInsets.only(bottom: 16),
+                margin: const EdgeInsets.only(bottom: 12),
                 child: Padding(
                   padding: const EdgeInsets.all(12.0),
                   child: Column(
@@ -533,7 +533,7 @@ class _HomeArrivalViewState extends State<HomeArrivalView> {
                         '알림 방법 선택:',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
                       Obx(() => Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
@@ -652,12 +652,12 @@ class _HomeArrivalViewState extends State<HomeArrivalView> {
                         '알림 받을 사람:',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
 
                       // 선택된 사용자 표시
                       if (_selectedUser.value != null)
                         Card(
-                          margin: const EdgeInsets.only(bottom: 16),
+                          margin: const EdgeInsets.only(bottom: 8),
                           child: ListTile(
                             leading: CircleAvatar(
                               backgroundImage: NetworkImage(
@@ -719,27 +719,32 @@ class _HomeArrivalViewState extends State<HomeArrivalView> {
                                   child: Text('검색 결과가 없습니다.'),
                                 ),
                               )
-                            else
+                            else if (_searchResults.isNotEmpty)
                               SizedBox(
-                                height: 150,
-                                child: ListView.builder(
-                                  itemCount: _searchResults.length,
-                                  itemBuilder: (context, index) {
-                                    final user = _searchResults[index];
-                                    return ListTile(
-                                      leading: CircleAvatar(
-                                        backgroundImage: NetworkImage(
-                                            user.profileImageUrl ?? ''),
-                                      ),
-                                      title: Text(user.nickname ?? '이름 없음'),
-                                      subtitle: Text(user.email ?? '이메일 없음'),
-                                      onTap: () {
-                                        _selectedUser.value = user;
-                                        _searchController.clear();
-                                        _searchResults.clear();
-                                      },
-                                    );
-                                  },
+                                height: 120,
+                                child: Card(
+                                  margin: EdgeInsets.zero,
+                                  child: ListView.builder(
+                                    shrinkWrap: true,
+                                    itemCount: _searchResults.length,
+                                    itemBuilder: (context, index) {
+                                      final user = _searchResults[index];
+                                      return ListTile(
+                                        dense: true,
+                                        leading: CircleAvatar(
+                                          backgroundImage: NetworkImage(
+                                              user.profileImageUrl ?? ''),
+                                        ),
+                                        title: Text(user.nickname ?? '이름 없음'),
+                                        subtitle: Text(user.email ?? '이메일 없음'),
+                                        onTap: () {
+                                          _selectedUser.value = user;
+                                          _searchController.clear();
+                                          _searchResults.clear();
+                                        },
+                                      );
+                                    },
+                                  ),
                                 ),
                               ),
                           ],
@@ -756,12 +761,12 @@ class _HomeArrivalViewState extends State<HomeArrivalView> {
                         '알림 받을 긴급 연락처:',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
 
                       // 선택된 긴급 연락처 표시
                       if (_selectedEmergencyContact.value != null)
                         Card(
-                          margin: const EdgeInsets.only(bottom: 16),
+                          margin: const EdgeInsets.only(bottom: 8),
                           child: ListTile(
                             leading: const CircleAvatar(
                               child: Icon(Icons.contact_phone),
@@ -780,8 +785,9 @@ class _HomeArrivalViewState extends State<HomeArrivalView> {
                       else
                         // 긴급 연락처 목록 - 사용자 정의 연락처만 표시 (기본 연락처 제외)
                         SizedBox(
-                          height: 200,
+                          height: 160,
                           child: Card(
+                            margin: EdgeInsets.zero,
                             child: _emergencyContactService
                                     .customContacts.isEmpty
                                 ? Center(
@@ -811,12 +817,14 @@ class _HomeArrivalViewState extends State<HomeArrivalView> {
                                     ),
                                   )
                                 : ListView.builder(
+                                    shrinkWrap: true,
                                     itemCount: _emergencyContactService
                                         .customContacts.length,
                                     itemBuilder: (context, index) {
                                       final contact = _emergencyContactService
                                           .customContacts[index];
                                       return ListTile(
+                                        dense: true,
                                         leading: CircleAvatar(
                                           backgroundColor:
                                               Colors.green.shade100,
@@ -841,22 +849,29 @@ class _HomeArrivalViewState extends State<HomeArrivalView> {
                 }
               }),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
 
               // 메시지 입력
-              TextField(
-                controller: _messageController,
-                decoration: InputDecoration(
-                  labelText: '메시지 (선택사항)',
-                  hintText: '예: 집에 안전하게 도착했어요!',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
+              Card(
+                margin: EdgeInsets.zero,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 2.0, vertical: 4.0),
+                  child: TextField(
+                    controller: _messageController,
+                    decoration: InputDecoration(
+                      labelText: '메시지 (선택사항)',
+                      hintText: '예: 집에 안전하게 도착했어요!',
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12.0, vertical: 8.0),
+                    ),
+                    maxLines: 2,
                   ),
                 ),
-                maxLines: 3,
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
               // 알림 보내기 버튼
               Obx(() {
