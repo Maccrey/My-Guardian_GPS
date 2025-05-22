@@ -267,17 +267,25 @@ class LocationSharingService extends GetxController {
       }
 
       if (sharedLocation != null) {
-        // Firestore 문서 삭제
-        print('🗑️ [서비스] Firestore 데이터 삭제 시도: locationId=${sharedLocation.id}');
+        // Firestore 문서 삭제 대신 비활성화로 변경 (60분 보존)
+        print('🔄 [서비스] Firestore 데이터 비활성화: locationId=${sharedLocation.id}');
         try {
+          final endTime = DateTime.now();
+          final retentionTime = endTime.add(Duration(minutes: 60)); // 60분 보존
+
           await _firestore
               .collection('location_sharing')
               .doc(sharedLocation.id)
-              .delete();
-          print('✅ [서비스] Firestore 위치 공유 데이터 삭제 성공');
+              .update({
+            'isActive': false,
+            'endTime': endTime,
+            'retentionTime': retentionTime, // 보존 만료 시간
+            'lastUpdated': FieldValue.serverTimestamp(),
+          });
+          print('✅ [서비스] Firestore 위치 공유 데이터 비활성화 성공 (60분 보존)');
         } catch (e) {
-          print('⚠️ [서비스] Firestore 데이터 삭제 오류: $e');
-          // 삭제 실패해도 진행 (로컬 상태는 업데이트)
+          print('⚠️ [서비스] Firestore 데이터 비활성화 오류: $e');
+          // 비활성화 실패해도 진행 (로컬 상태는 업데이트)
         }
 
         // 상태 업데이트
@@ -594,17 +602,16 @@ class LocationSharingService extends GetxController {
       print('📤 [위치 공유] Firebase에 위치 데이터 업데이트 시도...');
 
       // 먼저 문서가 존재하는지 확인
-      final docExists = await _firestore
+      final docSnapshot = await _firestore
           .collection('location_sharing')
           .doc(sharedLocation.id)
           .get()
-          .then((doc) => doc.exists)
           .catchError((e) {
         print('⚠️ [위치 공유] 문서 존재 확인 오류: $e');
-        return false;
+        return null;
       });
 
-      if (!docExists) {
+      if (docSnapshot == null || !docSnapshot.exists) {
         print('⚠️ [위치 공유] Firebase 문서가 존재하지 않음: 위치 공유가 이미 중지됨');
         // 로컬 상태 정리 - 문서가 없다면 위치 공유가 중지된 것으로 간주
         _activeSharing.remove(receiverId);
@@ -621,6 +628,58 @@ class LocationSharingService extends GetxController {
         // 로컬 저장소 업데이트
         await _saveActiveSharingState();
         return;
+      }
+
+      // 문서가 있지만 이미 비활성화된 경우, 60분 이내인지 확인
+      final docData = docSnapshot.data();
+      if (docData != null && docData['isActive'] == false) {
+        // 비활성화된 문서인 경우 보존 시간 확인
+        final retentionTime = docData['retentionTime'];
+        if (retentionTime != null) {
+          // Timestamp나 DateTime 객체로 변환
+          DateTime retentionDateTime;
+          if (retentionTime is Timestamp) {
+            retentionDateTime = retentionTime.toDate();
+          } else if (retentionTime is DateTime) {
+            retentionDateTime = retentionTime;
+          } else {
+            // 기본값으로 현재 시간 설정 (타입 오류 방지)
+            retentionDateTime = DateTime.now();
+          }
+
+          // 보존 시간이 지났는지 확인
+          if (DateTime.now().isAfter(retentionDateTime)) {
+            print('⚠️ [위치 공유] 보존 기간(60분) 만료: 위치 업데이트 중단');
+            // 로컬 상태 정리
+            _activeSharing.remove(receiverId);
+            sharingToUserIds.remove(receiverId);
+
+            if (_activeSharing.isEmpty) {
+              isSharingLocation.value = false;
+            }
+
+            // 위치 추적 중지
+            _stopPositionTracking(receiverId);
+            _stopFallbackPositionTimer(receiverId);
+
+            // 로컬 저장소 업데이트
+            await _saveActiveSharingState();
+
+            // 보존 기간이 지난 문서 삭제
+            try {
+              await _firestore
+                  .collection('location_sharing')
+                  .doc(sharedLocation.id)
+                  .delete();
+              print('🗑️ [위치 공유] 보존 기간 만료된 문서 삭제 완료');
+            } catch (e) {
+              print('⚠️ [위치 공유] 만료 문서 삭제 오류: $e');
+            }
+            return;
+          } else {
+            print('📌 [위치 공유] 비활성화된 공유이지만 보존 기간(60분) 내: 업데이트 계속');
+          }
+        }
       }
 
       // Firestore에 위치 업데이트

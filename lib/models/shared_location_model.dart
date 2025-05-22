@@ -13,6 +13,7 @@ class SharedLocation {
   final bool isActive;
   final DateTime startTime;
   final DateTime? endTime;
+  final DateTime? retentionTime;
   final String message; // 위치 공유 메시지
   final String senderName; // 발신자 이름
 
@@ -27,6 +28,7 @@ class SharedLocation {
     required this.isActive,
     required this.startTime,
     this.endTime,
+    this.retentionTime,
     this.message = '', // 기본값 추가
     this.senderName = '', // 기본값 추가
   });
@@ -36,7 +38,7 @@ class SharedLocation {
 
   // SharedLocation을 JSON으로 변환
   Map<String, dynamic> toJson() {
-    return {
+    final Map<String, dynamic> data = {
       'id': id,
       'senderId': senderId,
       'receiverId': receiverId,
@@ -46,26 +48,47 @@ class SharedLocation {
       'timestamp': timestamp.millisecondsSinceEpoch,
       'isActive': isActive,
       'startTime': startTime.millisecondsSinceEpoch,
-      'endTime': endTime?.millisecondsSinceEpoch,
-      'message': message, // 추가
-      'senderName': senderName, // 추가
     };
+
+    // 선택적 필드 추가
+    if (endTime != null) {
+      data['endTime'] = endTime!.millisecondsSinceEpoch;
+    }
+
+    if (retentionTime != null) {
+      data['retentionTime'] = retentionTime!.millisecondsSinceEpoch;
+    }
+
+    return data;
   }
 
   // JSON에서 SharedLocation으로 변환
   factory SharedLocation.fromJson(Map<String, dynamic> json) {
     return SharedLocation(
-      id: json['id'],
-      senderId: json['senderId'],
-      receiverId: json['receiverId'],
+      id: json['id'] ?? '',
+      senderId: json['senderId'] ?? '',
+      receiverId: json['receiverId'] ?? '',
       receiverType: json['receiverType'] ?? 'emergency_contact',
-      latitude: json['latitude'],
-      longitude: json['longitude'],
-      timestamp: DateTime.fromMillisecondsSinceEpoch(json['timestamp']),
-      isActive: json['isActive'],
-      startTime: DateTime.fromMillisecondsSinceEpoch(json['startTime']),
+      latitude: (json['latitude'] ?? 0.0).toDouble(),
+      longitude: (json['longitude'] ?? 0.0).toDouble(),
+      timestamp: json['timestamp'] is DateTime
+          ? json['timestamp']
+          : DateTime.fromMillisecondsSinceEpoch(
+              json['timestamp'] ?? DateTime.now().millisecondsSinceEpoch),
+      isActive: json['isActive'] ?? true,
+      startTime: json['startTime'] is DateTime
+          ? json['startTime']
+          : DateTime.fromMillisecondsSinceEpoch(
+              json['startTime'] ?? DateTime.now().millisecondsSinceEpoch),
       endTime: json['endTime'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(json['endTime'])
+          ? (json['endTime'] is DateTime
+              ? json['endTime']
+              : DateTime.fromMillisecondsSinceEpoch(json['endTime']))
+          : null,
+      retentionTime: json['retentionTime'] != null
+          ? (json['retentionTime'] is DateTime
+              ? json['retentionTime']
+              : DateTime.fromMillisecondsSinceEpoch(json['retentionTime']))
           : null,
       message: json['message'] ?? '', // 추가
       senderName: json['senderName'] ?? '', // 추가
@@ -74,7 +97,33 @@ class SharedLocation {
 
   // Firestore DocumentSnapshot에서 SharedLocation으로 변환
   factory SharedLocation.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    final data = doc.data() as Map<String, dynamic>;
+
+    final timestamp = data['timestamp'] is Timestamp
+        ? (data['timestamp'] as Timestamp).toDate()
+        : DateTime.fromMillisecondsSinceEpoch(
+            data['timestamp'] ?? DateTime.now().millisecondsSinceEpoch);
+
+    final startTime = data['startTime'] is Timestamp
+        ? (data['startTime'] as Timestamp).toDate()
+        : DateTime.fromMillisecondsSinceEpoch(
+            data['startTime'] ?? DateTime.now().millisecondsSinceEpoch);
+
+    // 선택적 필드 처리
+    DateTime? endTime;
+    if (data['endTime'] != null) {
+      endTime = data['endTime'] is Timestamp
+          ? (data['endTime'] as Timestamp).toDate()
+          : DateTime.fromMillisecondsSinceEpoch(data['endTime']);
+    }
+
+    DateTime? retentionTime;
+    if (data['retentionTime'] != null) {
+      retentionTime = data['retentionTime'] is Timestamp
+          ? (data['retentionTime'] as Timestamp).toDate()
+          : DateTime.fromMillisecondsSinceEpoch(data['retentionTime']);
+    }
+
     return SharedLocation(
       id: doc.id,
       senderId: data['senderId'] ?? '',
@@ -82,22 +131,11 @@ class SharedLocation {
       receiverType: data['receiverType'] ?? 'emergency_contact',
       latitude: (data['latitude'] ?? 0.0).toDouble(),
       longitude: (data['longitude'] ?? 0.0).toDouble(),
-      timestamp: data['timestamp'] != null
-          ? (data['timestamp'] is Timestamp
-              ? (data['timestamp'] as Timestamp).toDate()
-              : DateTime.fromMillisecondsSinceEpoch(data['timestamp']))
-          : DateTime.now(),
-      isActive: data['isActive'] ?? false,
-      startTime: data['startTime'] != null
-          ? (data['startTime'] is Timestamp
-              ? (data['startTime'] as Timestamp).toDate()
-              : DateTime.fromMillisecondsSinceEpoch(data['startTime']))
-          : DateTime.now(),
-      endTime: data['endTime'] != null
-          ? (data['endTime'] is Timestamp
-              ? (data['endTime'] as Timestamp).toDate()
-              : DateTime.fromMillisecondsSinceEpoch(data['endTime']))
-          : null,
+      timestamp: timestamp,
+      isActive: data['isActive'] ?? true,
+      startTime: startTime,
+      endTime: endTime,
+      retentionTime: retentionTime,
       message: data['message'] ?? '', // 추가
       senderName: data['senderName'] ?? '', // 추가
     );
@@ -133,6 +171,7 @@ class SharedLocation {
       isActive: this.isActive,
       startTime: this.startTime,
       endTime: this.endTime,
+      retentionTime: this.retentionTime,
       message: this.message, // 추가
       senderName: this.senderName, // 추가
     );
@@ -151,6 +190,7 @@ class SharedLocation {
       isActive: false,
       startTime: this.startTime,
       endTime: DateTime.now(),
+      retentionTime: this.retentionTime,
       message: this.message, // 추가
       senderName: this.senderName, // 추가
     );
