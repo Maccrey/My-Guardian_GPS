@@ -334,11 +334,13 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
                       () {
                         // 메시지 화면으로 이동
                         try {
+                          // 메시지 화면으로 이동하기 전에 읽지 않은 메시지 수 업데이트
+                          final messageService = Get.find<MessageService>();
+                          messageService.updateUnreadCount();
+
                           Get.to(() => const MessagesListView());
                         } catch (e) {
                           debugPrint('⚠️ 메시지 화면으로 이동 중 오류: $e');
-
-                          // 스낵바 표시 (context 참조 없음)
                           Get.snackbar(
                             '오류',
                             '메시지 화면을 열 수 없습니다',
@@ -446,6 +448,10 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
             case 2: // 메시지
               // 메시지 화면으로 이동
               try {
+                // 메시지 화면으로 이동하기 전에 읽지 않은 메시지 수 업데이트
+                final messageService = Get.find<MessageService>();
+                messageService.updateUnreadCount();
+
                 Get.to(() => const MessagesListView());
               } catch (e) {
                 debugPrint('⚠️ 메시지 화면으로 이동 중 오류: $e');

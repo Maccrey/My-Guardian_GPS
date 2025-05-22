@@ -487,13 +487,18 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       // 읽음 처리 후 로그 추가
       debugPrint('✅ 메시지 읽음 처리 완료');
 
-      // 읽음 처리 후 메시지 새로고침 요청 제거 - 무한 루프 방지
-      // Future.delayed(const Duration(milliseconds: 500), () {
-      //   if (mounted) {
-      //     _messageService.refreshMessages();
-      //     debugPrint('🔄 읽음 처리 후 메시지 목록 새로고침 요청');
-      //   }
-      // });
+      // 읽음 처리 후 메시지 새로고침 및 UI 업데이트를 위해 메시지 목록 갱신
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          // 메시지 목록 강제 갱신 (읽음 상태 즉시 반영)
+          _messageService.messages.refresh();
+
+          // 읽지 않은 메시지 수 강제 업데이트
+          _messageService.updateUnreadCount();
+
+          debugPrint('🔄 읽음 처리 후 UI 업데이트 완료');
+        }
+      });
     } catch (e) {
       debugPrint('⚠️ 메시지 읽음 상태 변경 중 오류 발생: $e');
     }

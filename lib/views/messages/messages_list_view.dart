@@ -25,6 +25,9 @@ class _MessagesListViewState extends State<MessagesListView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _refreshMessages();
+
+        // 화면에 진입할 때 읽지 않은 메시지 수 업데이트
+        _messageService.updateUnreadCount();
       }
     });
   }
@@ -76,6 +79,9 @@ class _MessagesListViewState extends State<MessagesListView> {
       } else {
         debugPrint('✅ 메시지 새로고침 성공: ${_messageService.messages.length}개 메시지');
 
+        // 메시지 목록 화면이 열렸을 때 모든 읽지 않은 메시지를 읽음 처리
+        _markAllMessagesAsRead();
+
         if (mounted && _messageService.messages.isEmpty) {
           Get.snackbar(
             '메시지 없음',
@@ -107,6 +113,52 @@ class _MessagesListViewState extends State<MessagesListView> {
       setState(() {
         // 대화 목록 새로고침
       });
+    }
+  }
+
+  // 모든 읽지 않은 메시지를 읽음 처리
+  Future<void> _markAllMessagesAsRead() async {
+    if (!mounted) return;
+
+    try {
+      final currentUserId = _authService.uid;
+      if (currentUserId == null || currentUserId.isEmpty) {
+        debugPrint('⚠️ 로그인되어 있지 않아 읽음 처리를 중단합니다.');
+        return;
+      }
+
+      // 읽지 않은 모든 메시지 ID 찾기 (내가 받은 메시지만)
+      final unreadMessageIds = _messageService.messages
+          .where((m) => !m.isRead && m.receiverId == currentUserId)
+          .map((m) => m.id)
+          .toList();
+
+      if (unreadMessageIds.isEmpty) {
+        debugPrint('✅ 읽지 않은 메시지가 없습니다.');
+        return;
+      }
+
+      debugPrint('🔄 메시지 목록 화면에서 ${unreadMessageIds.length}개의 메시지를 읽음 처리합니다.');
+
+      // 읽음 처리
+      await _messageService.markMultipleMessagesAsRead(unreadMessageIds);
+
+      // 메시지 목록 갱신 및 읽지 않은 메시지 수 업데이트
+      _messageService.messages.refresh();
+      _messageService.updateUnreadCount();
+
+      debugPrint('✅ 모든 메시지 읽음 처리 완료');
+
+      // 지연 후 한번 더 업데이트 (UI 갱신이 확실하게 되도록)
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _messageService.updateUnreadCount();
+          setState(() {});
+          debugPrint('🔄 지연 업데이트 완료');
+        }
+      });
+    } catch (e) {
+      debugPrint('⚠️ 메시지 일괄 읽음 처리 중 오류: $e');
     }
   }
 
@@ -281,6 +333,56 @@ class _MessagesListViewState extends State<MessagesListView> {
     } else {
       // 기타 메시지 타입
       return message.content;
+    }
+  }
+
+  // 특정 사용자와의 대화에서 읽지 않은 메시지 확인
+  bool _hasUnreadMessages(String userId) {
+    try {
+      final currentUserId = _authService.uid;
+      if (currentUserId == null || currentUserId.isEmpty) {
+        return false;
+      }
+
+      // 현재 사용자와 상대방 사이의 모든 메시지 가져오기
+      final conversation = _messageService.getConversationWith(userId);
+
+      // 읽지 않은 메시지 확인 (내가 받은 메시지 중에서)
+      final hasUnread = conversation.any((m) =>
+          !m.isRead &&
+          m.receiverId == currentUserId &&
+          m.senderId != currentUserId);
+
+      return hasUnread;
+    } catch (e) {
+      debugPrint('⚠️ 읽지 않은 메시지 확인 오류: $e');
+      return false;
+    }
+  }
+
+  // 읽지 않은 메시지 수 가져오기
+  int _getUnreadCount(String userId) {
+    try {
+      final currentUserId = _authService.uid;
+      if (currentUserId == null || currentUserId.isEmpty) {
+        return 0;
+      }
+
+      // 현재 사용자와 상대방 사이의 모든 메시지 가져오기
+      final conversation = _messageService.getConversationWith(userId);
+
+      // 읽지 않은 메시지 수 (내가 받은 메시지 중에서)
+      final unreadCount = conversation
+          .where((m) =>
+              !m.isRead &&
+              m.receiverId == currentUserId &&
+              m.senderId != currentUserId)
+          .length;
+
+      return unreadCount;
+    } catch (e) {
+      debugPrint('⚠️ 읽지 않은 메시지 수 확인 오류: $e');
+      return 0;
     }
   }
 
@@ -604,6 +706,15 @@ class _MessagesListViewState extends State<MessagesListView> {
                     },
                     child: Container(
                       margin: const EdgeInsets.symmetric(vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _hasUnreadMessages(otherUserId)
+                            ? Colors.blue.shade50
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: _hasUnreadMessages(otherUserId)
+                            ? Border.all(color: Colors.blue.shade200, width: 1)
+                            : null,
+                      ),
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
@@ -626,9 +737,14 @@ class _MessagesListViewState extends State<MessagesListView> {
                             Expanded(
                               child: Text(
                                 otherUserName,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
+                                style: TextStyle(
+                                  fontWeight: _hasUnreadMessages(otherUserId)
+                                      ? FontWeight.w800
+                                      : FontWeight.bold,
                                   fontSize: 16,
+                                  color: _hasUnreadMessages(otherUserId)
+                                      ? Colors.blue.shade800
+                                      : Colors.black87,
                                 ),
                               ),
                             ),
@@ -677,14 +793,23 @@ class _MessagesListViewState extends State<MessagesListView> {
                             ),
 
                             // 읽지 않은 메시지 표시
-                            if (!message.isRead && !isCurrentUserSender)
+                            if (_hasUnreadMessages(otherUserId) &&
+                                !isCurrentUserSender)
                               Container(
                                 margin: const EdgeInsets.only(left: 8),
-                                width: 10,
-                                height: 10,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
                                   color: Colors.blue.shade600,
-                                  borderRadius: BorderRadius.circular(5),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '${_getUnreadCount(otherUserId)}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                           ],
@@ -725,7 +850,6 @@ class _MessagesListViewState extends State<MessagesListView> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        tileColor: Colors.white,
                       ),
                     ),
                   );

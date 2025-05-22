@@ -592,6 +592,12 @@ class MessageService extends GetxController {
         Future.delayed(const Duration(seconds: 1), () {
           _updateUnreadCount();
           debugPrint('🔄 지연 처리: 읽지 않은 메시지 수 업데이트');
+          // 추가: 0.5초 더 후에 한번 더 업데이트
+          Future.delayed(const Duration(milliseconds: 500), () {
+            _updateUnreadCount();
+            messages.refresh();
+            debugPrint('🔄 추가 지연 처리: 읽지 않은 메시지 수 업데이트');
+          });
         });
       }
 
@@ -618,6 +624,7 @@ class MessageService extends GetxController {
 
           // Firestore 업데이트 후 메시지 목록 다시 한번 refresh
           messages.refresh();
+          _updateUnreadCount();
         }
       } catch (e) {
         // Firebase 업데이트 실패는 UI에 영향을 주지 않음 (로컬 상태는 이미 업데이트됨)
@@ -1335,5 +1342,10 @@ class MessageService extends GetxController {
     } catch (e) {
       debugPrint('⚠️ 새 메시지 확인 오류: $e');
     }
+  }
+
+  // 읽지 않은 메시지 수 수동 업데이트 (외부에서 호출 가능)
+  void updateUnreadCount() {
+    _updateUnreadCount();
   }
 }
