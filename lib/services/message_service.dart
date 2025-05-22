@@ -367,13 +367,16 @@ class MessageService extends GetxController {
         return;
       }
 
+      // 상대방이 보낸 메시지 중 읽지 않은 메시지만 카운트
       final unread = messages
           .where((message) =>
-              !message.isRead && message.receiverId == _authService.uid)
+              !message.isRead &&
+              message.receiverId == _authService.uid &&
+              message.senderId != _authService.uid)
           .length;
 
       unreadMessageCount.value = unread;
-      debugPrint('📊 읽지 않은 메시지 수 업데이트: $unread');
+      debugPrint('📊 읽지 않은 메시지 수 업데이트: $unread (상대방이 보낸 메시지만 계산)');
     } catch (e) {
       debugPrint('⚠️ 읽지 않은 메시지 수 계산 오류: $e');
       unreadMessageCount.value = 0;
