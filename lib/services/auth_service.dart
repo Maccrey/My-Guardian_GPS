@@ -770,214 +770,176 @@ class AuthService extends GetxController {
         final GoogleSignIn googleSignIn = GoogleSignIn(
           scopes: [
             'email',
-            'profile',
-            'openid',
           ],
           // iOS와 관련된 추가 설정
           signInOption: SignInOption.standard,
-          hostedDomain: '', // 모든 도메인 허용
           clientId: defaultTargetPlatform == TargetPlatform.iOS
               ? '1071355933777-m1i508qebs4no0fm10on2et5q61mbjig.apps.googleusercontent.com'
               : null,
+          hostedDomain: "",
         );
 
         try {
-          final isSignedIn = await googleSignIn.isSignedIn();
-          logger.d('기존 Google 로그인 상태: $isSignedIn');
-
-          if (isSignedIn) {
-            await googleSignIn.signOut();
-            logger.i('✅ 기존 Google 계정 로그아웃 완료');
-          }
-        } catch (e) {
-          logger.w('⚠️ Google 로그아웃 오류 (무시됨): $e');
-        }
-
-        // 새로운 로그인 시도
-        logger.i('⏳ Google 로그인 시작 중...');
-        GoogleSignInAccount? googleUser;
-
-        try {
-          logger.d('GoogleSignIn.signIn() 호출 중...');
-
           // 중복 로그인 방지
           if (_isGoogleSignInInProgress.value) {
             logger.w('⚠️ 이미 구글 로그인이 진행 중입니다');
+            _isGoogleSignInInProgress.value = false;
+            setLoading(false);
             return false;
           }
 
           _isGoogleSignInInProgress.value = true;
 
+          // 먼저 기존 로그인 세션 정리
           try {
-            // iOS 플랫폼에 맞는 특별 처리
-            if (defaultTargetPlatform == TargetPlatform.iOS) {
-              logger.d('iOS 플랫폼 감지, 특별 처리 적용 중...');
+            final isSignedIn = await googleSignIn.isSignedIn();
+            logger.d('기존 Google 로그인 상태: $isSignedIn');
 
-              // 기존 로그인 세션 정리 시도
-              try {
-                await googleSignIn.signOut().catchError((e) {
-                  logger.d('signOut 오류 (무시됨): $e');
-                });
-                await googleSignIn.disconnect().catchError((e) {
-                  logger.d('disconnect 오류 (무시됨): $e');
-                });
-                logger.d('기존 세션 정리 완료');
-              } catch (e) {
-                logger.d('세션 정리 오류 (무시됨): $e');
-              }
-
-              // 타임아웃 추가
-              logger.d('구글 로그인 시작 (iOS 최적화 방식)');
-
-              // 먼저 무음 로그인 시도 (캐시된 계정)
-              try {
-                googleUser = await googleSignIn.signInSilently().timeout(
-                  const Duration(seconds: 5),
-                  onTimeout: () {
-                    logger.d('signInSilently 타임아웃');
-                    return null;
-                  },
-                ).catchError((e) {
-                  logger.d('signInSilently 오류 (예상됨): $e');
-                  return null;
-                });
-              } catch (e) {
-                logger.d('signInSilently 예외 발생 (무시됨): $e');
-                googleUser = null;
-              }
-
-              // 캐시된 계정이 없으면 UI 표시
-              if (googleUser == null) {
-                logger.d('일반 로그인 시도 중...');
-                try {
-                  googleUser = await googleSignIn.signIn().timeout(
-                    const Duration(seconds: 60),
-                    onTimeout: () {
-                      logger.e('⚠️ 구글 로그인 타임아웃');
-                      throw Exception('구글 로그인 시간이 초과되었습니다');
-                    },
-                  );
-                } catch (e) {
-                  logger.e('signIn 오류: $e');
-                  rethrow; // 다시 던져서 외부 catch 블록에서 처리
-                }
-              }
-            } else {
-              // 일반 로그인 시도 (Android 및 기타 플랫폼)
-              googleUser = await googleSignIn.signIn();
+            if (isSignedIn) {
+              await googleSignIn.signOut();
+              logger.i('✅ 기존 Google 계정 로그아웃 완료');
             }
           } catch (e) {
-            _isGoogleSignInInProgress.value = false; // 진행 상태 초기화
+            logger.w('⚠️ Google 로그아웃 오류 (무시됨): $e');
+          }
+
+          // 새로운 로그인 시도
+          logger.i('⏳ Google 로그인 시작 중...');
+          GoogleSignInAccount? googleUser;
+
+          try {
+            // 간소화된 로그인 과정
+            googleUser = await googleSignIn.signIn();
+            logger.i('✅ Google 로그인 계정 선택 완료: ${googleUser?.email}');
+
+            // 로그인 취소 확인
+            if (googleUser == null) {
+              logger.w('⚠️ Google 로그인이 취소되었습니다. (사용자 선택 없음)');
+              _isGoogleSignInInProgress.value = false;
+              setError('Google 로그인이 취소되었습니다.');
+              setLoading(false);
+              return false;
+            }
+          } catch (e) {
+            _isGoogleSignInInProgress.value = false;
             logger.e('구글 로그인 프로세스 오류: $e');
-            rethrow;
-          }
 
-          logger.i('✅ Google 로그인 계정 선택 완료: ${googleUser?.email}');
-          logger.d(
-              'Google 사용자 정보: ${googleUser?.displayName}, ${googleUser?.photoUrl}');
-        } catch (e) {
-          logger.e('❌ Google 로그인 시도 중 오류 발생: $e');
-          if (e is Exception) {
-            logger.e('예외 타입: ${e.runtimeType}');
-          }
-
-          // 로그인 진행 상태 초기화
-          _isGoogleSignInInProgress.value = false;
-
-          // 오류 메시지 최적화
-          if (e.toString().toLowerCase().contains('network') ||
-              e.toString().toLowerCase().contains('connection') ||
-              e.toString().toLowerCase().contains('safari') ||
-              e.toString().toLowerCase().contains('canceled') ||
-              e.toString().toLowerCase().contains('cancelled') ||
-              e.toString().toLowerCase().contains('timed out') ||
-              e.toString().toLowerCase().contains('timeout')) {
-            if (e.toString().toLowerCase().contains('canceled') ||
+            if (e.toString().toLowerCase().contains('network') ||
+                e.toString().toLowerCase().contains('connection')) {
+              setError('인터넷 연결을 확인해 주세요. 구글 로그인 서비스에 연결할 수 없습니다.');
+            } else if (e.toString().toLowerCase().contains('canceled') ||
                 e.toString().toLowerCase().contains('cancelled')) {
               setError('구글 로그인이 취소되었습니다.');
             } else if (e.toString().toLowerCase().contains('timed out') ||
                 e.toString().toLowerCase().contains('timeout')) {
               setError('구글 로그인 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.');
             } else {
-              setError('인터넷 연결을 확인해 주세요. 구글 로그인 서비스에 연결할 수 없습니다.');
+              setError('구글 로그인 중 오류가 발생했습니다: ${e.toString()}');
             }
-          } else {
-            setError('구글 로그인 중 오류가 발생했습니다: ${e.toString()}');
+
+            setLoading(false);
+            return false;
           }
 
-          setLoading(false);
-          return false;
-        }
+          // Google 계정의 인증 정보 얻기
+          logger.i('✅ Google 인증 정보 요청 중...');
+          GoogleSignInAuthentication? googleAuth;
+          try {
+            googleAuth = await googleUser.authentication;
+            logger.i('✅ Google 인증 정보 획득 완료');
+          } catch (e) {
+            logger.e('❌ Google 인증 정보 획득 실패: $e');
+            setError('Google 인증 정보를 가져오는 데 실패했습니다. 다시 시도해 주세요.');
+            _isGoogleSignInInProgress.value = false;
+            setLoading(false);
+            return false;
+          }
 
-        if (googleUser == null) {
-          // 사용자가 로그인을 취소한 경우
-          logger.w('❌ Google 로그인 취소됨');
-          setError('Google 로그인이 취소되었습니다');
-          setLoading(false);
-          return false;
-        }
+          // OAuth 인증 정보 확인
+          if (googleAuth.idToken == null) {
+            logger.e('❌ Google ID 토큰이 없습니다');
+            setError('Google 로그인 인증에 실패했습니다. 다시 시도해 주세요.');
+            setLoading(false);
+            return false;
+          }
 
-        // Google 계정의 인증 정보 얻기
-        logger.i('✅ Google 인증 정보 요청 중...');
-        GoogleSignInAuthentication? googleAuth;
-        try {
-          googleAuth = await googleUser.authentication;
-          logger.i('✅ Google 인증 정보 획득 완료');
-        } catch (e) {
-          logger.e('❌ Google 인증 정보 획득 실패: $e');
-          setError('Google 인증 정보를 가져오는 데 실패했습니다. 다시 시도해 주세요.');
-          setLoading(false);
-          return false;
-        }
-
-        // OAuth 인증 정보 확인
-        if (googleAuth.idToken == null) {
-          logger.e('❌ Google ID 토큰이 없습니다');
-          setError('Google 로그인 인증에 실패했습니다. 다시 시도해 주세요.');
-          setLoading(false);
-          return false;
-        }
-
-        final OAuthCredential credential = GoogleAuthProvider.credential(
-          accessToken: googleAuth.accessToken,
-          idToken: googleAuth.idToken,
-        );
-
-        logger.i('✅ Firebase 인증 시작...');
-
-        // Firebase로 로그인
-        final userCredential = await _auth.signInWithCredential(credential);
-        final User? user = userCredential.user;
-
-        if (user == null) {
-          setError('Google 계정으로 로그인에 실패했습니다');
-          setLoading(false);
-          return false;
-        }
-
-        // Firestore에서 사용자 정보 확인 및 저장
-        final docSnapshot =
-            await _firestore.collection('users').doc(user.uid).get();
-
-        if (!docSnapshot.exists) {
-          // 신규 사용자인 경우 Firestore에 정보 저장
-          final newUser = UserModel(
-            uid: user.uid,
-            email: user.email,
-            nickname: user.displayName ?? '사용자',
+          final OAuthCredential credential = GoogleAuthProvider.credential(
+            accessToken: googleAuth.accessToken,
+            idToken: googleAuth.idToken,
           );
 
-          await _saveUserData(user.uid, newUser);
-          _currentUser.value = newUser;
-        } else {
-          // 기존 사용자 정보 로드
-          await _fetchUserData(user.uid);
-        }
+          logger.i('✅ Firebase 인증 시작...');
 
-        logger.i('✅ Google 로그인 성공: ${user.uid}');
-        _isGoogleSignInInProgress.value = false; // 진행 상태 초기화
-        setLoading(false);
-        return true;
+          // Firebase로 로그인
+          final userCredential = await _auth.signInWithCredential(credential);
+          final User? user = userCredential.user;
+
+          if (user == null) {
+            logger.e('❌ Firebase 사용자 정보 획득 실패');
+            setError('Google 계정으로 로그인에 실패했습니다');
+            _isGoogleSignInInProgress.value = false;
+            setLoading(false);
+            return false;
+          }
+
+          // Firestore에서 사용자 정보 확인 및 저장
+          final docSnapshot =
+              await _firestore.collection('users').doc(user.uid).get();
+
+          if (!docSnapshot.exists) {
+            // 신규 사용자인 경우 Firestore에 정보 저장
+            final newUser = UserModel(
+              uid: user.uid,
+              email: user.email,
+              nickname: user.displayName ?? '사용자',
+            );
+
+            await _saveUserData(user.uid, newUser);
+            _currentUser.value = newUser;
+          } else {
+            // 기존 사용자 정보 로드
+            await _fetchUserData(user.uid);
+          }
+
+          logger.i('✅ Google 로그인 성공: ${user.uid}');
+          _isGoogleSignInInProgress.value = false; // 진행 상태 초기화
+          setLoading(false);
+          return true;
+        } catch (e) {
+          _isGoogleSignInInProgress.value = false;
+          String errorMessage = 'Google 로그인 중 오류가 발생했습니다';
+
+          if (e is FirebaseAuthException) {
+            // Firebase 관련 오류 처리
+            switch (e.code) {
+              case 'invalid-credential':
+                errorMessage = 'Google 인증 정보가 유효하지 않습니다';
+                break;
+              case 'user-disabled':
+                errorMessage = '해당 계정은 비활성화되었습니다';
+                break;
+              case 'account-exists-with-different-credential':
+                errorMessage = '다른 로그인 방식으로 이미 가입된 계정입니다';
+                break;
+              case 'operation-not-allowed':
+                errorMessage = 'Google 로그인이 허용되지 않습니다';
+                break;
+              case 'network-request-failed':
+                errorMessage = '네트워크 연결을 확인해 주세요';
+                break;
+              default:
+                errorMessage = 'Firebase 인증 오류: ${e.code}';
+            }
+          } else if (e.toString().toLowerCase().contains('network') ||
+              e.toString().toLowerCase().contains('connection')) {
+            errorMessage = '인터넷 연결을 확인해 주세요';
+          }
+
+          logger.e('❌ Google 로그인 오류: $e');
+          setError(errorMessage);
+          setLoading(false);
+          return false;
+        }
       }
     } catch (e) {
       String errorMessage = 'Google 로그인 중 오류가 발생했습니다';

@@ -44,17 +44,10 @@
 				<string>watchover</string>
 			</array>
 		</dict>
-		<dict>
-			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
-			<key>CFBundleURLName</key>
-			<string>googleauth</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>com.googleusercontent.apps.1071355933777-m1i508qebs4no0fm10on2et5q61mbjig</string>
-			</array>
-		</dict>
 	</array>
+	<!-- 구글 인증 관련 설정 -->
+	<key>GIDClientID</key>
+	<string>1071355933777-m1i508qebs4no0fm10on2et5q61mbjig.apps.googleusercontent.com</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
@@ -127,5 +120,11 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>이 앱은 로컬 네트워크를 사용하여 디버깅 및 인증 서비스에 연결합니다.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_dartobservatory._tcp</string>
+	</array>
 </dict>
 </plist>

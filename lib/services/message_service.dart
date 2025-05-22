@@ -501,23 +501,31 @@ class MessageService extends GetxController {
         messages.refresh();
       }
 
-      // Firestore 메시지 상태 업데이트
+      // 읽지 않은 메시지 수 업데이트
+      _updateUnreadCount();
+
+      // 현재 사용자가 로그인 되어있지 않은 경우 Firestore 업데이트 시도하지 않음
+      if (_authService.currentUser == null || _authService.uid == null) {
+        debugPrint('⚠️ 로그인되어 있지 않아 Firestore 업데이트를 시도하지 않습니다.');
+        return;
+      }
+
+      // Firestore 메시지 상태 업데이트 - 오류 발생해도 UI 영향 없음
       try {
         await _firestore.collection('messages').doc(messageId).update({
           'isRead': true,
         });
         debugPrint('✅ 메시지 읽음 상태가 Firestore에 업데이트되었습니다.');
       } catch (e) {
+        // Firebase 업데이트 실패는 UI에 영향을 주지 않음 (로컬 상태는 이미 업데이트됨)
         debugPrint('⚠️ Firestore 메시지 읽음 상태 업데이트 실패: $e');
 
         // 권한 오류는 경고만 표시
         if (e.toString().contains('permission-denied')) {
           debugPrint('🔒 Firebase 권한 오류: 메시지 읽음 상태를 업데이트할 권한이 없습니다.');
+          debugPrint('🔒 로컬 UI 상태는 정상적으로 업데이트되었습니다.');
         }
       }
-
-      // 읽지 않은 메시지 수 업데이트
-      _updateUnreadCount();
     } catch (e) {
       debugPrint('⚠️ 메시지 읽음 상태 변경 오류: $e');
     }
@@ -552,7 +560,16 @@ class MessageService extends GetxController {
         messages.refresh();
       }
 
-      // Firestore 메시지 상태 업데이트 (배치 작업)
+      // 읽지 않은 메시지 수 업데이트
+      _updateUnreadCount();
+
+      // 현재 사용자가 로그인 되어있지 않은 경우 Firestore 업데이트 시도하지 않음
+      if (_authService.currentUser == null || _authService.uid == null) {
+        debugPrint('⚠️ 로그인되어 있지 않아 Firestore 업데이트를 시도하지 않습니다.');
+        return;
+      }
+
+      // Firestore 메시지 상태 업데이트 (배치 작업) - 오류 발생해도 UI 영향 없음
       try {
         final batch = _firestore.batch();
         int batchCount = 0;
@@ -568,16 +585,15 @@ class MessageService extends GetxController {
           debugPrint('✅ $batchCount개 메시지 읽음 상태가 Firestore에 업데이트되었습니다.');
         }
       } catch (e) {
+        // Firebase 업데이트 실패는 UI에 영향을 주지 않음 (로컬 상태는 이미 업데이트됨)
         debugPrint('⚠️ Firestore 다중 메시지 읽음 상태 업데이트 실패: $e');
 
         // 권한 오류는 경고만 표시
         if (e.toString().contains('permission-denied')) {
           debugPrint('🔒 Firebase 권한 오류: 메시지 읽음 상태를 업데이트할 권한이 없습니다.');
+          debugPrint('🔒 로컬 UI 상태는 정상적으로 업데이트되었습니다.');
         }
       }
-
-      // 읽지 않은 메시지 수 업데이트
-      _updateUnreadCount();
     } catch (e) {
       debugPrint('⚠️ 다중 메시지 읽음 상태 변경 오류: $e');
     }

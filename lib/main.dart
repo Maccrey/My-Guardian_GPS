@@ -7,9 +7,6 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'dart:async';
 import 'package:flutter/services.dart';
-import 'package:flutter_native_splash/flutter_native_splash.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:uni_links/uni_links.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'services/auth_service.dart';
@@ -31,7 +28,6 @@ import 'services/notification_service.dart';
 import 'views/map_view.dart';
 import 'views/settings/settings_view.dart';
 import 'services/settings_service.dart';
-import 'views/messages/shared_location_view.dart';
 import 'utils/url_handler.dart';
 import 'views/profile_edit_view.dart';
 import 'services/map_api_service.dart';
