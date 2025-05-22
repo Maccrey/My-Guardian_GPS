@@ -214,7 +214,16 @@ class LocationSharingService extends GetxController {
         await _sendLocationSharingStatusMessage(receiverId, true);
         print('✅ [서비스] 위치 공유 시작 메시지 전송 완료');
       } catch (e) {
-        print('⚠️ [서비스] 위치 공유 시작 메시지 전송 오류 (계속 진행): $e');
+        print('⚠️ [서비스] 위치 공유 시작 메시지 전송 오류: $e');
+        // 메시지 전송 실패를 사용자에게 알림
+        Get.snackbar(
+          '알림',
+          '위치 공유는 시작되었지만 메시지 전송에 실패했습니다.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.orange.withOpacity(0.8),
+          colorText: Colors.white,
+          duration: const Duration(seconds: 3),
+        );
       }
 
       print('✅ [서비스] 위치 공유 시작 완료: receiverId=$receiverId');
@@ -308,7 +317,16 @@ class LocationSharingService extends GetxController {
           await _sendLocationSharingStatusMessage(receiverId, false);
           print('✅ [서비스] 위치 공유 종료 메시지 전송 완료');
         } catch (e) {
-          print('⚠️ [서비스] 위치 공유 종료 메시지 전송 오류 (무시됨): $e');
+          print('⚠️ [서비스] 위치 공유 종료 메시지 전송 오류: $e');
+          // 위치 공유는 중지되었지만 메시지 전송 실패를 사용자에게 알림
+          Get.snackbar(
+            '알림',
+            '위치 공유는 중지되었지만 메시지 전송에 실패했습니다.',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.orange.withOpacity(0.8),
+            colorText: Colors.white,
+            duration: const Duration(seconds: 2),
+          );
         }
 
         // MessageService에게 위치 공유 종료 알림 (추가)
@@ -761,11 +779,21 @@ class LocationSharingService extends GetxController {
         '✉️ [서비스] 위치 공유 ${isStarting ? "시작" : "종료"} 메시지 전송 시도: receiverId=$receiverId');
 
     try {
+      // 현재 인증 상태를 새로고침하여 토큰이 유효한지 확인
+      try {
+        await _auth.currentUser?.reload();
+        print('🔄 [서비스] 사용자 인증 상태 새로고침 완료');
+      } catch (authError) {
+        print('⚠️ [서비스] 사용자 인증 상태 새로고침 실패: $authError');
+      }
+
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
         print('⚠️ [서비스] 메시지 전송 실패: 로그인된 사용자 없음');
-        return;
+        throw Exception('로그인된 사용자가 없습니다. 로그인 후 다시 시도하세요.');
       }
+
+      print('🔍 [서비스] 현재 인증된 사용자 UID: ${currentUser.uid}');
 
       // 현재 사용자 정보 가져오기
       final userDoc =
@@ -856,25 +884,91 @@ class LocationSharingService extends GetxController {
         print('✅ [서비스] 새 채팅방 생성 완료: $chatRoomId');
       }
 
-      // Firestore에 메시지 저장 - 이제 JSON 형식으로 저장
-      await _firestore.collection('messages').add({
-        'senderId': currentUser.uid,
+      // 메시지 데이터 구성 - MessageModel과 완벽히 호환되도록 필드명 수정
+      Map<String, dynamic> messageDoc = {
+        'senderId': currentUser.uid, // 현재 인증된 사용자의 UID 사용
         'receiverId': receiverId,
-        'message': fullMessage, // 텍스트 내용 (이전 호환성)
-        'messageData': messageData, // 구조화된 데이터 (앱 내 표시용)
+        'content': fullMessage,
+        'messageType': 'location_sharing',
+
+        // Message 모델의 data 필드에 구조화된 데이터 저장
+        'data': {
+          'latitude': _lastKnownPosition?.latitude,
+          'longitude': _lastKnownPosition?.longitude,
+          'message': message,
+          'senderName': userName,
+        },
+
+        // Message 모델의 extra 필드에 위치 공유 관련 정보 저장
+        'extra': {
+          'action': isStarting ? 'start' : 'stop',
+          'locationId': locationId,
+        },
+
+        // 이전 버전 호환성 유지 (기존 필드들)
+        'messageData': messageData,
         'type': 'location_sharing',
         'action': isStarting ? 'start' : 'stop',
         'locationId': locationId,
+
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
-        'chatRoomId': chatRoomId, // 채팅방 ID 추가
-      });
+        'chatRoomId': chatRoomId,
+      };
+
+      // Firebase 메시지 상세 로깅
+      print(
+          '📝 [서비스] 위치 공유 메시지 저장 시도 - receiverId: $receiverId, isStarting: $isStarting');
+      print('🔍 [서비스] 메시지에 설정된 senderId: ${currentUser.uid}');
+      print(
+          '📝 [서비스] 메시지 데이터: senderId=${currentUser.uid}, locationId=$locationId');
+
+      try {
+        // Firestore에 메시지 저장
+        final docRef = await _firestore.collection('messages').add(messageDoc);
+        print('✅ [서비스] Firestore에 메시지 저장 완료: ${docRef.id}');
+
+        // 메시지 ID 저장 (오류 디버깅용)
+        _firestore.collection('debug_logs').add({
+          'action': 'location_message_saved',
+          'messageId': docRef.id,
+          'senderId': currentUser.uid,
+          'receiverId': receiverId,
+          'isStarting': isStarting,
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        print('❌ [서비스] Firestore에 메시지 저장 실패: $e');
+
+        // 접근 권한 오류인지 확인
+        if (e.toString().contains('permission-denied')) {
+          print('🔒 [서비스] 파이어베이스 보안 규칙으로 인한 접근 거부 - 인증 상태 확인 필요');
+
+          // 디버그용 권한 데이터 로깅
+          print(
+              '🔑 [서비스] 인증된 사용자: ${_auth.currentUser?.uid}, 메시지 발신자: ${messageDoc['senderId']}');
+        }
+
+        throw Exception('메시지 저장 실패: $e');
+      }
 
       // 채팅방 마지막 메시지 업데이트
       await _firestore.collection('chat_rooms').doc(chatRoomId).update({
         'lastMessage': fullMessage,
         'lastMessageAt': FieldValue.serverTimestamp(),
+        'lastMessageType': 'location_sharing',
       });
+
+      // MessageService에게도 메시지 추가 알림 (동기화)
+      try {
+        final messageService = Get.find<MessageService>();
+        if (messageService != null) {
+          print('🔔 [서비스] MessageService에 새 메시지 알림');
+          messageService.refreshMessages(); // 메시지 목록 새로고침
+        }
+      } catch (e) {
+        print('⚠️ [서비스] MessageService 업데이트 오류 (무시됨): $e');
+      }
 
       print('💾 [서비스] Firestore에 메시지 저장 완료: $fullMessage');
 
@@ -885,6 +979,11 @@ class LocationSharingService extends GetxController {
       print('✅ [서비스] 위치 공유 ${isStarting ? "시작" : "종료"} 메시지 전송 완료');
     } catch (e) {
       print('❌ [서비스] 메시지 전송 오류: $e');
+      // 오류 상세 로깅
+      print('❌ [서비스] 오류 상세: ${e.toString()}');
+
+      // 오류를 던져서 호출자가 처리할 수 있도록 함
+      rethrow;
     }
   }
 
@@ -1030,7 +1129,16 @@ class LocationSharingService extends GetxController {
         await _sendLocationSharingStatusMessage(receiverUid, true);
         print('✅ [서비스] 위치 공유 시작 메시지 전송 완료');
       } catch (e) {
-        print('⚠️ [서비스] 위치 공유 시작 메시지 전송 오류 (계속 진행): $e');
+        print('⚠️ [서비스] 위치 공유 시작 메시지 전송 오류: $e');
+        // 메시지 전송 실패를 사용자에게 알림
+        Get.snackbar(
+          '알림',
+          '위치 공유는 시작되었지만 메시지 전송에 실패했습니다.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.orange.withOpacity(0.8),
+          colorText: Colors.white,
+          duration: const Duration(seconds: 3),
+        );
       }
 
       print('✅ [서비스] 앱 사용자와 위치 공유 시작 완료: receiverUid=$receiverUid');
