@@ -994,44 +994,253 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
 
   // 연락처 수정 다이얼로그
   void _showEditContactDialog(BuildContext context, EmergencyContact contact) {
+    // 디버그: 현재 연락처 정보 로깅
+    print(
+        '수정 시작 - 연락처 정보: isAppUser=${contact.isAppUser}, relationship=${contact.relationship}, description=${contact.description}');
+
     final nameController = TextEditingController(text: contact.name);
-    final phoneController = TextEditingController();
-    final descriptionController =
-        TextEditingController(text: contact.description ?? '');
+    final phoneController = TextEditingController(text: contact.phoneNumber);
+    final descriptionController = TextEditingController(
+      text: contact.isAppUser ? '' : contact.description ?? '',
+    );
+    final searchController = TextEditingController();
+
+    // 위치 공유 활성화 여부 확인 - 로직 개선
+    bool canShareLocation = false;
+    if (contact.isAppUser) {
+      canShareLocation = contact.relationship?.contains('위치 공유 가능') ?? false;
+      print('위치 공유 상태 확인: ${contact.relationship} -> $canShareLocation');
+    }
+
+    // 앱 사용자인 경우 사용자 정보 가져오기
+    if (contact.isAppUser && contact.userId != null) {
+      // 로딩 다이얼로그 표시
+      Get.dialog(
+        const Center(
+          child: CircularProgressIndicator(),
+        ),
+        barrierDismissible: false,
+      );
+
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(contact.userId)
+          .get()
+          .then((doc) {
+        // 로딩 다이얼로그 닫기
+        Get.back();
+
+        UserModel? selectedUser;
+        if (doc.exists) {
+          selectedUser = UserModel.fromFirestore(doc);
+        }
+
+        // 연락처 수정 폼 표시
+        _showContactEditForm(
+          context,
+          contact,
+          nameController: nameController,
+          phoneController: phoneController,
+          descController: descriptionController,
+          searchController: searchController,
+          isLocationSharingEnabled: canShareLocation,
+          selectedUser: selectedUser,
+        );
+      }).catchError((e) {
+        // 로딩 다이얼로그 닫기
+        Get.back();
+
+        print('사용자 정보 가져오기 오류: $e');
+        // 오류가 있어도 수정 폼은 표시
+        _showContactEditForm(
+          context,
+          contact,
+          nameController: nameController,
+          phoneController: phoneController,
+          descController: descriptionController,
+          searchController: searchController,
+          isLocationSharingEnabled: canShareLocation,
+        );
+      });
+    } else {
+      // 일반 연락처인 경우 바로 수정 폼 표시
+      _showContactEditForm(
+        context,
+        contact,
+        nameController: nameController,
+        phoneController: phoneController,
+        descController: descriptionController,
+        searchController: searchController,
+        isLocationSharingEnabled: canShareLocation,
+      );
+    }
+  }
+
+  // 긴급 연락처 수정 폼 다이얼로그
+  void _showContactEditForm(
+    BuildContext context,
+    EmergencyContact contact, {
+    required TextEditingController nameController,
+    required TextEditingController phoneController,
+    required TextEditingController descController,
+    required TextEditingController searchController,
+    bool isLocationSharingEnabled = false,
+    UserModel? selectedUser,
+  }) {
+    // 디버그: 수정 폼 초기 상태 로깅
+    print('수정 폼 표시 - 위치 공유 활성화: $isLocationSharingEnabled');
+
+    // 위치 공유 상태를 RxBool로 변환하여 상태 변화를 감지
+    final RxBool canShareLocation = isLocationSharingEnabled.obs;
 
     Get.dialog(
       AlertDialog(
-        title: const Text('긴급 연락처 수정'),
+        title: Text('긴급 연락처 수정'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // 기본 연락처 정보 입력 필드
               TextField(
                 controller: nameController,
                 decoration: const InputDecoration(
                   labelText: '이름 또는 기관명',
+                  hintText: '예: 홍길동, 가까운 병원',
                 ),
               ),
               const SizedBox(height: 16),
-              _buildPhoneTextField(phoneController,
-                  initialValue: contact.phoneNumber),
+              _buildPhoneTextField(phoneController),
               const SizedBox(height: 16),
               TextField(
-                controller: descriptionController,
+                controller: descController,
                 decoration: const InputDecoration(
                   labelText: '설명 (선택사항)',
+                  hintText: '예: 가족, 주치의, 가까운 병원',
                 ),
               ),
+              const SizedBox(height: 24),
+
+              // 앱 사용자인 경우 추가 정보 표시
+              if (contact.isAppUser)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 구분선
+                    Divider(color: Colors.grey.shade300),
+
+                    // 앱 사용자 정보
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '앱 사용자 정보',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '이 연락처는 앱 사용자로 실시간 위치 공유가 가능합니다',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+
+                          // 위치 공유 옵션 - Obx로 감싸서 상태 변화 감지
+                          Obx(() => Row(
+                                children: [
+                                  Checkbox(
+                                    value: canShareLocation.value,
+                                    onChanged: (value) {
+                                      // 상태 업데이트
+                                      canShareLocation.value = value ?? false;
+                                      print(
+                                          '체크박스 상태 변경: ${canShareLocation.value}');
+                                    },
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      '위치 공유 활성화',
+                                      style: TextStyle(fontSize: 14),
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.location_on,
+                                    color: canShareLocation.value
+                                        ? Colors.blue
+                                        : Colors.grey,
+                                    size: 18,
+                                  ),
+                                ],
+                              )),
+
+                          Padding(
+                            padding: const EdgeInsets.only(left: 32.0),
+                            child: Text(
+                              '이 연락처와 실시간 위치를 공유할 수 있습니다',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ),
+
+                          // 위치 공유 상태에 따른 추가 안내
+                          Obx(() => canShareLocation.value
+                              ? Padding(
+                                  padding: const EdgeInsets.only(
+                                      top: 8.0, left: 32.0),
+                                  child: Text(
+                                    '✓ 이 연락처는 위치 공유가 활성화됩니다',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.green,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                )
+                              : SizedBox.shrink()),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(),
+            onPressed: () {
+              print('취소 버튼 클릭 - 모든 다이얼로그 닫기 시도');
+
+              // 현재 다이얼로그 닫기
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              }
+
+              // 모든 GetX 다이얼로그 닫기
+              while (Get.isDialogOpen ?? false) {
+                Get.back();
+              }
+
+              // 추가 안전 장치: 2초 후 다시 확인
+              Future.delayed(const Duration(seconds: 2), () {
+                if (Get.isDialogOpen ?? false) {
+                  print('취소 후 2초 경과 - 열린 다이얼로그 추가 닫기');
+                  Get.back(closeOverlays: true);
+                }
+              });
+            },
             child: const Text('취소'),
           ),
           TextButton(
             onPressed: () async {
+              // 이름과 전화번호 필수
               if (nameController.text.isEmpty || phoneController.text.isEmpty) {
                 Get.snackbar(
                   '오류',
@@ -1041,25 +1250,86 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
                 return;
               }
 
-              final updatedContact = contact.copyWith(
-                name: nameController.text.trim(),
-                phoneNumber: phoneController.text.trim(),
-                description: descriptionController.text.trim(),
-              );
+              try {
+                // 디버그 메시지 추가
+                print(
+                    '연락처 업데이트 시작 - 앱 사용자: ${contact.isAppUser}, 위치 공유: ${canShareLocation.value}');
 
-              final service = Get.find<EmergencyContactService>();
-              bool success = await service.updateContact(updatedContact);
-              Get.back();
+                // 연락처 업데이트
+                EmergencyContact updatedContact;
 
-              // 성공 여부에 따라 메시지 표시
-              if (success) {
+                if (contact.isAppUser) {
+                  String newRelationship;
+                  if (canShareLocation.value) {
+                    newRelationship = '앱 사용자 (위치 공유 가능)';
+                  } else {
+                    newRelationship = '앱 사용자';
+                  }
+
+                  updatedContact = contact.copyWith(
+                    name: nameController.text.trim(),
+                    phoneNumber: phoneController.text.trim(),
+                    relationship: newRelationship,
+                  );
+                } else {
+                  updatedContact = contact.copyWith(
+                    name: nameController.text.trim(),
+                    phoneNumber: phoneController.text.trim(),
+                    description: descController.text.trim(),
+                  );
+                }
+
+                // 디버그 메시지 추가
+                print(
+                    '업데이트된 연락처 - 이름: ${updatedContact.name}, 관계: ${updatedContact.relationship}, 설명: ${updatedContact.description}');
+
+                final service = Get.find<EmergencyContactService>();
+                bool success = await service.updateContact(updatedContact);
+
+                // 서비스의 연락처 리스트 갱신
+                await service.loadContacts();
+
+                // 확실하게 다이얼로그 닫기
+                if (Navigator.of(context).canPop()) {
+                  Navigator.of(context).pop();
+                }
+
+                // 혹시 모든 다이얼로그가 닫히지 않았을 경우를 대비
+                while (Get.isDialogOpen ?? false) {
+                  Get.back();
+                }
+
+                // 성공 여부에 따라 메시지 표시
+                if (success) {
+                  Get.snackbar(
+                    '성공',
+                    '연락처가 수정되었습니다.',
+                    snackPosition: SnackPosition.BOTTOM,
+                    backgroundColor: Colors.green.shade100,
+                    colorText: Colors.black87,
+                    duration: const Duration(seconds: 2),
+                  );
+                }
+              } catch (e) {
+                print('연락처 수정 오류: $e');
+
+                // 오류 발생 시 다이얼로그 닫기 확인 후 오류 메시지 표시
+                if (Navigator.of(context).canPop()) {
+                  Navigator.of(context).pop();
+                }
+
+                // 혹시 모든 다이얼로그가 닫히지 않았을 경우를 대비
+                while (Get.isDialogOpen ?? false) {
+                  Get.back();
+                }
+
                 Get.snackbar(
-                  '성공',
-                  '연락처가 수정되었습니다.',
+                  '오류',
+                  '연락처 수정 중 오류가 발생했습니다: $e',
                   snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: Colors.green.shade100,
+                  backgroundColor: Colors.red.shade100,
                   colorText: Colors.black87,
-                  duration: const Duration(seconds: 2),
+                  duration: const Duration(seconds: 3),
                 );
               }
             },
