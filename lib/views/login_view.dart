@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../view_models/login_view_model.dart';
 import '../services/auth_service.dart';
+import '../views/home_view.dart';
+import '../views/location_sharing/emergency_contact_location_view.dart';
 
 class LoginView extends StatelessWidget {
   const LoginView({super.key});
@@ -179,7 +181,25 @@ class LoginView extends StatelessWidget {
                                           debugPrint(
                                               '✅ 로그인 성공: 로그인 정보 저장=${controller.rememberMe.value}');
 
-                                          Get.offAllNamed('/home');
+                                          // 이전에 위치 공유 화면으로 이동을 시도했다면 해당 화면으로 이동
+                                          final String? previousRoute =
+                                              Get.parameters['returnRoute'];
+                                          if (previousRoute ==
+                                              'location-sharing') {
+                                            Get.offAll(() => const HomeView(),
+                                                binding: BindingsBuilder(() {
+                                              // 홈 뷰 바인딩
+                                            }));
+                                            // 홈 뷰 로드 후 위치 공유 화면으로 이동
+                                            Future.delayed(
+                                                const Duration(
+                                                    milliseconds: 300), () {
+                                              Get.to(() =>
+                                                  EmergencyContactLocationView());
+                                            });
+                                          } else {
+                                            Get.offAllNamed('/home');
+                                          }
                                         } else if (controller.error != null) {
                                           Get.snackbar(
                                             '오류',

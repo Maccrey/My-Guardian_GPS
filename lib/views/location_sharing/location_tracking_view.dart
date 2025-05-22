@@ -5,7 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 
 import '../../controllers/location_sharing_controller.dart';
-import '../../models/shared_location_model.dart';
+import '../../models/shared_location_model.dart'; // SharedLocation 모델
 
 class LocationTrackingView extends StatefulWidget {
   final String userId; // 추적할 사용자 ID

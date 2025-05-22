@@ -1,6 +1,6 @@
 import 'package:get/get.dart';
 import '../services/location_sharing_service.dart';
-import '../models/shared_location_model.dart';
+import '../models/shared_location_model.dart'; // SharedLocation 모델
 
 class LocationSharingController extends GetxController {
   final LocationSharingService _locationService =

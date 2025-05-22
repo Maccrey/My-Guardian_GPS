@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/location_service.dart';
-import '../../models/shared_location_model.dart';
+import '../../models/shared_location_model.dart'; // SharedLocation 모델
 import 'package:uuid/uuid.dart';
 import 'dart:async';
 import 'dart:ui' as ui;

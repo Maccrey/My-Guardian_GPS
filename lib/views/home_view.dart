@@ -9,6 +9,7 @@ import 'settings/settings_view.dart';
 import 'sos_view.dart';
 import 'messages/messages_list_view.dart';
 import 'home_arrival_view.dart';
+import 'location_sharing/emergency_contact_location_view.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({Key? key}) : super(key: key);
@@ -280,6 +281,46 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
                       Colors.blue.shade100,
                       () {
                         // 위치 공유 화면으로 이동
+                        try {
+                          final authService = Get.find<AuthService>();
+                          if (authService.isAuthenticated) {
+                            // toNamed 대신 to를 사용하여 직접 인스턴스로 이동
+                            Get.to(() => EmergencyContactLocationView());
+                          } else {
+                            // 로그인되지 않은 경우 로그인 화면으로 이동 전에 안내 메시지 표시
+                            Get.dialog(
+                              AlertDialog(
+                                title: Text('로그인 필요'),
+                                content: Text('위치 공유 기능을 사용하려면 로그인이 필요합니다.'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Get.back(),
+                                    child: Text('취소'),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () {
+                                      Get.back();
+                                      // 로그인 후 위치 공유 화면으로 돌아올 수 있도록 파라미터 전달
+                                      Get.toNamed('/', parameters: {
+                                        'returnRoute': 'location-sharing'
+                                      });
+                                    },
+                                    child: Text('로그인'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          debugPrint('⚠️ 위치 공유 화면으로 이동 중 오류: $e');
+                          Get.snackbar(
+                            '오류',
+                            '위치 공유 화면을 열 수 없습니다',
+                            backgroundColor: Colors.red.withOpacity(0.8),
+                            colorText: Colors.white,
+                            snackPosition: SnackPosition.BOTTOM,
+                          );
+                        }
                       },
                     ),
                     _isServiceInitialized

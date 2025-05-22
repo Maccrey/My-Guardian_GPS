@@ -8,7 +8,7 @@ import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
-import '../models/shared_location_model.dart';
+import '../models/shared_location_model.dart'; // SharedLocation 모델
 import 'notification_service.dart';
 
 class LocationSharingService extends GetxController {

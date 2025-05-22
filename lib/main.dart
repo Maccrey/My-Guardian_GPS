@@ -35,6 +35,8 @@ import 'services/map_api_service.dart';
 import 'views/home_arrival_view.dart';
 import 'services/location_sharing_service.dart';
 import 'controllers/location_sharing_controller.dart';
+import 'views/location_sharing/emergency_contact_location_view.dart';
+import 'views/location_sharing/location_tracking_view.dart';
 
 import 'firebase_options.dart'; // 임시로 주석 처리
 
@@ -283,7 +285,7 @@ class _MyAppState extends State<MyApp> {
         Locale('en', 'US'), // 영어
       ],
       locale: const Locale('ko', 'KR'), // 기본 로케일 설정
-      initialRoute: '/',
+      initialRoute: Get.find<AuthService>().isAuthenticated ? '/home' : '/',
       getPages: [
         GetPage(name: '/', page: () => const LoginView()),
         GetPage(name: '/register', page: () => const RegisterView()),
@@ -328,6 +330,23 @@ class _MyAppState extends State<MyApp> {
         GetPage(
           name: '/home-arrival',
           page: () => const HomeArrivalView(),
+        ),
+        // 위치 공유 화면 라우트
+        GetPage(
+          name: '/location-sharing',
+          page: () => EmergencyContactLocationView(),
+        ),
+        // 위치 추적 화면 라우트
+        GetPage(
+          name: '/location-tracking/:userId/:userName',
+          page: () {
+            final userId = Get.parameters['userId'] ?? '';
+            final userName = Get.parameters['userName'] ?? '사용자';
+            return LocationTrackingView(
+              userId: userId,
+              userName: userName,
+            );
+          },
         ),
       ],
     );

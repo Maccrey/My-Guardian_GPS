@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../models/emergency_contact_model.dart';
 import '../../services/emergency_contact_service.dart';
 import '../../services/location_sharing_service.dart';
+import '../../services/auth_service.dart';
 
 class EmergencyContactLocationView extends StatelessWidget {
   final EmergencyContactService _contactService =
@@ -15,6 +16,49 @@ class EmergencyContactLocationView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 로그인 상태 확인
+    final authService = Get.find<AuthService>();
+
+    if (!authService.isAuthenticated) {
+      // 로그인되지 않은 경우 안내 화면 표시
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('로그인 필요'),
+          elevation: 0,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.lock_outline,
+                size: 64,
+                color: Colors.grey,
+              ),
+              SizedBox(height: 16),
+              Text(
+                '위치 공유 기능을 사용하려면\n로그인이 필요합니다',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => Get.offAllNamed('/',
+                    parameters: {'returnRoute': 'location-sharing'}),
+                child: Text('로그인 화면으로 이동'),
+                style: ElevatedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('긴급 연락처 위치 공유'),
