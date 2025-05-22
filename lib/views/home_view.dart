@@ -20,6 +20,7 @@ class HomeView extends StatefulWidget {
 class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
   late HomeArrivalService _homeArrivalService;
   bool _isServiceInitialized = false;
+  late MessageService _messageService;
 
   @override
   void initState() {
@@ -27,7 +28,18 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
     // 라이프사이클 옵저버 등록
     WidgetsBinding.instance.addObserver(this);
     _initializeHomeArrivalService();
+    _initializeMessageService();
     debugPrint('🔵 앱 시작: 포그라운드 상태');
+  }
+
+  void _initializeMessageService() {
+    try {
+      _messageService = Get.find<MessageService>();
+      _messageService.setAppState(false); // 초기 상태는 포그라운드
+      debugPrint('✅ MessageService 초기화 완료');
+    } catch (e) {
+      debugPrint('⚠️ MessageService 초기화 오류: $e');
+    }
   }
 
   @override
@@ -48,12 +60,24 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
           // 서비스 상태 리프레시
           _homeArrivalService.refreshTrackingStatus();
         }
+        // 메시지 서비스에 포그라운드 상태 알림
+        try {
+          _messageService.setAppState(false);
+        } catch (e) {
+          debugPrint('⚠️ 메시지 서비스 상태 변경 오류: $e');
+        }
         break;
       case AppLifecycleState.inactive:
         debugPrint('🟡 앱이 비활성화 상태로 전환됨 (전환 중)');
         break;
       case AppLifecycleState.paused:
         debugPrint('🔴 앱이 백그라운드 상태로 전환됨');
+        // 메시지 서비스에 백그라운드 상태 알림
+        try {
+          _messageService.setAppState(true);
+        } catch (e) {
+          debugPrint('⚠️ 메시지 서비스 상태 변경 오류: $e');
+        }
         break;
       case AppLifecycleState.detached:
         debugPrint('⚫ 앱이 분리 상태로 전환됨 (종료 중)');

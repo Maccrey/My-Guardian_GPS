@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../models/message_model.dart';
 import '../models/user_model.dart';
 import 'auth_service.dart';
+import 'notification_service.dart';
 
 class MessageService extends GetxController {
   static const String _localStorageKey = 'local_messages';
@@ -43,6 +44,15 @@ class MessageService extends GetxController {
   // 스트림 구독
   StreamSubscription<QuerySnapshot>? _messagesSubscription;
 
+  // 알림 서비스
+  NotificationService? _notificationService;
+
+  // 마지막으로 알림을 표시한 메시지 ID
+  String? _lastNotifiedMessageId;
+
+  // 백그라운드 상태 여부
+  RxBool isInBackground = false.obs;
+
   @override
   void onInit() {
     super.onInit();
@@ -50,10 +60,14 @@ class MessageService extends GetxController {
     debounce(messages, (_) {
       debugPrint('🔄 메시지 목록 변경됨 - UI 갱신 트리거');
       _updateUnreadCount();
+      _checkNewMessages();
     }, time: const Duration(milliseconds: 300));
 
     // 초기 메시지 로드
     _initMessages();
+
+    // 알림 서비스 초기화
+    _initNotificationService();
   }
 
   @override
@@ -1229,6 +1243,97 @@ class MessageService extends GetxController {
     } catch (e) {
       debugPrint('⚠️ Firestore 구독 설정 중 오류 발생: $e');
       debugPrint('⚠️ 오류 스택: ${StackTrace.current}');
+    }
+  }
+
+  // 알림 서비스 초기화
+  Future<void> _initNotificationService() async {
+    try {
+      _notificationService = await NotificationService.getInstance();
+      debugPrint('✅ 메시지 서비스에 알림 서비스 연결 완료');
+    } catch (e) {
+      debugPrint('⚠️ 알림 서비스 초기화 오류: $e');
+    }
+  }
+
+  // 앱 상태 설정 (백그라운드/포그라운드)
+  void setAppState(bool background) {
+    isInBackground.value = background;
+    debugPrint('🔄 앱 상태 변경: ${background ? "백그라운드" : "포그라운드"}');
+
+    // 백그라운드 상태가 변경되면 메시지 체크
+    if (background) {
+      _checkNewMessages();
+    }
+  }
+
+  // 새 메시지 확인 및 알림 표시
+  Future<void> _checkNewMessages() async {
+    // 알림 서비스가 초기화되지 않았거나 로그인되지 않은 상태면 종료
+    if (_notificationService == null || _authService.uid == null) {
+      return;
+    }
+
+    try {
+      // 내가 받은 메시지 중 읽지 않은 메시지 필터링
+      final unreadMessages = messages
+          .where((message) =>
+              !message.isRead &&
+              message.receiverId == _authService.uid &&
+              message.senderId != _authService.uid)
+          .toList();
+
+      if (unreadMessages.isEmpty) {
+        return;
+      }
+
+      // 시간순 정렬 (최신 메시지가 앞으로)
+      unreadMessages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+      // 가장 최신 메시지
+      final latestMessage = unreadMessages.first;
+
+      // 이미 알림을 표시한 메시지면 종료
+      if (_lastNotifiedMessageId == latestMessage.id) {
+        return;
+      }
+
+      // 앱이 백그라운드 상태이거나 메시지 화면이 아닌 경우에만 알림 표시
+      if (isInBackground.value || !Get.currentRoute.contains('message')) {
+        // 발신자 정보 가져오기
+        final sender = await findUserById(latestMessage.senderId);
+        final senderName = sender?.nickname ?? sender?.email ?? '알 수 없음';
+
+        // 메시지 내용 가져오기
+        String messageContent = latestMessage.content;
+
+        // 메시지 타입에 따른 내용 처리
+        if (latestMessage.messageType != 'text') {
+          if (latestMessage.messageType == 'location_share') {
+            messageContent = '위치 공유';
+          } else if (latestMessage.messageType == 'location_request') {
+            messageContent = '위치 공유 요청';
+          } else if (latestMessage.messageType == 'arrival_notification') {
+            messageContent = '귀가 알림';
+          }
+        }
+
+        // 알림 표시
+        await _notificationService!.showMessageNotification(
+          senderName: senderName,
+          messageContent: messageContent,
+          senderId: latestMessage.senderId,
+          id: latestMessage.hashCode,
+        );
+
+        // 알림을 표시한 메시지 ID 저장
+        _lastNotifiedMessageId = latestMessage.id;
+
+        debugPrint(
+            '🔔 새 메시지 알림 표시: $senderName - ${messageContent.length > 30 ? '${messageContent.substring(0, 30)}...' : messageContent}');
+      }
+    } catch (e) {
+      debugPrint('⚠️ 새 메시지 확인 오류: $e');
     }
   }
 }
