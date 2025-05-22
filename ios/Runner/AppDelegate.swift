@@ -12,7 +12,7 @@ import GoogleMaps
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     let controller = self.window?.rootViewController as! FlutterViewController
-    let mapChannel = FlutterMethodChannel(name: "com.gps_search.maps/api_key",
+    let mapChannel = FlutterMethodChannel(name: "com.gps_search.maps/api_key", 
                                          binaryMessenger: controller.binaryMessenger)
     
     // Flutter에서 API 키를 설정하는 메서드

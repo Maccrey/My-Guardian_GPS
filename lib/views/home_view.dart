@@ -7,6 +7,7 @@ import 'emergency_guide_view.dart';
 import 'settings/settings_view.dart';
 import 'sos_view.dart';
 import 'messages/messages_list_view.dart';
+import 'home_arrival_view.dart';
 
 class HomeView extends StatelessWidget {
   const HomeView({Key? key}) : super(key: key);
@@ -113,6 +114,18 @@ class HomeView extends StatelessWidget {
                       Colors.green.shade100,
                       () {
                         // 귀가 알림 화면으로 이동
+                        try {
+                          Get.to(() => const HomeArrivalView());
+                        } catch (e) {
+                          debugPrint('⚠️ 귀가 알림 화면으로 이동 중 오류: $e');
+                          Get.snackbar(
+                            '오류',
+                            '귀가 알림 화면을 열 수 없습니다',
+                            backgroundColor: Colors.red.withOpacity(0.8),
+                            colorText: Colors.white,
+                            snackPosition: SnackPosition.BOTTOM,
+                          );
+                        }
                       },
                     ),
                     _buildFeatureCard(

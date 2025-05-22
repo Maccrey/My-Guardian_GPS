@@ -35,6 +35,7 @@ import 'views/messages/shared_location_view.dart';
 import 'utils/url_handler.dart';
 import 'views/profile_edit_view.dart';
 import 'services/map_api_service.dart';
+import 'views/home_arrival_view.dart';
 
 import 'firebase_options.dart'; // 임시로 주석 처리
 
@@ -343,6 +344,11 @@ class _MyAppState extends State<MyApp> {
           name: '/profile-edit',
           page: () => const ProfileEditView(),
           binding: ProfileEditBinding(),
+        ),
+        // 귀가 알림 페이지 라우트
+        GetPage(
+          name: '/home-arrival',
+          page: () => const HomeArrivalView(),
         ),
       ],
     );
