@@ -7,8 +7,11 @@ class Message {
   final String content;
   final DateTime timestamp;
   final bool isRead;
-  final String messageType; // 'text', 'location_request', 'location_share' 등
+  final String
+      messageType; // 'text', 'location_request', 'location_share', 'location_sharing' 등
   final String? replyToMessageId; // 답장 메시지 ID
+  final Map<String, dynamic>? data; // 메시지에 포함된 추가 데이터
+  final Map<String, dynamic>? extra; // 메시지 부가 정보 (action, locationId 등)
 
   Message({
     required this.id,
@@ -19,6 +22,8 @@ class Message {
     this.isRead = false,
     this.messageType = 'text',
     this.replyToMessageId,
+    this.data,
+    this.extra,
   });
 
   // JSON으로 변환
@@ -32,6 +37,8 @@ class Message {
       'isRead': isRead,
       'messageType': messageType,
       'replyToMessageId': replyToMessageId,
+      'data': data,
+      'extra': extra,
     };
   }
 
@@ -66,6 +73,24 @@ class Message {
         timestamp = DateTime.now();
       }
 
+      // 데이터와 부가정보 처리
+      Map<String, dynamic>? data;
+      Map<String, dynamic>? extra;
+
+      if (json['data'] is Map) {
+        data = Map<String, dynamic>.from(json['data']);
+      }
+
+      if (json['extra'] is Map) {
+        extra = Map<String, dynamic>.from(json['extra']);
+      } else if (json['messageType'] == 'location_sharing') {
+        // 이전 버전 호환성: 위치 공유 메시지인 경우 action과 locationId를 extra로 추출
+        extra = {
+          'action': json['action'] ?? 'unknown',
+          'locationId': json['locationId'],
+        };
+      }
+
       // 나머지 필드는 기본값 제공
       return Message(
         id: json['id'],
@@ -76,6 +101,8 @@ class Message {
         isRead: json['isRead'] ?? false,
         messageType: json['messageType'] ?? 'text',
         replyToMessageId: json['replyToMessageId'],
+        data: data,
+        extra: extra,
       );
     } catch (e) {
       // 포맷 오류시 예외 발생
@@ -103,6 +130,24 @@ class Message {
         timestamp = DateTime.now();
       }
 
+      // 메시지 데이터와 부가정보 처리
+      Map<String, dynamic>? messageData;
+      Map<String, dynamic>? extra;
+
+      // messageData 필드 처리
+      if (data['messageData'] is Map) {
+        messageData = Map<String, dynamic>.from(data['messageData']);
+      }
+
+      // 위치 공유 메시지 관련 필드 처리
+      if (data['type'] == 'location_sharing' ||
+          data['messageType'] == 'location_sharing') {
+        extra = {
+          'action': data['action'] ?? 'unknown',
+          'locationId': data['locationId'],
+        };
+      }
+
       return Message(
         id: doc.id,
         senderId: data['senderId'] ?? '',
@@ -110,8 +155,11 @@ class Message {
         content: data['content'] ?? '',
         timestamp: timestamp,
         isRead: data['isRead'] ?? false,
-        messageType: data['messageType'] ?? 'text',
+        messageType:
+            data['messageType'] ?? data['type'] ?? 'text', // type 필드 대체 지원
         replyToMessageId: data['replyToMessageId'],
+        data: messageData,
+        extra: extra,
       );
     } catch (e) {
       // 포맷 오류시 예외 발생
@@ -129,6 +177,8 @@ class Message {
     bool? isRead,
     String? messageType,
     String? replyToMessageId,
+    Map<String, dynamic>? data,
+    Map<String, dynamic>? extra,
   }) {
     return Message(
       id: id ?? this.id,
@@ -139,12 +189,14 @@ class Message {
       isRead: isRead ?? this.isRead,
       messageType: messageType ?? this.messageType,
       replyToMessageId: replyToMessageId ?? this.replyToMessageId,
+      data: data ?? this.data,
+      extra: extra ?? this.extra,
     );
   }
 
   // 디버깅용 문자열 표현
   @override
   String toString() {
-    return 'Message{id: $id, senderId: $senderId, receiverId: $receiverId, content: ${content.length > 20 ? content.substring(0, 20) + "..." : content}, timestamp: $timestamp, isRead: $isRead, messageType: $messageType, replyToMessageId: $replyToMessageId}';
+    return 'Message{id: $id, senderId: $senderId, receiverId: $receiverId, content: ${content.length > 20 ? content.substring(0, 20) + "..." : content}, timestamp: $timestamp, isRead: $isRead, messageType: $messageType, replyToMessageId: $replyToMessageId, data: $data, extra: $extra}';
   }
 }

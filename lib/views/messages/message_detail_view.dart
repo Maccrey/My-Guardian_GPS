@@ -1965,8 +1965,114 @@ class _MessageDetailViewState extends State<MessageDetailView> {
           ),
         );
       }
+    } else if (message.messageType == 'location_sharing') {
+      // 위치 공유 시작/중지 메시지
+      final data = message.data;
+      final isStarting = message.extra?['action'] == 'start';
+      final locationId = message.extra?['locationId'];
+      final senderName =
+          isCurrentUserSender ? '나' : _getRecipientName(message.senderId);
+
+      messageContent = Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: isCurrentUserSender
+                ? [Colors.blue.shade700, Colors.blue.shade500]
+                : [Colors.teal.shade200, Colors.teal.shade100],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(12),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 메시지 제목 및 아이콘
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isStarting ? Icons.location_on : Icons.location_off,
+                  size: 22,
+                  color:
+                      isCurrentUserSender ? Colors.white : Colors.teal.shade800,
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    isStarting
+                        ? '$senderName님이 위치 공유를 시작했습니다.'
+                        : '$senderName님이 위치 공유를 중지했습니다.',
+                    style: TextStyle(
+                      color: isCurrentUserSender
+                          ? Colors.white
+                          : Colors.teal.shade800,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            // 위치 정보 (위치 공유 시작 메시지인 경우에만 표시)
+            if (isStarting && locationId != null) ...[
+              const SizedBox(height: 8),
+
+              // 지도에서 보기 버튼
+              GestureDetector(
+                onTap: () => _navigateToLocationTracking(
+                    message.senderId, locationId, senderName),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: isCurrentUserSender
+                        ? Colors.white.withOpacity(0.25)
+                        : Colors.teal.shade800.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.map,
+                        size: 18,
+                        color: isCurrentUserSender
+                            ? Colors.white
+                            : Colors.teal.shade800,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '지도에서 실시간 위치 보기',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: isCurrentUserSender
+                              ? Colors.white
+                              : Colors.teal.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
     } else {
-      // 기타 메시지 타입
+      // 기타 타입의 메시지
       messageContent = Text(
         message.content,
         style: TextStyle(
@@ -1976,25 +2082,26 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       );
     }
 
-    return Align(
-      alignment:
-          isCurrentUserSender ? Alignment.centerRight : Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(Get.context!).size.width * 0.75,
-        ),
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 6),
+    return Column(
+      crossAxisAlignment: isCurrentUserSender
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
+      children: [
+        // 메시지 컨테이너
+        Container(
+          margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.75,
+          ),
           child: Column(
             crossAxisAlignment: isCurrentUserSender
                 ? CrossAxisAlignment.end
                 : CrossAxisAlignment.start,
             children: [
-              // 발신자 이름 표시 (자신이 아닌 경우만)
-              if (!isCurrentUserSender &&
-                  message.messageType != 'location_share')
+              // 상대방 메시지인 경우 발신자 이름 표시
+              if (!isCurrentUserSender)
                 Padding(
-                  padding: const EdgeInsets.only(left: 12, bottom: 4),
+                  padding: const EdgeInsets.only(left: 8, bottom: 2),
                   child: Text(
                     _getRecipientName(message.senderId),
                     style: TextStyle(
@@ -2023,13 +2130,15 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                   }
                 },
                 child: Container(
-                  padding: message.messageType == 'location_share'
+                  padding: message.messageType == 'location_share' ||
+                          message.messageType == 'location_sharing'
                       ? EdgeInsets.zero // 위치 공유는 자체 패딩 있음
                       : const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 10,
                         ),
-                  decoration: message.messageType == 'location_share'
+                  decoration: message.messageType == 'location_share' ||
+                          message.messageType == 'location_sharing'
                       ? null // 위치 공유는 자체 장식 있음
                       : BoxDecoration(
                           color: isHighlighted
@@ -2066,7 +2175,8 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                     children: [
                       if (replyReferenceWidget != null) replyReferenceWidget,
                       messageContent,
-                      if (message.messageType != 'location_share')
+                      if (message.messageType != 'location_share' &&
+                          message.messageType != 'location_sharing')
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(
@@ -2085,7 +2195,8 @@ class _MessageDetailViewState extends State<MessageDetailView> {
               ),
 
               // 위치 공유 메시지는 시간 표시를 아래에 별도로
-              if (message.messageType == 'location_share')
+              if (message.messageType == 'location_share' ||
+                  message.messageType == 'location_sharing')
                 Padding(
                   padding: const EdgeInsets.only(top: 4, right: 8, left: 8),
                   child: Text(
@@ -2099,8 +2210,21 @@ class _MessageDetailViewState extends State<MessageDetailView> {
             ],
           ),
         ),
-      ),
+      ],
     );
+  }
+
+  // 위치 추적 화면으로 이동
+  void _navigateToLocationTracking(
+      String userId, String locationId, String contactName) {
+    print('🗺️ [메시지] 위치 추적 화면으로 이동: userId=$userId, locationId=$locationId');
+
+    // 위치 추적 화면으로 이동
+    Get.toNamed('/location-tracking', arguments: {
+      'userId': userId,
+      'contactName': contactName,
+      'locationId': locationId,
+    });
   }
 
   // 지도 앱에서 바로 열기

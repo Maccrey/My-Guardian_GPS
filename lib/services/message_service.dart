@@ -1636,6 +1636,18 @@ class MessageService extends GetxController {
 
       // 스냅샷의 모든 메시지 처리
       for (var doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+
+        // 디버그: 위치 공유 메시지 로깅
+        if (data['type'] == 'location_sharing') {
+          print(
+              '📩 [메시지] 위치 공유 메시지 처리: id=${doc.id}, action=${data['action']}');
+          print('📩 [메시지] 메시지 내용: ${data['message']}');
+          if (data['messageData'] != null) {
+            print('📩 [메시지] 메시지 데이터: ${data['messageData']}');
+          }
+        }
+
         final message = LocationMessage.fromFirestore(doc);
 
         // 사용자별 메시지 목록에 추가
@@ -1653,50 +1665,40 @@ class MessageService extends GetxController {
         if (message.type == 'location_sharing') {
           if (message.action == 'start' && message.locationId != null) {
             // 가장 최근 메시지만 처리
-            if (!activeLocationMap.containsKey(message.senderId) ||
-                message.timestamp.isAfter(_messagesByUser[message.senderId]
-                        ?.firstWhere(
-                            (m) =>
-                                m.type == 'location_sharing' &&
-                                m.action == 'start',
-                            orElse: () => message)
-                        .timestamp ??
-                    DateTime(1970))) {
-              activeLocationMap[message.senderId] = message.locationId!;
-            }
-          } else if (message.action == 'stop') {
-            // 종료 메시지가 시작 메시지보다 최신인 경우 활성 목록에서 제거
-            if (activeLocationMap.containsKey(message.senderId)) {
-              final startMessage = _messagesByUser[message.senderId]
-                  ?.firstWhere(
-                      (m) =>
-                          m.type == 'location_sharing' && m.action == 'start',
-                      orElse: () => message);
+            final locationId = message.locationId!;
 
-              if (startMessage != null &&
-                  message.timestamp.isAfter(startMessage.timestamp)) {
-                activeLocationMap.remove(message.senderId);
-              }
-            }
+            // 활성 위치 공유 맵에 추가
+            activeLocationMap[message.senderId] = locationId;
+
+            print(
+                '✅ [메시지] 활성 위치 공유 추가: senderId=${message.senderId}, locationId=$locationId');
+          } else if (message.action == 'stop') {
+            // 위치 공유 중지 메시지가 있으면 해당 사용자의 활성 공유 제거
+            activeLocationMap.remove(message.senderId);
+            print('🛑 [메시지] 위치 공유 중지: senderId=${message.senderId}');
           }
         }
       }
 
       // 상태 업데이트
-      unreadMessageCount.value = unreadCount;
-      activeLocationSharing.value = activeLocationMap;
-
-      // 사용자별 메시지 목록 업데이트
+      _messagesByUser.clear();
       messageMap.forEach((userId, messages) {
-        if (!_messagesByUser.containsKey(userId)) {
-          _messagesByUser[userId] = <LocationMessage>[].obs;
-        }
-        _messagesByUser[userId]!.value = messages;
+        _messagesByUser[userId] = messages.obs;
       });
 
-      debugPrint('✅ 메시지 처리 완료: ${snapshot.docs.length}개, 읽지 않음: $unreadCount개');
+      // 활성 위치 공유 정보 업데이트
+      activeLocationSharing.value = activeLocationMap;
+
+      // 디버그: 위치 공유 목록 출력
+      print('📊 [메시지] 활성 위치 공유 목록: ${activeLocationSharing.keys.join(', ')}');
+
+      // 읽지 않은 메시지 수 업데이트
+      unreadMessageCount.value = unreadCount;
+
+      print(
+          '✅ [메시지] 메시지 처리 완료: ${_messagesByUser.length}명의 사용자, ${unreadMessageCount.value}개의 읽지 않은 메시지');
     } catch (e) {
-      debugPrint('⚠️ 메시지 처리 오류: $e');
+      print('❌ [메시지] 메시지 처리 오류: $e');
     }
   }
 
