@@ -994,26 +994,26 @@ class _MessageDetailViewState extends State<MessageDetailView> {
             tooltip: '메시지 새로고침',
           ),
           // 옵션 메뉴
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            onSelected: (value) {
-              if (value == 'clear') {
-                _showClearConversationDialog();
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem<String>(
-                value: 'clear',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete_outline, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('대화 삭제'),
-                  ],
-                ),
-              ),
-            ],
-          ),
+          // PopupMenuButton<String>(
+          //   icon: const Icon(Icons.more_vert),
+          //   onSelected: (value) {
+          //     if (value == 'clear') {
+          //       _showClearConversationDialog();
+          //     }
+          //   },
+          //   itemBuilder: (context) => [
+          //     const PopupMenuItem<String>(
+          //       value: 'clear',
+          //       child: Row(
+          //         children: [
+          //           Icon(Icons.delete_outline, color: Colors.red),
+          //           SizedBox(width: 8),
+          //           Text('대화 삭제'),
+          //         ],
+          //       ),
+          //     ),
+          //   ],
+          // ),
         ],
       ),
       body: Container(

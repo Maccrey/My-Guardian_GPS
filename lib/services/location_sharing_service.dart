@@ -208,8 +208,14 @@ class LocationSharingService extends GetxController {
       _startPositionTracking(receiverId);
       print('📡 [서비스] 위치 추적 시작: receiverId=$receiverId');
 
-      // 위치 공유 시작 메시지 전송
-      _sendLocationSharingStatusMessage(receiverId, true);
+      // 위치 공유 시작 메시지 전송 (비동기로 실행하되 완료 대기)
+      try {
+        print('✉️ [서비스] 위치 공유 시작 메시지 전송 시도');
+        await _sendLocationSharingStatusMessage(receiverId, true);
+        print('✅ [서비스] 위치 공유 시작 메시지 전송 완료');
+      } catch (e) {
+        print('⚠️ [서비스] 위치 공유 시작 메시지 전송 오류 (계속 진행): $e');
+      }
 
       print('✅ [서비스] 위치 공유 시작 완료: receiverId=$receiverId');
       return true;
@@ -235,22 +241,44 @@ class LocationSharingService extends GetxController {
     }
 
     try {
-      // 위치 추적 중지
+      // 위치 추적 중지 - 먼저 호출하여 스트림 및 타이머를 확실히 중지
       print('🔄 [서비스] 위치 추적 중지');
       _stopPositionTracking(receiverId);
 
+      // 폴백 타이머도 명시적으로 취소
+      _stopFallbackPositionTimer(receiverId);
+
       // 위치 공유 종료 상태로 업데이트
+      SharedLocation? sharedLocation;
       if (_activeSharing.containsKey(receiverId)) {
         print('🔍 [서비스] 활성 공유 정보 찾음: receiverId=$receiverId');
-        final sharedLocation = _activeSharing[receiverId]!;
+        sharedLocation = _activeSharing[receiverId]!;
+      } else {
+        // receiverId로 찾지 못한 경우 전체 목록에서 해당 receiverId와 일치하는 항목 검색
+        print('🔍 [서비스] 대체 방법으로 활성 공유 정보 검색');
+        for (var entry in _activeSharing.entries) {
+          if (entry.value.receiverId == receiverId) {
+            sharedLocation = entry.value;
+            receiverId = entry.key; // 실제 맵에 저장된 키로 갱신
+            print('✅ [서비스] 대체 키로 활성 공유 발견: key=${entry.key}');
+            break;
+          }
+        }
+      }
 
+      if (sharedLocation != null) {
         // Firestore 문서 삭제
         print('🗑️ [서비스] Firestore 데이터 삭제 시도: locationId=${sharedLocation.id}');
-        await _firestore
-            .collection('location_sharing')
-            .doc(sharedLocation.id)
-            .delete();
-        print('✅ [서비스] Firestore 위치 공유 데이터 삭제 성공');
+        try {
+          await _firestore
+              .collection('location_sharing')
+              .doc(sharedLocation.id)
+              .delete();
+          print('✅ [서비스] Firestore 위치 공유 데이터 삭제 성공');
+        } catch (e) {
+          print('⚠️ [서비스] Firestore 데이터 삭제 오류: $e');
+          // 삭제 실패해도 진행 (로컬 상태는 업데이트)
+        }
 
         // 상태 업데이트
         _activeSharing.remove(receiverId);
@@ -266,8 +294,14 @@ class LocationSharingService extends GetxController {
         await _saveActiveSharingState();
         print('💾 [서비스] 로컬 저장소에 상태 저장 완료');
 
-        // 위치 공유 종료 메시지 전송
-        _sendLocationSharingStatusMessage(receiverId, false);
+        // 위치 공유 종료 메시지 전송 (비동기로 실행하고 결과 대기)
+        try {
+          print('✉️ [서비스] 위치 공유 종료 메시지 전송 시도: receiverId=$receiverId');
+          await _sendLocationSharingStatusMessage(receiverId, false);
+          print('✅ [서비스] 위치 공유 종료 메시지 전송 완료');
+        } catch (e) {
+          print('⚠️ [서비스] 위치 공유 종료 메시지 전송 오류 (무시됨): $e');
+        }
 
         // MessageService에게 위치 공유 종료 알림 (추가)
         try {
@@ -288,10 +322,20 @@ class LocationSharingService extends GetxController {
         return true;
       } else {
         print('⚠️ [서비스] 활성 공유 정보 없음: receiverId=$receiverId');
+
+        // 그래도 스트림과 타이머는 중지 (안전하게)
+        _stopPositionTracking(receiverId);
+        _stopFallbackPositionTimer(receiverId);
+
         return false;
       }
     } catch (e) {
       print('❌ [서비스] 위치 공유 중지 오류: $e');
+
+      // 오류 발생해도 스트림과 타이머는 중지 (안전하게)
+      _stopPositionTracking(receiverId);
+      _stopFallbackPositionTimer(receiverId);
+
       return false;
     }
   }
@@ -307,10 +351,18 @@ class LocationSharingService extends GetxController {
 
   // 위치 추적 시작
   void _startPositionTracking(String receiverId) {
+    // 먼저 receiverId가 활성 공유 목록에 있는지 확인
+    if (!_activeSharing.containsKey(receiverId)) {
+      print('⚠️ [서비스] 위치 추적 시작 불가: 활성 공유 없음 - receiverId=$receiverId');
+      return;
+    }
+
     // 이미 추적 중인 경우 중지
     _stopPositionTracking(receiverId);
 
     try {
+      print('🔄 [서비스] 위치 추적 시작: receiverId=$receiverId');
+
       // 위치 추적 시작
       final stream = Geolocator.getPositionStream(
         locationSettings: LocationSettings(
@@ -322,6 +374,14 @@ class LocationSharingService extends GetxController {
 
       _positionStreams[receiverId] = stream.listen(
         (Position position) {
+          // 위치 공유가 취소되었는지 확인
+          if (!_activeSharing.containsKey(receiverId)) {
+            print('🛑 [서비스] 위치 공유 취소됨: 추적 중지 - receiverId=$receiverId');
+            _stopPositionTracking(receiverId);
+            _stopFallbackPositionTimer(receiverId);
+            return;
+          }
+
           // 위치 업데이트 시 마지막 위치 캐싱
           _lastKnownPosition = position;
           _updateLocationData(receiverId, position);
@@ -329,12 +389,27 @@ class LocationSharingService extends GetxController {
         onError: (error) {
           print('위치 스트림 오류: $error');
 
+          // 위치 공유가 취소되었는지 확인
+          if (!_activeSharing.containsKey(receiverId)) {
+            print('🛑 [서비스] 위치 공유 취소됨: 폴백 시작 중지 - receiverId=$receiverId');
+            _stopPositionTracking(receiverId);
+            _stopFallbackPositionTimer(receiverId);
+            return;
+          }
+
           // 타임아웃 오류 발생 시 폴백 메커니즘
           if (error is TimeoutException) {
             print('위치 타임아웃 발생 - 대체 메커니즘 사용');
 
             // 즉시 한 번 위치 가져오기 시도
             _getCurrentPositionSafely().then((position) {
+              // 위치 요청 도중 공유가 취소되었는지 다시 확인
+              if (!_activeSharing.containsKey(receiverId)) {
+                print(
+                    '🛑 [서비스] 위치 공유 취소됨: 위치 업데이트 중지 - receiverId=$receiverId');
+                return;
+              }
+
               if (position != null) {
                 _updateLocationData(receiverId, position);
               }
@@ -345,13 +420,21 @@ class LocationSharingService extends GetxController {
           }
 
           // 오류 발생 시 마지막 알려진 위치 사용
-          if (_lastKnownPosition != null) {
+          if (_lastKnownPosition != null &&
+              _activeSharing.containsKey(receiverId)) {
             _updateLocationData(receiverId, _lastKnownPosition!);
           }
         },
       );
     } catch (e) {
       print('위치 스트림 초기화 오류: $e');
+
+      // 위치 공유가 취소되었는지 확인
+      if (!_activeSharing.containsKey(receiverId)) {
+        print('🛑 [서비스] 위치 공유 취소됨: 폴백 타이머 시작 중지 - receiverId=$receiverId');
+        return;
+      }
+
       // 실패 시 폴백: 주기적으로 한 번씩 위치 요청
       _startFallbackPositionTimer(receiverId);
     }
@@ -359,20 +442,40 @@ class LocationSharingService extends GetxController {
 
   // 폴백 위치 타이머 시작 (스트림 실패 시 대체 메커니즘)
   void _startFallbackPositionTimer(String receiverId) {
+    // 먼저 공유 상태 확인
+    if (!_activeSharing.containsKey(receiverId)) {
+      print('⚠️ [서비스] 폴백 타이머 시작 불가: 활성 공유 없음 - receiverId=$receiverId');
+      return;
+    }
+
     // 기존 타이머가 있으면 취소
     _stopFallbackPositionTimer(receiverId);
+
+    print('🔄 [서비스] 폴백 위치 타이머 시작: receiverId=$receiverId');
 
     // 새 타이머 시작
     _fallbackTimers[receiverId] = Timer.periodic(
         Duration(seconds: updateIntervalSeconds.value * 2), (timer) {
+      // 매 타이머 실행 시 공유 상태 다시 확인
       if (!_activeSharing.containsKey(receiverId) ||
           !_activeSharing[receiverId]!.isActive) {
+        print('🛑 [서비스] 위치 공유 취소됨: 폴백 타이머 중지 - receiverId=$receiverId');
         timer.cancel();
         _fallbackTimers.remove(receiverId);
         return;
       }
 
+      print('🔄 [서비스] 폴백 타이머로 위치 업데이트 시도: receiverId=$receiverId');
+
       _getCurrentPositionSafely().then((position) {
+        // 위치 획득 후 다시 공유 상태 확인
+        if (!_activeSharing.containsKey(receiverId)) {
+          print('🛑 [서비스] 위치 공유 취소됨: 위치 업데이트 중지 - receiverId=$receiverId');
+          timer.cancel();
+          _fallbackTimers.remove(receiverId);
+          return;
+        }
+
         if (position != null) {
           _updateLocationData(receiverId, position);
         }
@@ -459,9 +562,19 @@ class LocationSharingService extends GetxController {
   // 위치 정보 업데이트
   Future<void> _updateLocationData(String receiverId, Position position) async {
     final userId = _auth.currentUser?.uid;
-    if (userId == null) return;
+    if (userId == null) {
+      print('⚠️ [위치 공유] 위치 업데이트 중단: 사용자 인증 안됨');
+      return;
+    }
 
-    if (!_activeSharing.containsKey(receiverId)) return;
+    // 활성 공유 여부 확인
+    if (!_activeSharing.containsKey(receiverId)) {
+      print('⚠️ [위치 공유] 위치 업데이트 중단: 활성 공유 없음 - receiverId=$receiverId');
+      // 위치 추적이 아직 완전히 중지되지 않았을 수 있으므로 중지 시도
+      _stopPositionTracking(receiverId);
+      _stopFallbackPositionTimer(receiverId);
+      return;
+    }
 
     final sharedLocation = _activeSharing[receiverId]!.copyWithNewLocation(
       position.latitude,
@@ -480,6 +593,36 @@ class LocationSharingService extends GetxController {
     try {
       print('📤 [위치 공유] Firebase에 위치 데이터 업데이트 시도...');
 
+      // 먼저 문서가 존재하는지 확인
+      final docExists = await _firestore
+          .collection('location_sharing')
+          .doc(sharedLocation.id)
+          .get()
+          .then((doc) => doc.exists)
+          .catchError((e) {
+        print('⚠️ [위치 공유] 문서 존재 확인 오류: $e');
+        return false;
+      });
+
+      if (!docExists) {
+        print('⚠️ [위치 공유] Firebase 문서가 존재하지 않음: 위치 공유가 이미 중지됨');
+        // 로컬 상태 정리 - 문서가 없다면 위치 공유가 중지된 것으로 간주
+        _activeSharing.remove(receiverId);
+        sharingToUserIds.remove(receiverId);
+
+        if (_activeSharing.isEmpty) {
+          isSharingLocation.value = false;
+        }
+
+        // 위치 추적 중지
+        _stopPositionTracking(receiverId);
+        _stopFallbackPositionTimer(receiverId);
+
+        // 로컬 저장소 업데이트
+        await _saveActiveSharingState();
+        return;
+      }
+
       // Firestore에 위치 업데이트
       await _firestore
           .collection('location_sharing')
@@ -496,7 +639,31 @@ class LocationSharingService extends GetxController {
       _removeFromLocationCache(sharedLocation.id);
     } catch (e) {
       print('❌ [위치 공유] Firebase 위치 업데이트 오류: $e');
-      // 오류 발생 시 캐시에 유지 (나중에 다시 시도)
+
+      // 오류 메시지 분석
+      String errorMsg = e.toString().toLowerCase();
+      if (errorMsg.contains('not found') ||
+          errorMsg.contains('no document to update') ||
+          errorMsg.contains('not exist')) {
+        print('🛑 [위치 공유] 문서가 존재하지 않음: 위치 공유 중지 처리');
+
+        // 로컬 상태 정리
+        _activeSharing.remove(receiverId);
+        sharingToUserIds.remove(receiverId);
+
+        if (_activeSharing.isEmpty) {
+          isSharingLocation.value = false;
+        }
+
+        // 위치 추적 중지
+        _stopPositionTracking(receiverId);
+        _stopFallbackPositionTimer(receiverId);
+
+        // 로컬 저장소 업데이트
+        await _saveActiveSharingState();
+      } else {
+        // 다른 오류인 경우 캐시에 유지 (나중에 다시 시도)
+      }
     }
   }
 
@@ -552,6 +719,28 @@ class LocationSharingService extends GetxController {
       // 위치 공유 ID (시작할 때만 사용)
       String? locationId = isStarting ? _activeSharing[receiverId]?.id : null;
 
+      // 종료 메시지일 경우 기존 locationId 찾기
+      if (!isStarting && locationId == null) {
+        print('🔍 [서비스] 종료 메시지용 위치 공유 ID 찾기');
+        // 인덱스 오류 방지를 위해 간소화된 쿼리 사용
+        final recentMessages = await _firestore
+            .collection('messages')
+            .where('senderId', isEqualTo: currentUser.uid)
+            .where('receiverId', isEqualTo: receiverId)
+            .limit(50) // 최근 50개 메시지만 조회
+            .get();
+
+        // 직접 필터링
+        for (var doc in recentMessages.docs) {
+          final data = doc.data();
+          if (data['type'] == 'location_sharing' && data['action'] == 'start') {
+            locationId = data['locationId'];
+            print('✅ [서비스] 기존 위치 공유 ID 찾음: $locationId');
+            break;
+          }
+        }
+      }
+
       // 메시지 내용 생성
       final String message = isStarting
           ? '$userName님이 실시간 위치 공유를 시작했습니다. 지도에서 확인하세요.'
@@ -582,6 +771,34 @@ class LocationSharingService extends GetxController {
           ? '$message\n$locationInfo'
           : message;
 
+      // 채팅방 ID 조회 또는 생성 (동일한 채팅방 사용을 위해)
+      String chatRoomId = '';
+      final chatRooms = await _firestore
+          .collection('chat_rooms')
+          .where('participants', arrayContains: currentUser.uid)
+          .get();
+
+      for (var room in chatRooms.docs) {
+        final participants = room.data()['participants'] as List<dynamic>;
+        if (participants.contains(receiverId) && participants.length == 2) {
+          chatRoomId = room.id;
+          print('🔍 [서비스] 기존 채팅방 찾음: $chatRoomId');
+          break;
+        }
+      }
+
+      // 채팅방이 없으면 새로 생성
+      if (chatRoomId.isEmpty) {
+        print('➕ [서비스] 새 채팅방 생성');
+        final newChatRoom = await _firestore.collection('chat_rooms').add({
+          'participants': [currentUser.uid, receiverId],
+          'createdAt': FieldValue.serverTimestamp(),
+          'lastMessageAt': FieldValue.serverTimestamp(),
+        });
+        chatRoomId = newChatRoom.id;
+        print('✅ [서비스] 새 채팅방 생성 완료: $chatRoomId');
+      }
+
       // Firestore에 메시지 저장 - 이제 JSON 형식으로 저장
       await _firestore.collection('messages').add({
         'senderId': currentUser.uid,
@@ -593,6 +810,13 @@ class LocationSharingService extends GetxController {
         'locationId': locationId,
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
+        'chatRoomId': chatRoomId, // 채팅방 ID 추가
+      });
+
+      // 채팅방 마지막 메시지 업데이트
+      await _firestore.collection('chat_rooms').doc(chatRoomId).update({
+        'lastMessage': fullMessage,
+        'lastMessageAt': FieldValue.serverTimestamp(),
       });
 
       print('💾 [서비스] Firestore에 메시지 저장 완료: $fullMessage');
@@ -743,8 +967,14 @@ class LocationSharingService extends GetxController {
       _startPositionTracking(receiverUid);
       print('📡 [서비스] 위치 추적 시작: receiverUid=$receiverUid');
 
-      // 위치 공유 시작 메시지 전송
-      _sendLocationSharingStatusMessage(receiverUid, true);
+      // 위치 공유 시작 메시지 전송 (비동기로 실행하되 완료 대기)
+      try {
+        print('✉️ [서비스] 위치 공유 시작 메시지 전송 시도: receiverUid=$receiverUid');
+        await _sendLocationSharingStatusMessage(receiverUid, true);
+        print('✅ [서비스] 위치 공유 시작 메시지 전송 완료');
+      } catch (e) {
+        print('⚠️ [서비스] 위치 공유 시작 메시지 전송 오류 (계속 진행): $e');
+      }
 
       print('✅ [서비스] 앱 사용자와 위치 공유 시작 완료: receiverUid=$receiverUid');
       return true;
