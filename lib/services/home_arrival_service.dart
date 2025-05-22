@@ -184,10 +184,12 @@ class HomeArrivalService extends GetxController {
       // 추적 상태 업데이트
       if (event['status'] != null) {
         trackingStatus.value = event['status'];
+        debugPrint('📱 백그라운드 서비스로부터 상태 업데이트: ${event['status']}');
       }
 
       // 집 도착 이벤트 처리
       if (event['arrived'] == true) {
+        debugPrint('🏠 집 도착 이벤트 수신됨, 추적 중지');
         stopTracking();
       }
     });
@@ -315,6 +317,9 @@ class HomeArrivalService extends GetxController {
   // 추적 중지
   Future<void> stopTracking() async {
     try {
+      // 먼저 현재 상태 확인 (알림 표시 조건용)
+      final wasTracking = isTrackingEnabled.value;
+
       // 백그라운드 서비스 중지
       _backgroundService.invoke('stopService', {});
 
@@ -323,12 +328,59 @@ class HomeArrivalService extends GetxController {
       isArrivingHome.value = false;
       trackingStatus.value = '추적 비활성화';
 
+      // 완료 알림 표시 (추적이 실제로 활성화되어 있었을 때만)
+      if (wasTracking) {
+        await _showHomeArrivalCompletionNotification();
+      }
+
       // 설정 저장
       await _saveSettings();
 
       debugPrint('✅ 귀가 추적 중지');
     } catch (e) {
       debugPrint('❌ 귀가 추적 중지 오류: $e');
+    }
+  }
+
+  // 귀가 알림 완료 알림 표시
+  Future<void> _showHomeArrivalCompletionNotification() async {
+    try {
+      // Android 알림 세부 정보
+      const AndroidNotificationDetails androidDetails =
+          AndroidNotificationDetails(
+        'home_arrival_completion_channel',
+        '귀가 알림 완료',
+        channelDescription: '귀가 알림 서비스 완료 알림',
+        importance: Importance.high,
+        priority: Priority.high,
+        showWhen: true,
+      );
+
+      // iOS 알림 세부 정보
+      const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        sound: 'default',
+      );
+
+      // 플랫폼 세부 정보
+      const NotificationDetails platformDetails = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      );
+
+      // 알림 표시
+      await _notificationsPlugin.show(
+        2, // 알림 ID
+        '귀가 알림 완료',
+        '귀가 알림 서비스가 중지되었습니다.',
+        platformDetails,
+      );
+
+      debugPrint('✅ 귀가 알림 완료 알림 표시');
+    } catch (e) {
+      debugPrint('❌ 귀가 알림 완료 알림 표시 오류: $e');
     }
   }
 
@@ -384,14 +436,18 @@ class HomeArrivalService extends GetxController {
     // Isolate와 통신하기 위한 포트 등록
     DartPluginRegistrant.ensureInitialized();
 
+    debugPrint('🚀 백그라운드 서비스 시작됨');
+
     // 백그라운드 모드 확인
     if (service is AndroidServiceInstance) {
       service.on('setAsForeground').listen((event) {
         service.setAsForegroundService();
+        debugPrint('🟢 백그라운드 서비스: 포그라운드 모드로 설정됨');
       });
 
       service.on('setAsBackground').listen((event) {
         service.setAsBackgroundService();
+        debugPrint('🔴 백그라운드 서비스: 백그라운드 모드로 설정됨');
       });
     }
 
@@ -427,6 +483,35 @@ class HomeArrivalService extends GetxController {
             content: '귀가 알림을 전송했습니다.',
           );
         }
+
+        // 로컬 알림 표시 (백그라운드에서도 가능하도록)
+        // 백그라운드에서 전송할 알림 준비
+        final FlutterLocalNotificationsPlugin notificationsPlugin =
+            FlutterLocalNotificationsPlugin();
+
+        // Android 알림 채널 설정
+        const AndroidNotificationDetails androidDetails =
+            AndroidNotificationDetails(
+          'home_arrival_channel',
+          '귀가 알림',
+          channelDescription: '귀가 알림 서비스 알림',
+          importance: Importance.high,
+          priority: Priority.high,
+          showWhen: true,
+        );
+
+        // 알림 상세 정보
+        const NotificationDetails platformDetails = NotificationDetails(
+          android: androidDetails,
+        );
+
+        // 알림 표시
+        await notificationsPlugin.show(
+          1, // 알림 ID
+          '집에 도착했습니다',
+          arrivalMessage,
+          platformDetails,
+        );
       } catch (e) {
         debugPrint('❌ 백그라운드 서비스 도착 알림 처리 오류: $e');
       }
@@ -493,6 +578,8 @@ class HomeArrivalService extends GetxController {
       // 무시 가능한 이벤트
       if (event == null) return;
 
+      debugPrint('📥 백그라운드 서비스: 데이터 업데이트 수신: $event');
+
       if (event['homeLatitude'] != null && event['homeLongitude'] != null) {
         homeLatitude = event['homeLatitude'];
         homeLongitude = event['homeLongitude'];
@@ -517,10 +604,20 @@ class HomeArrivalService extends GetxController {
       }
     });
 
+    // 상태 요청 리스너
+    service.on('getStatus').listen((event) {
+      final statusText = positionStream != null ? '추적 중...' : '초기화 중...';
+
+      debugPrint('📤 백그라운드 서비스: 상태 업데이트 전송: $statusText');
+      service.invoke('update', {'status': statusText});
+    });
+
     // 서비스 종료 명령 리스너
     service.on('stopService').listen((event) {
       // 위치 업데이트 중지
       positionStream?.cancel();
+
+      debugPrint('🛑 백그라운드 서비스: 종료 요청 수신');
 
       // 서비스 종료
       service.stopSelf();
@@ -599,11 +696,103 @@ class HomeArrivalService extends GetxController {
           debugPrint('✅ 지연된 귀가 알림 전송 완료: $recipientId');
         }
 
+        // 로컬 알림 표시
+        await _showHomeArrivalNotification(message);
+
         // 알림 플래그 초기화
         await prefs.setBool('arrival_notification_pending', false);
       }
     } catch (e) {
       debugPrint('❌ 지연된 귀가 알림 처리 오류: $e');
+    }
+  }
+
+  // 귀가 알림 로컬 알림 표시
+  Future<void> _showHomeArrivalNotification(String message) async {
+    try {
+      // Android 알림 세부 정보
+      const AndroidNotificationDetails androidDetails =
+          AndroidNotificationDetails(
+        'home_arrival_channel',
+        '귀가 알림',
+        channelDescription: '귀가 알림 서비스 알림',
+        importance: Importance.high,
+        priority: Priority.high,
+        showWhen: true,
+      );
+
+      // iOS 알림 세부 정보
+      const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        sound: 'default',
+      );
+
+      // 플랫폼 세부 정보
+      const NotificationDetails platformDetails = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      );
+
+      // 알림 표시
+      await _notificationsPlugin.show(
+        0, // 알림 ID
+        '귀가 알림',
+        message,
+        platformDetails,
+      );
+
+      debugPrint('✅ 귀가 알림 표시 완료');
+    } catch (e) {
+      debugPrint('❌ 귀가 알림 표시 오류: $e');
+    }
+  }
+
+  // 추적 상태 리프레시 (앱이 포그라운드로 돌아올 때 호출)
+  Future<void> refreshTrackingStatus() async {
+    try {
+      debugPrint('🔄 HomeArrivalService: 추적 상태 리프레시 중');
+
+      // 현재 서비스 실행 상태 확인
+      final isRunning = await _backgroundService.isRunning();
+
+      // SharedPreferences에서 저장된 설정 확인
+      final prefs = await SharedPreferences.getInstance();
+      final savedIsTracking = prefs.getBool(PREF_TRACKING_ENABLED) ?? false;
+
+      // 상태 불일치 확인 및 수정
+      if (isRunning != isTrackingEnabled.value) {
+        debugPrint(
+            '⚠️ 추적 상태 불일치 감지: UI=${isTrackingEnabled.value}, 서비스=$isRunning');
+        isTrackingEnabled.value = isRunning;
+      }
+
+      if (savedIsTracking != isTrackingEnabled.value) {
+        debugPrint(
+            '⚠️ 저장된 추적 상태 불일치 감지: UI=${isTrackingEnabled.value}, 저장됨=$savedIsTracking');
+        await _saveSettings();
+      }
+
+      // 알림 확인
+      await checkPendingArrivalNotification();
+
+      // 백그라운드 서비스가 실행 중이면 상태 업데이트 요청
+      if (isRunning) {
+        debugPrint('✅ 추적 중인 백그라운드 서비스 발견, 상태 업데이트 요청');
+        isArrivingHome.value = true;
+        _backgroundService.invoke('getStatus', {});
+      } else if (isTrackingEnabled.value) {
+        debugPrint('⚠️ 추적 설정은 활성화되어 있으나 서비스가 실행 중이지 않음, 상태 수정');
+        isTrackingEnabled.value = false;
+        isArrivingHome.value = false;
+        trackingStatus.value = '추적 비활성화';
+        await _saveSettings();
+      }
+
+      debugPrint('✅ 추적 상태 리프레시 완료: 추적 중=${isTrackingEnabled.value}');
+    } catch (e) {
+      debugPrint('❌ 추적 상태 리프레시 오류: $e');
     }
   }
 

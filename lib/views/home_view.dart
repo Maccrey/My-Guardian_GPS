@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../services/auth_service.dart';
 import '../services/message_service.dart';
+import '../services/home_arrival_service.dart';
 import 'emergency_contacts_view.dart';
 import 'emergency_guide_view.dart';
 import 'settings/settings_view.dart';
@@ -9,8 +10,69 @@ import 'sos_view.dart';
 import 'messages/messages_list_view.dart';
 import 'home_arrival_view.dart';
 
-class HomeView extends StatelessWidget {
+class HomeView extends StatefulWidget {
   const HomeView({Key? key}) : super(key: key);
+
+  @override
+  State<HomeView> createState() => _HomeViewState();
+}
+
+class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
+  late HomeArrivalService _homeArrivalService;
+  bool _isServiceInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 라이프사이클 옵저버 등록
+    WidgetsBinding.instance.addObserver(this);
+    _initializeHomeArrivalService();
+    debugPrint('🔵 앱 시작: 포그라운드 상태');
+  }
+
+  @override
+  void dispose() {
+    // 라이프사이클 옵저버 해제
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    switch (state) {
+      case AppLifecycleState.resumed:
+        debugPrint('🟢 앱이 포그라운드 상태로 전환됨');
+        if (_isServiceInitialized) {
+          // 서비스 상태 리프레시
+          _homeArrivalService.refreshTrackingStatus();
+        }
+        break;
+      case AppLifecycleState.inactive:
+        debugPrint('🟡 앱이 비활성화 상태로 전환됨 (전환 중)');
+        break;
+      case AppLifecycleState.paused:
+        debugPrint('🔴 앱이 백그라운드 상태로 전환됨');
+        break;
+      case AppLifecycleState.detached:
+        debugPrint('⚫ 앱이 분리 상태로 전환됨 (종료 중)');
+        break;
+      default:
+        debugPrint('🔵 앱 상태 변경: $state');
+    }
+  }
+
+  Future<void> _initializeHomeArrivalService() async {
+    try {
+      _homeArrivalService = await HomeArrivalService.getInstance();
+      setState(() {
+        _isServiceInitialized = true;
+      });
+    } catch (e) {
+      debugPrint('❌ HomeArrivalService 초기화 오류: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -78,11 +140,99 @@ class HomeView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // 귀가 알림 상태 배너
+              if (_isServiceInitialized)
+                Obx(() {
+                  if (_homeArrivalService.isTrackingEnabled.value) {
+                    return Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 12, horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.blue.shade300),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.home_work,
+                            color: Colors.blue.shade700,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  '귀가 알림 추적 중',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Obx(() => Text(
+                                      _homeArrivalService.trackingStatus.value,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.blue.shade800,
+                                      ),
+                                    )),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.cancel_outlined,
+                                color: Colors.blue),
+                            onPressed: () async {
+                              final result = await showDialog<bool>(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('귀가 알림 중지'),
+                                  content: const Text('귀가 알림 추적을 중지하시겠습니까?'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.of(context).pop(false),
+                                      child: const Text('취소'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.of(context).pop(true),
+                                      child: const Text('중지'),
+                                    ),
+                                  ],
+                                ),
+                              );
+
+                              if (result == true) {
+                                await _homeArrivalService.stopTracking();
+                                Get.snackbar(
+                                  '알림',
+                                  '귀가 알림이 중지되었습니다.',
+                                  snackPosition: SnackPosition.BOTTOM,
+                                  backgroundColor: Colors.blue.shade50,
+                                  colorText: Colors.black87,
+                                  duration: const Duration(seconds: 2),
+                                );
+                              }
+                            },
+                          )
+                        ],
+                      ),
+                    );
+                  } else {
+                    return const SizedBox.shrink();
+                  }
+                }),
+
               // 안내 메시지
               const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Watch Over와 함께 안전한 위치 공유를 시작하세요.',
                     style: TextStyle(
                       fontSize: 16,
@@ -108,26 +258,51 @@ class HomeView extends StatelessWidget {
                         // 위치 공유 화면으로 이동
                       },
                     ),
-                    _buildFeatureCard(
-                      '귀가 알림',
-                      Icons.home,
-                      Colors.green.shade100,
-                      () {
-                        // 귀가 알림 화면으로 이동
-                        try {
-                          Get.to(() => const HomeArrivalView());
-                        } catch (e) {
-                          debugPrint('⚠️ 귀가 알림 화면으로 이동 중 오류: $e');
-                          Get.snackbar(
-                            '오류',
-                            '귀가 알림 화면을 열 수 없습니다',
-                            backgroundColor: Colors.red.withOpacity(0.8),
-                            colorText: Colors.white,
-                            snackPosition: SnackPosition.BOTTOM,
-                          );
-                        }
-                      },
-                    ),
+                    _isServiceInitialized
+                        ? Obx(() => _buildFeatureCard(
+                              '귀가 알림',
+                              _homeArrivalService.isTrackingEnabled.value
+                                  ? Icons.home_work
+                                  : Icons.home,
+                              _homeArrivalService.isTrackingEnabled.value
+                                  ? Colors.green.shade200
+                                  : Colors.green.shade100,
+                              () {
+                                // 귀가 알림 화면으로 이동
+                                try {
+                                  Get.to(() => const HomeArrivalView());
+                                } catch (e) {
+                                  debugPrint('⚠️ 귀가 알림 화면으로 이동 중 오류: $e');
+                                  Get.snackbar(
+                                    '오류',
+                                    '귀가 알림 화면을 열 수 없습니다',
+                                    backgroundColor:
+                                        Colors.red.withOpacity(0.8),
+                                    colorText: Colors.white,
+                                    snackPosition: SnackPosition.BOTTOM,
+                                  );
+                                }
+                              },
+                            ))
+                        : _buildFeatureCard(
+                            '귀가 알림',
+                            Icons.home,
+                            Colors.green.shade100,
+                            () {
+                              try {
+                                Get.to(() => const HomeArrivalView());
+                              } catch (e) {
+                                debugPrint('⚠️ 귀가 알림 화면으로 이동 중 오류: $e');
+                                Get.snackbar(
+                                  '오류',
+                                  '귀가 알림 화면을 열 수 없습니다',
+                                  backgroundColor: Colors.red.withOpacity(0.8),
+                                  colorText: Colors.white,
+                                  snackPosition: SnackPosition.BOTTOM,
+                                );
+                              }
+                            },
+                          ),
                     _buildFeatureCard(
                       '메시지',
                       Icons.message,
