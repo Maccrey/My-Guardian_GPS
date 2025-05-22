@@ -11,6 +11,7 @@ import '../services/location_service.dart';
 import '../services/auth_service.dart';
 import '../services/message_service.dart';
 import '../services/emergency_contact_service.dart';
+import '../services/home_arrival_service.dart';
 
 class HomeArrivalView extends StatefulWidget {
   const HomeArrivalView({Key? key}) : super(key: key);
@@ -25,6 +26,7 @@ class _HomeArrivalViewState extends State<HomeArrivalView> {
   final LocationService _locationService = Get.find<LocationService>();
   final AuthService _authService = Get.find<AuthService>();
   final MessageService _messageService = Get.find<MessageService>();
+  late final HomeArrivalService _homeArrivalService;
   final EmergencyContactService _emergencyContactService =
       Get.put(EmergencyContactService(useMemoryOnly: false), permanent: true);
 
@@ -76,11 +78,17 @@ class _HomeArrivalViewState extends State<HomeArrivalView> {
       // HomeLocationService 초기화
       _homeLocationService = await HomeLocationService.getInstance();
 
+      // HomeArrivalService 초기화
+      _homeArrivalService = await HomeArrivalService.getInstance();
+
       // 위치 목록 로드
       await _homeLocationService.loadHomeLocations();
 
       // EmergencyContactService 연락처 로드
       await _emergencyContactService.loadContacts();
+
+      // 기본 메시지 설정
+      _messageController.text = _homeArrivalService.arrivalMessage.value;
 
       _isInitialized.value = true;
     } catch (e) {

@@ -93,6 +93,18 @@
 	<string>지도 표시, 현재 위치 추적 및 경로 안내를 위해 위치 정보가 필요합니다.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>백그라운드에서 위치 추적 및 경로 탐색을 위해 항상 위치 정보가 필요합니다.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>귀가 알림 기능을 위해 앱이 백그라운드에서도 위치를 추적해야 합니다.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>location</string>
+		<string>processing</string>
+		<string>remote-notification</string>
+	</array>
+	<!-- 알림 권한 설명 -->
+	<key>NSUserNotificationUsageDescription</key>
+	<string>귀가 알림 및 중요한 안전 정보를 제공하기 위해 알림 권한이 필요합니다.</string>
 	<!-- Google Maps API 키 -->
 	<key>io.flutter.embedded_views_preview</key>
 	<true/>

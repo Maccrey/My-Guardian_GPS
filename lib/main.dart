@@ -12,6 +12,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'services/auth_service.dart';
 import 'services/message_service.dart';
 import 'services/image_cache_service.dart';
+import 'services/home_arrival_service.dart';
 import 'views/login_view.dart';
 import 'views/register_view.dart';
 import 'views/forgot_password_view.dart';
@@ -146,6 +147,14 @@ void main() async {
   // SettingsService 초기화
   await SettingsService.getInstance();
 
+  // 백그라운드에서 도착 시 알림을 위한 HomeArrivalService 초기화
+  try {
+    await HomeArrivalService.getInstance();
+    debugPrint('✅ HomeArrivalService 초기화 성공');
+  } catch (e) {
+    debugPrint('❌ HomeArrivalService 초기화 오류: $e');
+  }
+
   runApp(const MyApp());
 }
 
@@ -201,76 +210,44 @@ class _MyAppState extends State<MyApp> {
     try {
       if (!Get.isRegistered<MessageService>()) {
         debugPrint('💬 MessageService 초기화 시작...');
-        final messageService = MessageService();
-        Get.put(messageService, permanent: true);
-
-        // 초기화 확인
+        final messageService = Get.put(MessageService(), permanent: true);
         debugPrint('✅ MessageService 초기화 성공');
-        messageService.refreshMessages().then((_) {
-          debugPrint('✅ 초기 메시지 로드 완료: ${messageService.messages.length}개 메시지');
-          if (messageService.hasError.value) {
-            debugPrint('⚠️ 메시지 로드 오류: ${messageService.errorMessage.value}');
-          }
-        }).catchError((e) {
-          debugPrint('⚠️ 초기 메시지 로드 실패: $e');
-        });
       }
     } catch (e) {
       debugPrint('⚠️ MessageService 초기화 오류: $e');
-      debugPrint('⚠️ 오류 스택: ${StackTrace.current}');
     }
 
-    // 긴급 연락처 서비스 초기화 - SharedPreferences 상태에 따라 메모리 모드 설정
+    // 위치 서비스 초기화
+    try {
+      if (!Get.isRegistered<LocationService>()) {
+        debugPrint('🗺️ LocationService 초기화 시작...');
+        final locationService = Get.put(LocationService(), permanent: true);
+        debugPrint('✅ LocationService 초기화 성공');
+      }
+    } catch (e) {
+      debugPrint('⚠️ LocationService 초기화 오류: $e');
+    }
+
+    // 비상 연락처 서비스 초기화
     try {
       if (!Get.isRegistered<EmergencyContactService>()) {
-        Get.put(
-            EmergencyContactService(
-              useMemoryOnly: !isSharedPreferencesAvailable,
-              prefs: prefsInstance,
-            ),
-            permanent: true);
+        debugPrint('☎️ EmergencyContactService 초기화 시작...');
+        final emergencyContactService =
+            Get.put(EmergencyContactService(), permanent: true);
         debugPrint('✅ EmergencyContactService 초기화 성공');
       }
     } catch (e) {
       debugPrint('⚠️ EmergencyContactService 초기화 오류: $e');
     }
 
-    // 위치 서비스 초기화 - 안전하게 초기화
+    // 앱 시작 시 저장된 알림 확인
     try {
-      // 이미 등록되어 있지 않은 경우에만 등록
-      if (!Get.isRegistered<LocationService>()) {
-        Get.put(LocationService());
-        debugPrint('✅ LocationService 초기화 성공');
-      }
-    } catch (e) {
-      debugPrint('⚠️ LocationService 초기화 실패: $e');
-    }
-
-    // 이미지 캐시 서비스 초기화
-    try {
-      if (!Get.isRegistered<ImageCacheService>()) {
-        debugPrint('🖼️ ImageCacheService 초기화 시작...');
-        final imageCacheService = ImageCacheService();
-        imageCacheService.init().then((service) {
-          Get.put(service, permanent: true);
-          debugPrint('✅ ImageCacheService 초기화 성공');
-        });
-      }
-    } catch (e) {
-      debugPrint('⚠️ ImageCacheService 초기화 실패: $e');
-    }
-
-    // 알림 서비스 초기화
-    try {
-      // NotificationService 초기화
-      NotificationService.getInstance().then((service) {
-        if (!Get.isRegistered<NotificationService>()) {
-          Get.put(service);
-        }
-        debugPrint('✅ NotificationService 초기화 성공');
+      // 앱이 재시작될 때 발송되지 못한 귀가 알림이 있는지 확인
+      HomeArrivalService.getInstance().then((service) {
+        service.checkPendingArrivalNotification();
       });
     } catch (e) {
-      debugPrint('⚠️ NotificationService 초기화 실패: $e');
+      debugPrint('⚠️ 귀가 알림 확인 오류: $e');
     }
 
     return GetMaterialApp(
