@@ -9,7 +9,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:1071355933777:android:7ac41bc5ce954cf3b3b470",
         "android_client_info": {
-          "package_name": "com.example.gps_seach"
+          "package_name": "com.maccrey.watch_over"
         }
       },
       "oauth_client": [
@@ -17,7 +17,7 @@
           "client_id": "1071355933777-ebrnqjd2kh0ibqnnirft4e04pjqigbac.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.example.gps_seach",
+            "package_name": "com.maccrey.watch_over",
             "certificate_hash": "b84ad064ddfbea5e822c674e9121167d0ac61415"
           }
         },

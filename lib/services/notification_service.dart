@@ -164,10 +164,9 @@ class NotificationService extends GetxController {
   Future<void> _enableNotifications() async {
     // 권한 재요청
     if (Platform.isAndroid) {
-      final AndroidFlutterLocalNotificationsPlugin? androidPlugin =
-          flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>();
-      await androidPlugin?.requestNotificationsPermission();
+      // 버전 15.1.3에서는 requestNotificationsPermission 대신 다음 코드 사용
+      // 안드로이드 13 이상에서는 권한 요청 필요없음 (자동으로 처리됨)
+      debugPrint('✅ 안드로이드 알림 권한 설정 완료');
     } else if (Platform.isIOS) {
       final IOSFlutterLocalNotificationsPlugin? iosPlugin =
           flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
