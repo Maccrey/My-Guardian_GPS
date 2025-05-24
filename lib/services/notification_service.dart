@@ -12,6 +12,10 @@ class NotificationService extends GetxController {
   // SharedPreferences 키
   static const String _notificationEnabledKey = 'isNotificationEnabled';
 
+  // 알림 플러그인 (임시로 주석 처리)
+  // final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+  //     FlutterLocalNotificationsPlugin();
+
   // Singleton 패턴 적용
   static NotificationService? _instance;
 
@@ -25,9 +29,97 @@ class NotificationService extends GetxController {
 
   // 초기화 함수
   Future<void> _init() async {
+    // 알림 초기화 (임시로 주석 처리)
+    // await _initNotifications();
+
     // 설정 불러오기
     await loadSettings();
     debugPrint('✅ NotificationService 초기화 완료 (간소화된 버전)');
+  }
+
+  // 알림 초기화 (임시로 주석 처리)
+  /*
+  Future<void> _initNotifications() async {
+    // 안드로이드 초기화 설정
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/launcher_icon');
+
+    // iOS 초기화 설정
+    final DarwinInitializationSettings initializationSettingsIOS =
+        DarwinInitializationSettings(
+      requestSoundPermission: true,
+      requestBadgePermission: true,
+      requestAlertPermission: true,
+      onDidReceiveLocalNotification: onDidReceiveLocalNotification,
+    );
+
+    // 초기화 설정 통합
+    final InitializationSettings initializationSettings = InitializationSettings(
+      android: initializationSettingsAndroid,
+      iOS: initializationSettingsIOS,
+    );
+
+    // 알림 플러그인 초기화
+    await flutterLocalNotificationsPlugin.initialize(
+      initializationSettings,
+      onDidReceiveNotificationResponse: onDidReceiveNotificationResponse,
+    );
+
+    // 안드로이드용 알림 채널 생성
+    if (Platform.isAndroid) {
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        'high_importance_channel',
+        '중요 알림',
+        description: '긴급 상황 및 중요 알림을 위한 채널',
+        importance: Importance.high,
+      );
+
+      await flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(channel);
+    }
+
+    debugPrint('✅ 알림 초기화 완료');
+  }
+
+  // iOS 알림 수신 핸들러 (iOS 10 미만용)
+  void onDidReceiveLocalNotification(
+      int id, String? title, String? body, String? payload) {
+    debugPrint('알림 수신 (iOS 10 미만): $title - $body');
+  }
+
+  // 알림 응답 핸들러
+  void onDidReceiveNotificationResponse(NotificationResponse response) {
+    if (response.payload != null) {
+      debugPrint('알림 페이로드: ${response.payload}');
+      // 페이로드에 따른 네비게이션 또는 작업 수행 가능
+    }
+  }
+  */
+
+  // 권한 요청
+  Future<void> requestNotificationsPermission() async {
+    // 임시로 로깅만 수행
+    debugPrint('✅ [임시] 알림 권한 요청 (실제로는 요청하지 않음)');
+
+    /* 원래 코드 (임시로 주석 처리)
+    if (Platform.isIOS) {
+      await flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin>()
+          ?.requestPermissions(
+            alert: true,
+            badge: true,
+            sound: true,
+          );
+    } else if (Platform.isAndroid) {
+      await flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.requestPermission();
+    }
+    */
   }
 
   // 설정 불러오기

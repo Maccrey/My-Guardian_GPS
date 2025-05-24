@@ -40,7 +40,7 @@ import 'views/location_sharing/location_tracking_view.dart';
 import 'views/location_sharing/user_search_location_view.dart';
 import 'views/user_search_contact_view.dart';
 
-import 'firebase_options.dart'; // 임시로 주석 처리
+import 'firebase_options.dart';
 
 // SharedPreferences 초기화 상태를 추적하는 플래그
 bool isSharedPreferencesAvailable = false;
@@ -155,8 +155,8 @@ void main() async {
 
   // 백그라운드에서 도착 시 알림을 위한 HomeArrivalService 초기화
   try {
-    // await HomeArrivalService.getInstance();
-    debugPrint('✅ HomeArrivalService 초기화 생략됨 (Flutter Local Notifications 문제)');
+    await HomeArrivalService.getInstance();
+    debugPrint('✅ HomeArrivalService 초기화 성공');
   } catch (e) {
     debugPrint('❌ HomeArrivalService 초기화 오류: $e');
   }
@@ -256,10 +256,10 @@ class _MyAppState extends State<MyApp> {
     // 앱 시작 시 저장된 알림 확인
     try {
       // 앱이 재시작될 때 발송되지 못한 귀가 알림이 있는지 확인
-      // HomeArrivalService.getInstance().then((service) {
-      //   service.checkPendingArrivalNotification();
-      // });
-      debugPrint('✅ 귀가 알림 확인 생략됨 (Flutter Local Notifications 문제)');
+      HomeArrivalService.getInstance().then((service) {
+        service.checkPendingArrivalNotification();
+      });
+      debugPrint('✅ 귀가 알림 확인 시작됨');
     } catch (e) {
       debugPrint('⚠️ 귀가 알림 확인 오류: $e');
     }
