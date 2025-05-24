@@ -155,8 +155,8 @@ void main() async {
 
   // 백그라운드에서 도착 시 알림을 위한 HomeArrivalService 초기화
   try {
-    await HomeArrivalService.getInstance();
-    debugPrint('✅ HomeArrivalService 초기화 성공');
+    // await HomeArrivalService.getInstance();
+    debugPrint('✅ HomeArrivalService 초기화 생략됨 (Flutter Local Notifications 문제)');
   } catch (e) {
     debugPrint('❌ HomeArrivalService 초기화 오류: $e');
   }
@@ -183,15 +183,18 @@ class _MyAppState extends State<MyApp> {
     // URL 핸들러 초기화
     if (!kIsWeb) {
       Future.delayed(const Duration(milliseconds: 500), () {
-        UrlHandler.initialize();
+        // UrlHandler.initialize(); // 구버전 방식
+        // 새로운 방식으로 URL 핸들러 초기화
+        final urlHandler = UrlHandler();
+        urlHandler.init();
       });
     }
   }
 
   @override
   void dispose() {
-    // URL 핸들러 리소스 해제
-    UrlHandler.dispose();
+    // URL 핸들러 리소스 해제 (더 이상 정적 메서드가 아님)
+    // UrlHandler.dispose();
     super.dispose();
   }
 
@@ -253,9 +256,10 @@ class _MyAppState extends State<MyApp> {
     // 앱 시작 시 저장된 알림 확인
     try {
       // 앱이 재시작될 때 발송되지 못한 귀가 알림이 있는지 확인
-      HomeArrivalService.getInstance().then((service) {
-        service.checkPendingArrivalNotification();
-      });
+      // HomeArrivalService.getInstance().then((service) {
+      //   service.checkPendingArrivalNotification();
+      // });
+      debugPrint('✅ 귀가 알림 확인 생략됨 (Flutter Local Notifications 문제)');
     } catch (e) {
       debugPrint('⚠️ 귀가 알림 확인 오류: $e');
     }

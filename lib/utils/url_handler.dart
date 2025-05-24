@@ -2,67 +2,80 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:uni_links/uni_links.dart';
+import 'package:app_links/app_links.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../views/messages/shared_location_view.dart';
 
 /// Google Maps URL 등 딥링크 및 URL 처리를 위한 유틸리티 클래스
 class UrlHandler {
-  static StreamSubscription? _linkSubscription;
-  static bool _initialURILinkHandled = false;
+  static final UrlHandler _instance = UrlHandler._internal();
+  factory UrlHandler() => _instance;
+  UrlHandler._internal();
+
+  // 딥링크 리스너
+  StreamSubscription? _linkSubscription;
+  final AppLinks _appLinks = AppLinks();
 
   /// URL 처리 시작
-  static void initialize() {
-    // 앱 시작 시 딥링크 처리
-    _initURIHandler();
-    // 앱 실행 중 딥링크 처리
-    _incomingLinkHandler();
-  }
-
-  /// 앱 시작 시 딥링크 초기 처리
-  static Future<void> _initURIHandler() async {
-    if (!_initialURILinkHandled) {
-      _initialURILinkHandled = true;
-      try {
-        // 앱 시작 시 초기 URI 확인
-        final initialURI = await getInitialUri();
-        if (initialURI != null) {
-          debugPrint('🔗 앱 시작 시 딥링크 감지: $initialURI');
-          handleUri(initialURI);
-        }
-      } on PlatformException {
-        debugPrint('⚠️ 딥링크 초기화 오류');
-      }
-    }
-  }
-
-  /// 앱 실행 중 딥링크 처리
-  static void _incomingLinkHandler() {
-    // 딥링크 스트림 리스닝
-    _linkSubscription = uriLinkStream.listen((Uri? uri) {
+  Future<void> init() async {
+    // 앱이 이미 실행 중일 때 딥링크를 받았을 경우
+    _linkSubscription = _appLinks.uriLinkStream.listen((Uri? uri) {
       if (uri != null) {
-        debugPrint('🔗 앱 실행 중 딥링크 감지: $uri');
-        handleUri(uri);
+        debugPrint('✅ 딥링크 수신 (스트림): ${uri.toString()}');
+        _handleLink(uri);
       }
-    }, onError: (err) {
-      debugPrint('⚠️ 딥링크 스트림 오류: $err');
+    }, onError: (error) {
+      debugPrint('❌ 딥링크 오류: $error');
     });
+
+    // 앱이 종료된 상태에서 딥링크로 시작된 경우
+    try {
+      final initialUri = await _appLinks.getInitialLink();
+      if (initialUri != null) {
+        debugPrint('✅ 초기 딥링크 수신: ${initialUri.toString()}');
+        _handleLink(initialUri);
+      }
+    } catch (e) {
+      debugPrint('❌ 초기 딥링크 오류: $e');
+    }
   }
 
-  /// URI 처리 로직
-  static void handleUri(Uri uri) {
+  /// 딥링크 처리
+  void _handleLink(Uri uri) {
     try {
-      // 구글 지도 링크인 경우
-      if (_isGoogleMapsUrl(uri.toString())) {
-        // 앱 내에서 지도 열기
-        SharedLocationView.openFromMapsUrl(uri.toString());
-        return;
-      }
+      final String path = uri.path;
+      final Map<String, String> queryParams = uri.queryParameters;
 
-      // 다른 유형의 URL 처리 추가 가능
+      debugPrint('📌 딥링크 경로: $path, 쿼리: $queryParams');
+
+      // 경로에 따라 다른 화면으로 라우팅
+      if (path.contains('/emergency')) {
+        // 긴급 상황 요청 화면으로 이동
+        final userId = queryParams['userId'];
+        if (userId != null) {
+          Get.toNamed('/emergency-request', arguments: {'userId': userId});
+        }
+      } else if (path.contains('/location')) {
+        // 위치 공유 화면으로 이동
+        final userId = queryParams['userId'];
+        if (userId != null) {
+          Get.toNamed('/location-tracking', arguments: {'userId': userId});
+        }
+      } else if (path.contains('/message')) {
+        // 메시지 화면으로 이동
+        final senderId = queryParams['senderId'];
+        if (senderId != null) {
+          Get.toNamed('/messages', arguments: {'senderId': senderId});
+        }
+      }
     } catch (e) {
-      debugPrint('⚠️ URI 처리 중 오류 발생: $e');
+      debugPrint('❌ 딥링크 처리 오류: $e');
     }
+  }
+
+  /// 정리
+  void dispose() {
+    _linkSubscription?.cancel();
   }
 
   /// Google Maps URL 문자열 처리
@@ -138,10 +151,5 @@ class UrlHandler {
         ],
       ),
     );
-  }
-
-  /// 구독 취소
-  static void dispose() {
-    _linkSubscription?.cancel();
   }
 }

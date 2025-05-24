@@ -47,7 +47,6 @@ dependencies:
   geocoding: ^3.0.0 # 주소-좌표 변환을 위한 패키지
   http: ^1.2.1 # API 요청을 위한 패키지
   flutter_dotenv: ^5.1.0 # 환경 변수 관리를 위한 패키지
-  # just_audio: ^0.9.44
   just_audio: ^0.10.3
   just_audio_background: ^0.0.1-beta.16
   volume_controller: ^2.0.7 # 시스템 볼륨 제어 패키지 - iOS 빌드 문제로 제거
@@ -66,12 +65,11 @@ dependencies:
   firebase_auth: ^5.5.3
   cloud_firestore: ^5.6.7
   share_plus: ^4.5.3
-  uni_links: ^0.5.1
   image_picker: ^1.1.2
   firebase_storage: ^12.4.5
   permission_handler: ^12.0.0+1
   flutter_native_splash: 2.2.16
-  flutter_local_notifications: 9.9.1
+  app_links: ^6.4.0
   # firebase_storage: ^12.4.5
 
 dev_dependencies:

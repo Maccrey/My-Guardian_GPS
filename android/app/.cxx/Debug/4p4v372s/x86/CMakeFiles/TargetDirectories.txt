@@ -1,0 +1,2 @@
+/Users/maccrey/Development/watch_over/android/app/.cxx/Debug/4p4v372s/x86/CMakeFiles/edit_cache.dir
+/Users/maccrey/Development/watch_over/android/app/.cxx/Debug/4p4v372s/x86/CMakeFiles/rebuild_cache.dir
