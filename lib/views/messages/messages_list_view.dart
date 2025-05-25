@@ -604,11 +604,6 @@ class _MessagesListViewState extends State<MessagesListView> {
                   }
 
                   final message = conversations[index];
-                  // null 체크
-                  if (message == null) {
-                    return const SizedBox.shrink();
-                  }
-
                   // AuthService UID null 체크
                   final String? currentUserUid = _authService.uid;
                   final isCurrentUserSender = currentUserUid != null &&
@@ -1221,98 +1216,25 @@ class _MessagesListViewState extends State<MessagesListView> {
     Get.to(() => MessageDetailView(userId: user.uid));
   }
 
-  // 새 메시지 다이얼로그 표시
-  void _showNewMessageDialog() {
-    if (!mounted) return;
+  Future<bool> _sendLocationStop({
+    required String receiverId,
+  }) async {
+    try {
+      final currentUser = _authService.currentUser;
+      final nickname = currentUser?.nickname ?? '알 수 없음';
+      final String stopData = jsonEncode({
+        'action': 'stop',
+        'message': '$nickname님이 위치 공유를 중지했습니다.',
+      });
 
-    final TextEditingController receiverIdController = TextEditingController();
-    final TextEditingController messageController = TextEditingController();
-
-    // 임의의 테스트 수신자 ID 생성
-    receiverIdController.text =
-        'test-${DateTime.now().millisecondsSinceEpoch.toString().substring(5, 10)}';
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('새 메시지 보내기'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: receiverIdController,
-              decoration: const InputDecoration(
-                labelText: '수신자 ID',
-                hintText: '메시지를 받을 사용자 ID를 입력하세요',
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: messageController,
-              decoration: const InputDecoration(
-                labelText: '메시지 내용',
-                hintText: '보낼 메시지를 입력하세요',
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('취소'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final receiverId = receiverIdController.text.trim();
-              final message = messageController.text.trim();
-
-              if (receiverId.isEmpty || message.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('수신자 ID와 메시지를 모두 입력해주세요')),
-                );
-                return;
-              }
-
-              // 창 닫기
-              Navigator.of(context).pop();
-
-              // 로그인되지 않은 경우 테스트 로그인 시도 (개발용)
-              if (_authService.uid == null || _authService.uid!.isEmpty) {
-                debugPrint('⚠️ 로그인되지 않음 - 테스트 계정으로 자동 로그인 시도');
-                await _authService.login('test@example.com', 'Password1!');
-                if (!mounted) return; // 비동기 작업 후 mounted 체크
-                debugPrint('✅ 테스트 로그인 완료, 새 UID: ${_authService.uid}');
-              }
-
-              // 메시지 전송
-              final success = await _messageService.sendMessage(
-                receiverId: receiverId,
-                content: message,
-              );
-
-              if (!mounted) return; // 비동기 작업 후 mounted 체크
-
-              if (!success) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('메시지 전송에 실패했습니다'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('메시지가 전송되었습니다'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              }
-            },
-            child: const Text('보내기'),
-          ),
-        ],
-      ),
-    );
+      return _messageService.sendMessage(
+        receiverId: receiverId,
+        content: stopData,
+        messageType: 'location_sharing',
+      );
+    } catch (e) {
+      debugPrint('⚠️ 위치 공유 중지 메시지 전송 오류: $e');
+      return false;
+    }
   }
 }

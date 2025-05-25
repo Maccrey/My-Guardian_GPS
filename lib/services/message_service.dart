@@ -709,6 +709,7 @@ class MessageService extends GetxController {
           '🔍 정규화된 ID: current=$normalizedCurrentUserId, target=$normalizedUserId');
 
       // 현재 사용자와 상대방 사이의 메시지만 필터링 (정규화된 ID로 비교)
+      // 메시지 타입과 관계없이 모든 대화를 포함
       List<Message> conversation = messages.where((m) {
         String normalizedSenderId = _normalizeUserId(m.senderId);
         String normalizedReceiverId = _normalizeUserId(m.receiverId);
@@ -805,10 +806,12 @@ class MessageService extends GetxController {
         // 현재 사용자가 발신자인 경우, 수신자를 대화 상대로 추가
         if (normalizedSenderId == normalizedCurrentUserId ||
             message.senderId == currentUserId) {
+          // 대화 상대 ID를 맵에 추가 (메시지 유형에 관계없이 동일 사용자로 그룹화)
           conversationUserIdsMap[normalizedReceiverId] = message.receiverId;
         }
         // 현재 사용자가 수신자인 경우, 발신자를 대화 상대로 추가
         else {
+          // 대화 상대 ID를 맵에 추가 (메시지 유형에 관계없이 동일 사용자로 그룹화)
           conversationUserIdsMap[normalizedSenderId] = message.senderId;
         }
       }
@@ -828,7 +831,7 @@ class MessageService extends GetxController {
         // 원본 ID 가져오기
         final String originalUserId = conversationUserIdsMap[normalizedUserId]!;
 
-        // 현재 사용자와 상대방 사이의 모든 메시지 필터링
+        // 현재 사용자와 상대방 사이의 모든 메시지 필터링 (메시지 유형에 관계없이)
         final userConversation = userMessages.where((m) {
           final normalizedSenderId = _normalizeUserId(m.senderId);
           final normalizedReceiverId = _normalizeUserId(m.receiverId);
@@ -852,17 +855,22 @@ class MessageService extends GetxController {
           // 시간순 정렬 후 첫 번째 메시지 (가장 최신)
           userConversation.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-          // 이미 존재하는 ID 확인 (중복 방지)
-          final isDuplicate = conversationList.any((existing) {
+          // 상대방 ID로 중복 확인 (메시지 유형과 관계없이 같은 사람과의 대화는 하나로 통합)
+          final bool isDuplicate = conversationList.any((existing) {
             final existingSenderId = _normalizeUserId(existing.senderId);
             final existingReceiverId = _normalizeUserId(existing.receiverId);
 
-            return (existingSenderId == normalizedUserId ||
-                existingReceiverId == normalizedUserId);
+            // 정규화된 ID로 비교
+            return (existingSenderId == normalizedUserId) ||
+                (existingReceiverId == normalizedUserId);
           });
 
           if (!isDuplicate) {
             conversationList.add(userConversation.first);
+            debugPrint(
+                '✅ 대화 목록에 추가: ${normalizedUserId} (메시지 유형: ${userConversation.first.messageType})');
+          } else {
+            debugPrint('⚠️ 중복 대화 무시: ${normalizedUserId}');
           }
         }
       }
