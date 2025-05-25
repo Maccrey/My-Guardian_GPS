@@ -341,6 +341,39 @@ class ProfileEditController extends GetxController {
       return null;
     }
   }
+
+  // 프로필 이미지 가져오기 (캐시 또는 Firebase)
+  Future<String?> getCachedOrFirebaseProfileImage(
+      String? imageUrl, String uid, DateTime? uploadDate, bool isCached) async {
+    try {
+      // 이미지 URL이 없으면 null 반환
+      if (imageUrl == null || imageUrl.isEmpty) {
+        debugPrint('⚠️ 프로필 이미지 URL이 없습니다.');
+        return null;
+      }
+
+      // 캐시된 이미지 가져오기 시도
+      if (isCached) {
+        try {
+          final cachedPath =
+              await _getCachedProfileImage(uid, imageUrl, uploadDate);
+          if (cachedPath != null) {
+            debugPrint('✅ 캐시된 이미지를 사용합니다: $cachedPath');
+            return cachedPath;
+          }
+        } catch (e) {
+          debugPrint('⚠️ 캐시된 이미지 가져오기 실패: $e');
+        }
+      }
+
+      // 캐시가 실패하거나 없으면 Firebase URL 반환
+      debugPrint('ℹ️ Firebase 이미지 URL을 사용합니다: $imageUrl');
+      return imageUrl;
+    } catch (e) {
+      debugPrint('❌ 프로필 이미지 가져오기 오류: $e');
+      return null;
+    }
+  }
 }
 
 class ProfileEditView extends GetView<ProfileEditController> {
@@ -465,11 +498,11 @@ class ProfileEditView extends GetView<ProfileEditController> {
                     controller.user.value.profileImageUrl!.isNotEmpty) {
                   // 캐시된 이미지 또는 네트워크 이미지 사용
                   image = FutureBuilder<String?>(
-                    future: Get.find<ImageCacheService>().cacheProfileImage(
-                      controller.user.value.profileImageUrl!,
+                    future: controller.getCachedOrFirebaseProfileImage(
+                      controller.user.value.profileImageUrl,
                       controller.user.value.uid!,
-                      uploadDate: controller.user.value.profileImageUploadDate,
-                      forceUpdate: controller.isImageSelected.value,
+                      controller.user.value.profileImageUploadDate,
+                      controller.isImageSelected.value,
                     ),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
@@ -486,12 +519,29 @@ class ProfileEditView extends GetView<ProfileEditController> {
                           backgroundImage: FileImage(File(snapshot.data!)),
                         );
                       } else {
-                        // 네트워크 이미지 로드
-                        return CircleAvatar(
-                          radius: 64,
-                          backgroundImage: NetworkImage(
-                              controller.user.value.profileImageUrl!),
-                        );
+                        // 네트워크 이미지 로드 (이미지 URL이 유효한 경우만)
+                        return controller.user.value.profileImageUrl != null &&
+                                controller
+                                    .user.value.profileImageUrl!.isNotEmpty
+                            ? CircleAvatar(
+                                radius: 64,
+                                backgroundImage: NetworkImage(
+                                    controller.user.value.profileImageUrl!),
+                                onBackgroundImageError: (e, stackTrace) {
+                                  debugPrint('⚠️ 네트워크 이미지 로드 실패: $e');
+                                  // 에러 발생 시 기본 이미지로 대체 (위젯을 다시 빌드하지는 않음)
+                                },
+                              )
+                            : CircleAvatar(
+                                radius: 64,
+                                backgroundColor:
+                                    theme.colorScheme.primary.withOpacity(0.8),
+                                child: Icon(
+                                  Icons.person_rounded,
+                                  size: 64,
+                                  color: theme.colorScheme.onPrimary,
+                                ),
+                              );
                       }
                     },
                   );
