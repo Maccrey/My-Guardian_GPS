@@ -292,6 +292,26 @@ class LocationSharingService extends GetxController {
             'lastUpdated': FieldValue.serverTimestamp(),
           });
           print('✅ [서비스] Firestore 위치 공유 데이터 비활성화 성공 (60분 보존)');
+
+          // 위치 업데이트가 즉시 중단되도록 추가 작업
+          try {
+            // 위치 공유 문서의 isActive 상태를 다시 확인
+            final verifyDoc = await _firestore
+                .collection('location_sharing')
+                .doc(sharedLocation.id)
+                .get();
+
+            if (verifyDoc.exists && verifyDoc.data()?['isActive'] == true) {
+              // 여전히 활성 상태면 다시 비활성화 시도
+              print('⚠️ [서비스] 위치 공유가 여전히 활성 상태임 - 다시 비활성화 시도');
+              await _firestore
+                  .collection('location_sharing')
+                  .doc(sharedLocation.id)
+                  .update({'isActive': false});
+            }
+          } catch (e) {
+            print('⚠️ [서비스] 위치 공유 상태 재확인 오류 (무시됨): $e');
+          }
         } catch (e) {
           print('⚠️ [서비스] Firestore 데이터 비활성화 오류: $e');
           // 비활성화 실패해도 진행 (로컬 상태는 업데이트)
@@ -336,6 +356,9 @@ class LocationSharingService extends GetxController {
             print('🔔 [서비스] MessageService에 위치 공유 종료 알림');
             messageService.activeLocationSharing.remove(receiverId);
             messageService.activeLocationSharing.refresh();
+
+            // 메시지 목록 강제 새로고침 (UI 갱신을 위해)
+            messageService.refreshMessages();
           }
         } catch (e) {
           print('⚠️ [서비스] MessageService 업데이트 오류 (무시됨): $e');
@@ -352,6 +375,18 @@ class LocationSharingService extends GetxController {
         // 그래도 스트림과 타이머는 중지 (안전하게)
         _stopPositionTracking(receiverId);
         _stopFallbackPositionTimer(receiverId);
+
+        // 추가: 위치 공유 상태를 전역적으로 검사하고 정리
+        try {
+          final messageService = Get.find<MessageService>();
+          if (messageService != null) {
+            messageService.activeLocationSharing.remove(receiverId);
+            messageService.activeLocationSharing.refresh();
+            messageService.refreshMessages();
+          }
+        } catch (e) {
+          print('⚠️ [서비스] MessageService 업데이트 오류 (무시됨): $e');
+        }
 
         return false;
       }
@@ -698,6 +733,16 @@ class LocationSharingService extends GetxController {
         return;
       }
 
+      // 마지막으로 한 번 더 활성 상태 확인
+      if (!_activeSharing.containsKey(receiverId) ||
+          !_activeSharing[receiverId]!.isActive) {
+        print('🛑 [위치 공유] 업데이트 중 비활성화 감지: 위치 업데이트 취소');
+        // 위치 추적 중지
+        _stopPositionTracking(receiverId);
+        _stopFallbackPositionTimer(receiverId);
+        return;
+      }
+
       // Firestore에 위치 업데이트
       await _firestore
           .collection('location_sharing')
@@ -864,68 +909,29 @@ class LocationSharingService extends GetxController {
       String chatRoomId = '';
 
       // 참가자 ID를 직접 조합하여 고정된 채팅방 ID 생성
-      String participantsKey = participants.join('_');
+      chatRoomId = participants.join('_');
+      print('🏠 [서비스] 채팅방 ID 생성: $chatRoomId');
 
       // Firestore에서 일치하는 채팅방 검색
       try {
-        // 먼저 chat_rooms 컬렉션에서 participants 배열에 두 사용자가 모두 포함된 문서 찾기
-        final chatRooms = await _firestore
-            .collection('chat_rooms')
-            .where('participants', arrayContainsAny: participants)
-            .get();
+        // 채팅방 문서가 존재하는지 확인
+        final existingDoc =
+            await _firestore.collection('chat_rooms').doc(chatRoomId).get();
 
-        print('🔍 [서비스] 채팅방 검색 결과: ${chatRooms.docs.length}개');
-
-        for (var room in chatRooms.docs) {
-          final roomParticipants = room.data()['participants'] as List<dynamic>;
-          // 두 참가자가 모두 포함되어 있고 다른 참가자는 없는지 확인
-          if (roomParticipants.contains(currentUser.uid) &&
-              roomParticipants.contains(receiverId) &&
-              roomParticipants.length == 2) {
-            chatRoomId = room.id;
-            print('🔍 [서비스] 기존 채팅방 찾음: $chatRoomId');
-            break;
-          }
-        }
-      } catch (e) {
-        print('⚠️ [서비스] 채팅방 검색 오류 (무시됨): $e');
-      }
-
-      // 채팅방이 없으면 새로 생성
-      if (chatRoomId.isEmpty) {
-        print('➕ [서비스] 새 채팅방 생성');
-
-        // 고정된 채팅방 ID 생성 시도 (참가자 ID 조합)
-        try {
-          chatRoomId = participantsKey;
-
-          // 기존에 문서가 있는지 확인
-          final existingDoc =
-              await _firestore.collection('chat_rooms').doc(chatRoomId).get();
-
-          if (!existingDoc.exists) {
-            // 문서가 없으면 고정 ID로 새 문서 생성
-            await _firestore.collection('chat_rooms').doc(chatRoomId).set({
-              'participants': participants,
-              'createdAt': FieldValue.serverTimestamp(),
-              'lastMessageAt': FieldValue.serverTimestamp(),
-            });
-            print('✅ [서비스] 고정 ID로 새 채팅방 생성 완료: $chatRoomId');
-          } else {
-            print('✅ [서비스] 고정 ID의 채팅방이 이미 존재함: $chatRoomId');
-          }
-        } catch (e) {
-          print('⚠️ [서비스] 고정 ID 채팅방 생성 실패: $e');
-
-          // 실패하면 자동 ID 생성으로 대체
-          final newChatRoom = await _firestore.collection('chat_rooms').add({
+        if (!existingDoc.exists) {
+          // 문서가 없으면 고정 ID로 새 문서 생성
+          await _firestore.collection('chat_rooms').doc(chatRoomId).set({
             'participants': participants,
             'createdAt': FieldValue.serverTimestamp(),
             'lastMessageAt': FieldValue.serverTimestamp(),
           });
-          chatRoomId = newChatRoom.id;
-          print('✅ [서비스] 자동 ID로 새 채팅방 생성 완료: $chatRoomId');
+          print('✅ [서비스] 고정 ID로 새 채팅방 생성 완료: $chatRoomId');
+        } else {
+          print('✅ [서비스] 고정 ID의 채팅방이 이미 존재함: $chatRoomId');
         }
+      } catch (e) {
+        print('⚠️ [서비스] 채팅방 확인/생성 오류: $e');
+        // 오류가 발생해도 생성된 채팅방 ID 사용 (일관성 유지)
       }
 
       // 메시지 데이터 구성 - MessageModel과 완벽히 호환되도록 필드명 수정
