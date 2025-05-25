@@ -152,144 +152,59 @@ class SOSController extends GetxController {
     }
   }
 
-  // 사이렌 소리 재생 (재작성 - 더 안정적인 버전)
+  // 사이렌 소리 재생 (재작성 - 더 간단한 구조로)
   Future<void> _playSiren() async {
-    // 컨트롤러가 이미 해제된 경우 즉시 리턴
+    // 이미 해제된 상태면 실행하지 않음
     if (_isDisposed) {
       debugPrint('⚠️ 컨트롤러가 이미 해제됨 - 사이렌 재생 중단');
       return;
     }
 
-    // 현재 오디오 플레이어 상태 확인
-    final currentAudioPlayer = _audioPlayer;
+    debugPrint('🔊 사이렌 재생 시작...');
 
     try {
-      // 오디오 플레이어가 없거나 초기화되지 않은 경우 새로 생성
-      if (currentAudioPlayer == null || !_isAudioInitialized) {
-        debugPrint('✅ 새 오디오 플레이어 생성');
-        await _initAudioPlayer();
-
-        // 초기화 실패 또는 컨트롤러 해제된 경우 리턴
-        if (_isDisposed || _audioPlayer == null || !_isAudioInitialized) {
-          debugPrint('⚠️ 오디오 플레이어 초기화 실패 또는 컨트롤러 해제됨');
-          return;
+      // 이미 재생 중인 경우 중지
+      if (_audioPlayer != null) {
+        if (_audioPlayer!.playing) {
+          await _audioPlayer!.stop();
         }
+      } else {
+        // 오디오 플레이어가 없으면 새로 생성
+        _audioPlayer = AudioPlayer();
       }
 
-      // 오디오 플레이어가 있고 해제되지 않은 경우에만 진행
-      if (!_isDisposed && _audioPlayer != null) {
-        // 알림 표시 (컨트롤러 해제 여부 확인 후)
-        try {
-          if (!_isDisposed) {
-            Get.snackbar(
-              '긴급 알림',
-              '볼륨을 최대로 높이세요. 긴급 상황에서는 소리가 잘 들리도록 합니다.',
-              backgroundColor: Colors.red.shade100,
-              duration: const Duration(seconds: 2),
-              snackPosition: SnackPosition.TOP,
-            );
-          }
-        } catch (e) {
-          debugPrint('⚠️ 스낵바 표시 오류: $e');
-        }
+      // 볼륨 최대로 설정
+      await _audioPlayer!.setVolume(1.0);
 
-        // 볼륨 최대로 설정 (컨트롤러 해제 여부 확인 후)
-        try {
-          if (!_isDisposed && _audioPlayer != null) {
-            await _audioPlayer!.setVolume(1.0);
-            debugPrint('🔊 오디오 플레이어 볼륨 최대로 설정됨');
-          } else {
-            return; // 컨트롤러가 해제된 경우 종료
-          }
-        } catch (e) {
-          debugPrint('⚠️ 볼륨 설정 오류: $e');
-          if (_isDisposed) return;
-        }
+      // 햅틱 피드백 제공
+      HapticFeedback.heavyImpact();
 
-        // 햅틱 피드백 실행 (컨트롤러 해제 여부 확인 후)
-        try {
-          if (!_isDisposed) {
-            HapticFeedback.heavyImpact();
-            await Future.delayed(const Duration(milliseconds: 500));
-            if (!_isDisposed) {
-              HapticFeedback.heavyImpact();
-            }
-          } else {
-            return; // 컨트롤러가 해제된 경우 종료
-          }
-        } catch (e) {
-          debugPrint('⚠️ 햅틱 피드백 오류: $e');
-          if (_isDisposed) return;
-        }
+      // 간단한 방식으로 오디오 로드 및 재생
+      try {
+        debugPrint('📂 사이렌 파일 로드 시도: assets/mp3/siren.mp3');
+        await _audioPlayer!.setAsset('assets/mp3/siren.mp3');
+        await _audioPlayer!.setLoopMode(LoopMode.one); // 반복 재생
+        await _audioPlayer!.play();
+        debugPrint('✅ 사이렌 재생 성공');
+        setIsAudioPlaying(true);
 
-        // 사이렌 재생 시도 (첫 번째 방법)
-        try {
-          if (_isDisposed || _audioPlayer == null) return;
-
-          final mediaItem = MediaItem(
-            id: 'sos_siren',
-            title: 'SOS 긴급 알림',
-            artist: 'GPS Search',
-            artUri: null,
-          );
-
-          if (_isDisposed || _audioPlayer == null) return;
-          final audioSource = AudioSource.asset(
-            'assets/mp3/siren.mp3',
-            tag: mediaItem,
-          );
-
-          if (_isDisposed || _audioPlayer == null) return;
-          await _audioPlayer!.setAudioSource(audioSource);
-
-          if (_isDisposed || _audioPlayer == null) return;
-          await _audioPlayer!.play();
-
-          if (!_isDisposed) {
-            setIsAudioPlaying(true);
-            debugPrint('✅ 사이렌 소리 재생 시작 (첫 번째 방법)');
-          }
-        } catch (e) {
-          // 첫 번째 방법 실패 시 두 번째 방법 시도
-          debugPrint('⚠️ 첫 번째 사이렌 재생 방법 실패: $e');
-
-          if (_isDisposed || _audioPlayer == null) return;
-
-          try {
-            // 두 번째 방법으로 시도
-            await _audioPlayer!.setAsset('assets/mp3/siren.mp3');
-
-            if (_isDisposed || _audioPlayer == null) return;
-            await _audioPlayer!.play();
-
-            if (!_isDisposed) {
-              setIsAudioPlaying(true);
-              debugPrint('✅ 사이렌 소리 재생 시작 (두 번째 방법)');
-            }
-          } catch (e2) {
-            debugPrint('⚠️ 두 번째 사이렌 재생 방법도 실패: $e2');
-            // 모든 재생 방법이 실패했을 때 초기화 작업
-            if (!_isDisposed && _audioPlayer != null) {
-              try {
-                _audioPlayer!.stop();
-              } catch (_) {}
-            }
-          }
-        }
+        // 볼륨 유지 타이머 시작
+        _startVolumeKeeper();
+      } catch (e) {
+        debugPrint('⚠️ 사이렌 재생 실패: $e');
+        // 실패 시 상태 업데이트
+        setIsAudioPlaying(false);
       }
     } catch (e) {
-      // 최상위 예외 처리
       debugPrint('⚠️ 사이렌 재생 중 심각한 오류: $e');
 
-      // 리소스 정리 (마지막 시도)
+      // 오류 발생 시 자원 정리
       if (_audioPlayer != null) {
         try {
           _audioPlayer!.stop();
-          _audioPlayer!.dispose();
-          _audioPlayer = null;
-          setIsAudioPlaying(false);
         } catch (_) {}
       }
+      setIsAudioPlaying(false);
     }
   }
 
