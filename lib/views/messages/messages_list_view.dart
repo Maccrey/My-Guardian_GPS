@@ -1215,26 +1215,4 @@ class _MessagesListViewState extends State<MessagesListView> {
 
     Get.to(() => MessageDetailView(userId: user.uid));
   }
-
-  Future<bool> _sendLocationStop({
-    required String receiverId,
-  }) async {
-    try {
-      final currentUser = _authService.currentUser;
-      final nickname = currentUser?.nickname ?? '알 수 없음';
-      final String stopData = jsonEncode({
-        'action': 'stop',
-        'message': '$nickname님이 위치 공유를 중지했습니다.',
-      });
-
-      return _messageService.sendMessage(
-        receiverId: receiverId,
-        content: stopData,
-        messageType: 'location_sharing',
-      );
-    } catch (e) {
-      debugPrint('⚠️ 위치 공유 중지 메시지 전송 오류: $e');
-      return false;
-    }
-  }
 }
