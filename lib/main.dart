@@ -4,7 +4,6 @@ import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:just_audio_background/just_audio_background.dart';
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -81,20 +80,6 @@ void main() async {
     debugPrint('⚠️ Firebase가 초기화되지 않았습니다. 일부 기능이 제한될 수 있습니다.');
   }
   // Firebase 초기화 코드 제거 - 테스트를 위해
-
-  // 백그라운드 오디오 초기화
-  try {
-    await JustAudioBackground.init(
-      androidNotificationChannelId: 'com.gps_search.sos.channel.audio',
-      androidNotificationChannelName: 'SOS 알림',
-      androidNotificationOngoing: true,
-      androidStopForegroundOnPause: true,
-      androidNotificationIcon: 'mipmap/ic_launcher',
-    );
-    debugPrint('✅ 백그라운드 오디오 서비스 초기화 성공');
-  } catch (e) {
-    debugPrint('❌ 백그라운드 오디오 서비스 초기화 실패: $e');
-  }
 
   // .env 파일 로드
   try {

@@ -856,32 +856,76 @@ class LocationSharingService extends GetxController {
           ? '$message\n$locationInfo'
           : message;
 
+      // 참가자 ID를 일관된 순서로 정렬하여 항상 같은 채팅방 ID가 생성되도록 함
+      List<String> participants = [currentUser.uid, receiverId];
+      participants.sort(); // 알파벳 순서로 정렬하여 일관성 보장
+
       // 채팅방 ID 조회 또는 생성 (동일한 채팅방 사용을 위해)
       String chatRoomId = '';
-      final chatRooms = await _firestore
-          .collection('chat_rooms')
-          .where('participants', arrayContains: currentUser.uid)
-          .get();
 
-      for (var room in chatRooms.docs) {
-        final participants = room.data()['participants'] as List<dynamic>;
-        if (participants.contains(receiverId) && participants.length == 2) {
-          chatRoomId = room.id;
-          print('🔍 [서비스] 기존 채팅방 찾음: $chatRoomId');
-          break;
+      // 참가자 ID를 직접 조합하여 고정된 채팅방 ID 생성
+      String participantsKey = participants.join('_');
+
+      // Firestore에서 일치하는 채팅방 검색
+      try {
+        // 먼저 chat_rooms 컬렉션에서 participants 배열에 두 사용자가 모두 포함된 문서 찾기
+        final chatRooms = await _firestore
+            .collection('chat_rooms')
+            .where('participants', arrayContainsAny: participants)
+            .get();
+
+        print('🔍 [서비스] 채팅방 검색 결과: ${chatRooms.docs.length}개');
+
+        for (var room in chatRooms.docs) {
+          final roomParticipants = room.data()['participants'] as List<dynamic>;
+          // 두 참가자가 모두 포함되어 있고 다른 참가자는 없는지 확인
+          if (roomParticipants.contains(currentUser.uid) &&
+              roomParticipants.contains(receiverId) &&
+              roomParticipants.length == 2) {
+            chatRoomId = room.id;
+            print('🔍 [서비스] 기존 채팅방 찾음: $chatRoomId');
+            break;
+          }
         }
+      } catch (e) {
+        print('⚠️ [서비스] 채팅방 검색 오류 (무시됨): $e');
       }
 
       // 채팅방이 없으면 새로 생성
       if (chatRoomId.isEmpty) {
         print('➕ [서비스] 새 채팅방 생성');
-        final newChatRoom = await _firestore.collection('chat_rooms').add({
-          'participants': [currentUser.uid, receiverId],
-          'createdAt': FieldValue.serverTimestamp(),
-          'lastMessageAt': FieldValue.serverTimestamp(),
-        });
-        chatRoomId = newChatRoom.id;
-        print('✅ [서비스] 새 채팅방 생성 완료: $chatRoomId');
+
+        // 고정된 채팅방 ID 생성 시도 (참가자 ID 조합)
+        try {
+          chatRoomId = participantsKey;
+
+          // 기존에 문서가 있는지 확인
+          final existingDoc =
+              await _firestore.collection('chat_rooms').doc(chatRoomId).get();
+
+          if (!existingDoc.exists) {
+            // 문서가 없으면 고정 ID로 새 문서 생성
+            await _firestore.collection('chat_rooms').doc(chatRoomId).set({
+              'participants': participants,
+              'createdAt': FieldValue.serverTimestamp(),
+              'lastMessageAt': FieldValue.serverTimestamp(),
+            });
+            print('✅ [서비스] 고정 ID로 새 채팅방 생성 완료: $chatRoomId');
+          } else {
+            print('✅ [서비스] 고정 ID의 채팅방이 이미 존재함: $chatRoomId');
+          }
+        } catch (e) {
+          print('⚠️ [서비스] 고정 ID 채팅방 생성 실패: $e');
+
+          // 실패하면 자동 ID 생성으로 대체
+          final newChatRoom = await _firestore.collection('chat_rooms').add({
+            'participants': participants,
+            'createdAt': FieldValue.serverTimestamp(),
+            'lastMessageAt': FieldValue.serverTimestamp(),
+          });
+          chatRoomId = newChatRoom.id;
+          print('✅ [서비스] 자동 ID로 새 채팅방 생성 완료: $chatRoomId');
+        }
       }
 
       // 메시지 데이터 구성 - MessageModel과 완벽히 호환되도록 필드명 수정
@@ -936,7 +980,34 @@ class LocationSharingService extends GetxController {
           'receiverId': receiverId,
           'isStarting': isStarting,
           'timestamp': FieldValue.serverTimestamp(),
+          'chatRoomId': chatRoomId, // 채팅방 ID 추가 (디버깅용)
         });
+
+        // 채팅방 마지막 메시지 업데이트
+        await _firestore.collection('chat_rooms').doc(chatRoomId).update({
+          'lastMessage': fullMessage,
+          'lastMessageAt': FieldValue.serverTimestamp(),
+          'lastMessageType': 'location_sharing',
+        });
+
+        // MessageService에게도 메시지 추가 알림 (동기화)
+        try {
+          final messageService = Get.find<MessageService>();
+          if (messageService != null) {
+            print('🔔 [서비스] MessageService에 새 메시지 알림');
+            messageService.refreshMessages(); // 메시지 목록 새로고침
+          }
+        } catch (e) {
+          print('⚠️ [서비스] MessageService 업데이트 오류 (무시됨): $e');
+        }
+
+        print('💾 [서비스] Firestore에 메시지 저장 완료: $fullMessage');
+
+        // FCM 푸시 알림 전송
+        await _sendPushNotification(
+            receiverId, userName, fullMessage, isStarting, locationId);
+
+        print('✅ [서비스] 위치 공유 ${isStarting ? "시작" : "종료"} 메시지 전송 완료');
       } catch (e) {
         print('❌ [서비스] Firestore에 메시지 저장 실패: $e');
 
@@ -948,37 +1019,10 @@ class LocationSharingService extends GetxController {
           print(
               '🔑 [서비스] 인증된 사용자: ${_auth.currentUser?.uid}, 메시지 발신자: ${messageDoc['senderId']}');
         }
-
-        throw Exception('메시지 저장 실패: $e');
+        throw e; // 상위 함수에서 오류 처리를 위해 다시 던짐
       }
-
-      // 채팅방 마지막 메시지 업데이트
-      await _firestore.collection('chat_rooms').doc(chatRoomId).update({
-        'lastMessage': fullMessage,
-        'lastMessageAt': FieldValue.serverTimestamp(),
-        'lastMessageType': 'location_sharing',
-      });
-
-      // MessageService에게도 메시지 추가 알림 (동기화)
-      try {
-        final messageService = Get.find<MessageService>();
-        if (messageService != null) {
-          print('🔔 [서비스] MessageService에 새 메시지 알림');
-          messageService.refreshMessages(); // 메시지 목록 새로고침
-        }
-      } catch (e) {
-        print('⚠️ [서비스] MessageService 업데이트 오류 (무시됨): $e');
-      }
-
-      print('💾 [서비스] Firestore에 메시지 저장 완료: $fullMessage');
-
-      // FCM 푸시 알림 전송
-      await _sendPushNotification(
-          receiverId, userName, fullMessage, isStarting, locationId);
-
-      print('✅ [서비스] 위치 공유 ${isStarting ? "시작" : "종료"} 메시지 전송 완료');
     } catch (e) {
-      print('❌ [서비스] 메시지 전송 오류: $e');
+      print('❌ [서비스] 위치 공유 메시지 전송 실패: $e');
       // 오류 상세 로깅
       print('❌ [서비스] 오류 상세: ${e.toString()}');
 

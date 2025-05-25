@@ -440,6 +440,31 @@ class MessageService extends GetxController {
       // 고유 ID 생성
       final String messageId = const Uuid().v4();
 
+      // 일관된 채팅방 ID 생성 (참가자 ID 정렬 후 결합)
+      List<String> participants = [currentUserId, receiverId];
+      participants.sort(); // 알파벳 순서로 정렬하여 일관성 보장
+      final String chatRoomId = participants.join('_');
+      debugPrint('🏠 채팅방 ID 생성: $chatRoomId');
+
+      // 채팅방이 없으면 생성
+      try {
+        final chatRoomDoc =
+            await _firestore.collection('chat_rooms').doc(chatRoomId).get();
+
+        if (!chatRoomDoc.exists) {
+          debugPrint('➕ 새 채팅방 생성: $chatRoomId');
+          await _firestore.collection('chat_rooms').doc(chatRoomId).set({
+            'participants': participants,
+            'createdAt': FieldValue.serverTimestamp(),
+            'lastMessageAt': FieldValue.serverTimestamp(),
+          });
+        } else {
+          debugPrint('✅ 기존 채팅방 사용: $chatRoomId');
+        }
+      } catch (e) {
+        debugPrint('⚠️ 채팅방 확인/생성 오류 (무시됨): $e');
+      }
+
       // Firestore에 메시지 저장
       try {
         debugPrint('📤 Firestore에 메시지 저장 시도: $messageId');
@@ -453,6 +478,7 @@ class MessageService extends GetxController {
           'timestamp': FieldValue.serverTimestamp(),
           'isRead': false,
           'messageType': messageType,
+          'chatRoomId': chatRoomId, // 채팅방 ID 추가
         };
 
         // 답장 메시지인 경우 답장 정보 추가
@@ -462,6 +488,19 @@ class MessageService extends GetxController {
 
         await _firestore.collection('messages').doc(messageId).set(messageData);
         debugPrint('✅ 메시지가 Firestore에 저장되었습니다.');
+
+        // 채팅방 마지막 메시지 업데이트
+        try {
+          await _firestore.collection('chat_rooms').doc(chatRoomId).update({
+            'lastMessage': content,
+            'lastMessageAt': FieldValue.serverTimestamp(),
+            'lastMessageType': messageType,
+          });
+          debugPrint('✅ 채팅방 마지막 메시지 업데이트: $chatRoomId');
+        } catch (e) {
+          debugPrint('⚠️ 채팅방 업데이트 오류 (무시됨): $e');
+        }
+
         isLoading.value = false;
         return true;
       } catch (e) {
@@ -797,80 +836,72 @@ class MessageService extends GetxController {
 
       debugPrint('📊 현재 사용자 관련 메시지 수: ${userMessages.length}');
 
-      // 대화 상대 ID 목록 (정규화된 ID 사용)
-      final Map<String, String> conversationUserIdsMap = {}; // 정규화된 ID -> 원본 ID
+      // 메시지를 채팅방 ID 기준으로 그룹화
+      final Map<String, List<Message>> conversationsByRoom = {};
+
       for (var message in userMessages) {
-        final normalizedSenderId = _normalizeUserId(message.senderId);
-        final normalizedReceiverId = _normalizeUserId(message.receiverId);
+        // 채팅방 ID가 있으면 해당 ID 사용
+        String roomKey;
 
-        // 현재 사용자가 발신자인 경우, 수신자를 대화 상대로 추가
-        if (normalizedSenderId == normalizedCurrentUserId ||
-            message.senderId == currentUserId) {
-          // 대화 상대 ID를 맵에 추가 (메시지 유형에 관계없이 동일 사용자로 그룹화)
-          conversationUserIdsMap[normalizedReceiverId] = message.receiverId;
+        if (message.chatRoomId != null && message.chatRoomId!.isNotEmpty) {
+          // 채팅방 ID가 직접 지정된 경우
+          roomKey = message.chatRoomId!;
+          debugPrint('🔍 채팅방 ID 사용: $roomKey');
+        } else {
+          // 채팅방 ID가 없는 경우 발신자와 수신자 ID로 일관된 키 생성
+          List<String> participants = [message.senderId, message.receiverId];
+          participants.sort(); // 알파벳 순서로 정렬하여 일관성 보장
+          roomKey = participants.join('_');
+          debugPrint('🔍 참가자로 채팅방 키 생성: $roomKey');
         }
-        // 현재 사용자가 수신자인 경우, 발신자를 대화 상대로 추가
-        else {
-          // 대화 상대 ID를 맵에 추가 (메시지 유형에 관계없이 동일 사용자로 그룹화)
-          conversationUserIdsMap[normalizedSenderId] = message.senderId;
+
+        // 해당 키에 메시지 추가
+        if (!conversationsByRoom.containsKey(roomKey)) {
+          conversationsByRoom[roomKey] = [];
         }
+        conversationsByRoom[roomKey]!.add(message);
       }
 
-      debugPrint('👥 대화 상대 수: ${conversationUserIdsMap.length}');
-      if (conversationUserIdsMap.isNotEmpty) {
-        final entries = conversationUserIdsMap.entries.toList();
-        for (int i = 0; i < entries.length && i < 5; i++) {
-          debugPrint(
-              '👤 대화 상대 #$i: 정규화=${entries[i].key}, 원본=${entries[i].value}');
-        }
-      }
+      debugPrint('👥 대화방 수: ${conversationsByRoom.length}');
 
-      // 각 대화 상대별 최신 메시지 찾기
+      // 각 대화방별 최신 메시지 찾기
       final List<Message> conversationList = [];
-      for (String normalizedUserId in conversationUserIdsMap.keys) {
-        // 원본 ID 가져오기
-        final String originalUserId = conversationUserIdsMap[normalizedUserId]!;
 
-        // 현재 사용자와 상대방 사이의 모든 메시지 필터링 (메시지 유형에 관계없이)
-        final userConversation = userMessages.where((m) {
-          final normalizedSenderId = _normalizeUserId(m.senderId);
-          final normalizedReceiverId = _normalizeUserId(m.receiverId);
+      for (String roomKey in conversationsByRoom.keys) {
+        final roomMessages = conversationsByRoom[roomKey]!;
 
-          // 정규화된 ID로 비교
-          final bool isMessageBetweenUsers =
-              (normalizedSenderId == normalizedCurrentUserId &&
-                      normalizedReceiverId == normalizedUserId) ||
-                  (normalizedReceiverId == normalizedCurrentUserId &&
-                      normalizedSenderId == normalizedUserId);
-
-          // 직접 ID로 비교
-          final bool isDirectMatch = (m.senderId == currentUserId &&
-                  m.receiverId == originalUserId) ||
-              (m.receiverId == currentUserId && m.senderId == originalUserId);
-
-          return isMessageBetweenUsers || isDirectMatch;
-        }).toList();
-
-        if (userConversation.isNotEmpty) {
+        if (roomMessages.isNotEmpty) {
           // 시간순 정렬 후 첫 번째 메시지 (가장 최신)
-          userConversation.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+          roomMessages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+          final latestMessage = roomMessages.first;
 
-          // 상대방 ID로 중복 확인 (메시지 유형과 관계없이 같은 사람과의 대화는 하나로 통합)
-          final bool isDuplicate = conversationList.any((existing) {
-            final existingSenderId = _normalizeUserId(existing.senderId);
-            final existingReceiverId = _normalizeUserId(existing.receiverId);
+          // 이미 동일한 대화방이 추가되었는지 확인
+          final isDuplicate = conversationList.any((m) {
+            // 채팅방 ID가 있으면 그걸로 비교
+            if (m.chatRoomId != null &&
+                m.chatRoomId == latestMessage.chatRoomId) {
+              return true;
+            }
 
-            // 정규화된 ID로 비교
-            return (existingSenderId == normalizedUserId) ||
-                (existingReceiverId == normalizedUserId);
+            // 채팅방 ID가 없으면 발신자/수신자 조합으로 비교
+            List<String> existingParticipants = [m.senderId, m.receiverId];
+            List<String> newParticipants = [
+              latestMessage.senderId,
+              latestMessage.receiverId
+            ];
+
+            existingParticipants.sort();
+            newParticipants.sort();
+
+            return existingParticipants.join('_') == newParticipants.join('_');
           });
 
           if (!isDuplicate) {
-            conversationList.add(userConversation.first);
+            conversationList.add(latestMessage);
             debugPrint(
-                '✅ 대화 목록에 추가: ${normalizedUserId} (메시지 유형: ${userConversation.first.messageType})');
+                '✅ 대화 목록에 추가: $roomKey (메시지 유형: ${latestMessage.messageType})');
           } else {
-            debugPrint('⚠️ 중복 대화 무시: ${normalizedUserId}');
+            debugPrint('⚠️ 중복 대화 무시: $roomKey');
           }
         }
       }

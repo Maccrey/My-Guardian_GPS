@@ -3,7 +3,6 @@ import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
 import 'package:flutter/services.dart';
 import '../services/emergency_contact_service.dart';
 import '../services/location_service.dart';
@@ -168,11 +167,11 @@ class SOSController extends GetxController {
       // 햅틱 피드백 제공
       HapticFeedback.heavyImpact();
 
-      // 오디오 파일 로드 및 재생
+      // 오디오 파일 로드 및 재생 (간소화된 방식으로 변경)
       try {
         debugPrint('📂 사이렌 파일 로드 시도: assets/mp3/siren.mp3');
 
-        // 오디오 파일 로드
+        // 수정: AudioSource 사용하지 않고 직접 setAsset 호출
         await _audioPlayer!.setAsset('assets/mp3/siren.mp3');
         debugPrint('✅ 사이렌 파일 로드 성공');
 
@@ -188,23 +187,13 @@ class SOSController extends GetxController {
       } catch (e) {
         debugPrint('⚠️ 사이렌 재생 실패: $e');
 
-        // 두 번째 방법으로 시도 - MediaItem 사용
+        // 두 번째 방법으로 시도 - MediaItem 없이 직접 호출
         try {
           debugPrint('🔄 두 번째 방법으로 사이렌 재생 시도...');
 
-          final mediaItem = MediaItem(
-            id: 'sos_siren',
-            title: 'SOS 긴급 알림',
-            artist: 'GPS Search',
-            artUri: null,
-          );
-
-          final audioSource = AudioSource.asset(
-            'assets/mp3/siren.mp3',
-            tag: mediaItem,
-          );
-
-          await _audioPlayer!.setAudioSource(audioSource);
+          // 수정: MediaItem과 AudioSource 사용하지 않고 직접 setAsset 호출
+          await _audioPlayer!.stop(); // 혹시 모르니 한번 더 중지
+          await _audioPlayer!.setAsset('assets/mp3/siren.mp3');
           await _audioPlayer!.setLoopMode(LoopMode.one);
           await _audioPlayer!.setVolume(1.0);
           await _audioPlayer!.play();

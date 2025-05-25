@@ -12,6 +12,7 @@ class Message {
   final String? replyToMessageId; // 답장 메시지 ID
   final Map<String, dynamic>? data; // 메시지에 포함된 추가 데이터
   final Map<String, dynamic>? extra; // 메시지 부가 정보 (action, locationId 등)
+  final String? chatRoomId; // 채팅방 ID
 
   Message({
     required this.id,
@@ -24,6 +25,7 @@ class Message {
     this.replyToMessageId,
     this.data,
     this.extra,
+    this.chatRoomId,
   });
 
   // JSON으로 변환
@@ -39,6 +41,7 @@ class Message {
       'replyToMessageId': replyToMessageId,
       'data': data,
       'extra': extra,
+      'chatRoomId': chatRoomId,
     };
   }
 
@@ -103,6 +106,7 @@ class Message {
         replyToMessageId: json['replyToMessageId'],
         data: data,
         extra: extra,
+        chatRoomId: json['chatRoomId'],
       );
     } catch (e) {
       // 포맷 오류시 예외 발생
@@ -160,6 +164,7 @@ class Message {
         replyToMessageId: data['replyToMessageId'],
         data: messageData,
         extra: extra,
+        chatRoomId: data['chatRoomId'],
       );
     } catch (e) {
       // 포맷 오류시 예외 발생
@@ -179,6 +184,7 @@ class Message {
     String? replyToMessageId,
     Map<String, dynamic>? data,
     Map<String, dynamic>? extra,
+    String? chatRoomId,
   }) {
     return Message(
       id: id ?? this.id,
@@ -191,12 +197,13 @@ class Message {
       replyToMessageId: replyToMessageId ?? this.replyToMessageId,
       data: data ?? this.data,
       extra: extra ?? this.extra,
+      chatRoomId: chatRoomId ?? this.chatRoomId,
     );
   }
 
   // 디버깅용 문자열 표현
   @override
   String toString() {
-    return 'Message{id: $id, senderId: $senderId, receiverId: $receiverId, content: ${content.length > 20 ? content.substring(0, 20) + "..." : content}, timestamp: $timestamp, isRead: $isRead, messageType: $messageType, replyToMessageId: $replyToMessageId, data: $data, extra: $extra}';
+    return 'Message{id: $id, senderId: $senderId, receiverId: $receiverId, content: ${content.length > 20 ? content.substring(0, 20) + "..." : content}, timestamp: $timestamp, isRead: $isRead, messageType: $messageType, replyToMessageId: $replyToMessageId, data: $data, extra: $extra, chatRoomId: $chatRoomId}';
   }
 }

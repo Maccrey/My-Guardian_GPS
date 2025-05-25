@@ -11,6 +11,7 @@ class LocationMessage {
   final String? locationId;
   final DateTime timestamp;
   final bool isRead;
+  final String? chatRoomId;
 
   LocationMessage({
     required this.id,
@@ -22,6 +23,7 @@ class LocationMessage {
     this.locationId,
     required this.timestamp,
     required this.isRead,
+    this.chatRoomId,
   });
 
   /// Firestore 문서에서 LocationMessage 객체 생성
@@ -40,6 +42,7 @@ class LocationMessage {
           ? (data['timestamp'] as Timestamp).toDate()
           : DateTime.now(),
       isRead: data['isRead'] ?? false,
+      chatRoomId: data['chatRoomId'],
     );
   }
 
@@ -54,6 +57,7 @@ class LocationMessage {
       'locationId': locationId,
       'timestamp': timestamp,
       'isRead': isRead,
+      'chatRoomId': chatRoomId,
     };
   }
 
@@ -69,6 +73,7 @@ class LocationMessage {
       locationId: locationId,
       timestamp: timestamp,
       isRead: readStatus,
+      chatRoomId: chatRoomId,
     );
   }
 }
