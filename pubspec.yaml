@@ -49,7 +49,7 @@ dependencies:
   flutter_dotenv: ^5.1.0 # 환경 변수 관리를 위한 패키지
   just_audio: ^0.10.3
   just_audio_background: ^0.0.1-beta.16
-  volume_controller: ^2.0.7 # 시스템 볼륨 제어 패키지 - iOS 빌드 문제로 제거
+  volume_controller: ^3.4.0 # 시스템 볼륨 제어 패키지 - iOS 빌드 문제로 제거
   google_sign_in: ^6.3.0
   # 구글 로그인 디버깅용 패키지
   logger: ^2.0.2 # 구글 로그인을 위한 패키지
