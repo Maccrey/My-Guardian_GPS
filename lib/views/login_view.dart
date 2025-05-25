@@ -278,28 +278,28 @@ class LoginView extends StatelessWidget {
                                   }
                                 },
                               ),
-                              _buildSocialButton(
-                                context,
-                                icon: Icons.chat_outlined,
-                                color: const Color(0xFFFEE500),
-                                text: '카카오',
-                                onTap: () async {
-                                  if (await controller.loginWithKakao()) {
-                                    Get.snackbar(
-                                      '성공',
-                                      '카카오 로그인 성공!',
-                                      snackPosition: SnackPosition.BOTTOM,
-                                    );
-                                    Get.offAllNamed('/home');
-                                  } else if (controller.error != null) {
-                                    Get.snackbar(
-                                      '오류',
-                                      controller.error!,
-                                      snackPosition: SnackPosition.BOTTOM,
-                                    );
-                                  }
-                                },
-                              ),
+                              // _buildSocialButton(
+                              //   context,
+                              //   icon: Icons.chat_outlined,
+                              //   color: const Color(0xFFFEE500),
+                              //   text: '카카오',
+                              //   onTap: () async {
+                              //     if (await controller.loginWithKakao()) {
+                              //       Get.snackbar(
+                              //         '성공',
+                              //         '카카오 로그인 성공!',
+                              //         snackPosition: SnackPosition.BOTTOM,
+                              //       );
+                              //       Get.offAllNamed('/home');
+                              //     } else if (controller.error != null) {
+                              //       Get.snackbar(
+                              //         '오류',
+                              //         controller.error!,
+                              //         snackPosition: SnackPosition.BOTTOM,
+                              //       );
+                              //     }
+                              //   },
+                              // ),
                             ],
                           ),
 

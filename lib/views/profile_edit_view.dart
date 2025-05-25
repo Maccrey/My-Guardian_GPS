@@ -149,10 +149,18 @@ class ProfileEditController extends GetxController {
   Future<void> pickImage() async {
     final ImagePicker picker = ImagePicker();
     try {
-      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 300,
+        maxHeight: 300,
+        imageQuality: 50,
+      );
 
       if (image != null) {
-        await cropImage(image.path);
+        // 크롭 시도 없이 바로 이미지 사용
+        debugPrint('✅ 이미지 선택 완료: ${image.path}');
+        profileImage.value = File(image.path);
+        isImageSelected.value = true;
       }
     } catch (e) {
       debugPrint('❌ 갤러리 이미지 선택 오류: $e');
@@ -201,10 +209,18 @@ class ProfileEditController extends GetxController {
 
       // 권한이 있는 경우 카메라 실행
       final ImagePicker picker = ImagePicker();
-      final XFile? image = await picker.pickImage(source: ImageSource.camera);
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 300,
+        maxHeight: 300,
+        imageQuality: 50,
+      );
 
       if (image != null) {
-        await cropImage(image.path);
+        // 크롭 시도 없이 바로 이미지 사용
+        debugPrint('✅ 카메라 촬영 완료: ${image.path}');
+        profileImage.value = File(image.path);
+        isImageSelected.value = true;
       }
     } catch (e) {
       debugPrint('❌ 카메라 사용 오류: $e');
@@ -224,39 +240,71 @@ class ProfileEditController extends GetxController {
   Future<void> cropImage(String filePath) async {
     try {
       final cropper = ImageCropper();
-      final croppedFile = await cropper.cropImage(
-        sourcePath: filePath,
-        compressQuality: 50, // 품질 50% 미만으로 설정 (45%)
-        compressFormat: ImageCompressFormat.jpg, // JPG 형식으로 압축
-        maxHeight: 300, // 최대 높이 100px
-        maxWidth: 300, // 최대 너비 100px
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: '프로필 이미지 편집',
-            toolbarColor: Get.theme.primaryColor,
-            toolbarWidgetColor: Colors.white,
-            lockAspectRatio: true,
-            aspectRatioPresets: [CropAspectRatioPreset.square], // 정사각형으로 제한
-          ),
-          IOSUiSettings(
-            title: '프로필 이미지 편집',
-            aspectRatioLockEnabled: true,
-            aspectRatioPresets: [CropAspectRatioPreset.square], // 정사각형으로 제한
-            minimumAspectRatio: 1.0,
-          ),
-        ],
-      );
 
-      if (croppedFile != null) {
-        profileImage.value = File(croppedFile.path);
-        isImageSelected.value = true;
-        debugPrint('✅ 이미지 크롭 성공: ${croppedFile.path} (100x100, 품질: 45%)');
-      } else {
-        debugPrint('⚠️ 이미지 크롭이 취소되었습니다.');
+      try {
+        final croppedFile = await cropper.cropImage(
+          sourcePath: filePath,
+          compressQuality: 50, // 품질 50% 미만으로 설정 (45%)
+          compressFormat: ImageCompressFormat.jpg, // JPG 형식으로 압축
+          maxHeight: 300, // 최대 높이 300px
+          maxWidth: 300, // 최대 너비 300px
+          uiSettings: [
+            AndroidUiSettings(
+              toolbarTitle: '프로필 이미지 편집',
+              toolbarColor: Get.theme.primaryColor,
+              toolbarWidgetColor: Colors.white,
+              lockAspectRatio: true,
+              aspectRatioPresets: [CropAspectRatioPreset.square], // 정사각형으로 제한
+            ),
+            IOSUiSettings(
+              title: '프로필 이미지 편집',
+              aspectRatioLockEnabled: true,
+              aspectRatioPresets: [CropAspectRatioPreset.square], // 정사각형으로 제한
+              minimumAspectRatio: 1.0,
+            ),
+          ],
+        );
+
+        if (croppedFile != null) {
+          profileImage.value = File(croppedFile.path);
+          isImageSelected.value = true;
+          debugPrint('✅ 이미지 크롭 성공: ${croppedFile.path} (300x300, 품질: 50%)');
+        } else {
+          // 사용자가 크롭을 취소한 경우
+          debugPrint('⚠️ 이미지 크롭이 취소되었습니다.');
+
+          // 크롭이 취소되어도 원본 이미지를 사용하는 옵션 추가
+          final originalFile = File(filePath);
+          if (await originalFile.exists()) {
+            profileImage.value = originalFile;
+            isImageSelected.value = true;
+            debugPrint('ℹ️ 원본 이미지 사용: $filePath');
+          }
+        }
+      } catch (cropError) {
+        // 크롭 과정에서 오류 발생 시 원본 이미지 사용
+        debugPrint('⚠️ 이미지 크롭 과정 오류: $cropError');
+
+        final originalFile = File(filePath);
+        if (await originalFile.exists()) {
+          profileImage.value = originalFile;
+          isImageSelected.value = true;
+          debugPrint('ℹ️ 크롭 오류로 원본 이미지 사용: $filePath');
+        } else {
+          throw Exception('원본 이미지 파일도 사용할 수 없습니다: $filePath');
+        }
       }
     } catch (e) {
-      debugPrint('❌ 이미지 크롭 오류: $e');
+      debugPrint('❌ 이미지 처리 오류: $e');
       errorMessage.value = '이미지 편집 중 오류가 발생했습니다.';
+      Get.snackbar(
+        '이미지 처리 오류',
+        '이미지를 처리하는 중 문제가 발생했습니다.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red[100],
+        colorText: Colors.red[800],
+        duration: const Duration(seconds: 3),
+      );
     }
   }
 
@@ -513,35 +561,37 @@ class ProfileEditView extends GetView<ProfileEditController> {
                           child: const CircularProgressIndicator(),
                         );
                       } else if (snapshot.hasData && snapshot.data != null) {
-                        // 캐시된 이미지 사용
+                        // 로컬 파일인지 URL인지 확인
+                        final imagePath = snapshot.data!;
+                        if (imagePath.startsWith('http')) {
+                          // 네트워크 이미지인 경우
+                          return CircleAvatar(
+                            radius: 64,
+                            backgroundImage: NetworkImage(imagePath),
+                            onBackgroundImageError: (e, stackTrace) {
+                              debugPrint('⚠️ 네트워크 이미지 로드 실패: $e');
+                              // 에러 발생 시 기본 이미지로 대체 (위젯을 다시 빌드하지는 않음)
+                            },
+                          );
+                        } else {
+                          // 로컬 파일인 경우
+                          return CircleAvatar(
+                            radius: 64,
+                            backgroundImage: FileImage(File(imagePath)),
+                          );
+                        }
+                      } else {
+                        // 이미지가 없는 경우 기본 이미지 표시
                         return CircleAvatar(
                           radius: 64,
-                          backgroundImage: FileImage(File(snapshot.data!)),
+                          backgroundColor:
+                              theme.colorScheme.primary.withOpacity(0.8),
+                          child: Icon(
+                            Icons.person_rounded,
+                            size: 64,
+                            color: theme.colorScheme.onPrimary,
+                          ),
                         );
-                      } else {
-                        // 네트워크 이미지 로드 (이미지 URL이 유효한 경우만)
-                        return controller.user.value.profileImageUrl != null &&
-                                controller
-                                    .user.value.profileImageUrl!.isNotEmpty
-                            ? CircleAvatar(
-                                radius: 64,
-                                backgroundImage: NetworkImage(
-                                    controller.user.value.profileImageUrl!),
-                                onBackgroundImageError: (e, stackTrace) {
-                                  debugPrint('⚠️ 네트워크 이미지 로드 실패: $e');
-                                  // 에러 발생 시 기본 이미지로 대체 (위젯을 다시 빌드하지는 않음)
-                                },
-                              )
-                            : CircleAvatar(
-                                radius: 64,
-                                backgroundColor:
-                                    theme.colorScheme.primary.withOpacity(0.8),
-                                child: Icon(
-                                  Icons.person_rounded,
-                                  size: 64,
-                                  color: theme.colorScheme.onPrimary,
-                                ),
-                              );
                       }
                     },
                   );
