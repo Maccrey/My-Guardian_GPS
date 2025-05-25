@@ -8,7 +8,6 @@ import 'package:flutter/services.dart';
 import '../services/emergency_contact_service.dart';
 import '../services/location_service.dart';
 import 'package:geocoding/geocoding.dart';
-import 'package:volume_controller/volume_controller.dart'; // 주석 해제 - 볼륨 컨트롤 활성화
 
 class SOSController extends GetxController {
   // Rx 변수를 일반 변수로 변경하고 getter/setter 사용
@@ -76,8 +75,6 @@ class SOSController extends GetxController {
   bool _isAudioInitialized = false;
   bool _isDisposed = false;
   Timer? _volumeKeeper;
-  final VolumeController _volumeController =
-      VolumeController(); // 주석 해제 - 볼륨 컨트롤러 초기화
 
   // 안전하게 Rx 값을 설정하는 헬퍼 함수들
   void safeSetBool(RxBool rx, bool value) {
@@ -121,21 +118,6 @@ class SOSController extends GetxController {
   void onInit() {
     super.onInit();
     _initAudioPlayer();
-    _initVolumeController(); // 주석 해제 - 볼륨 컨트롤러 초기화
-  }
-
-  void _initVolumeController() {
-    // 볼륨 컨트롤러 초기화 및 리스너 설정
-    _volumeController.listener((volume) {
-      setCurrentVolume(volume);
-      debugPrint('현재 볼륨 레벨: $volume');
-    });
-
-    // 초기 볼륨 수준 가져오기
-    _volumeController.getVolume().then((volume) {
-      setCurrentVolume(volume);
-      debugPrint('초기 볼륨 레벨: $volume');
-    });
   }
 
   Future<void> _initAudioPlayer() async {
@@ -152,7 +134,7 @@ class SOSController extends GetxController {
     }
   }
 
-  // 사이렌 소리 재생 (안드로이드에서 볼륨 최대화 추가)
+  // 사이렌 소리 재생 (just_audio로만 처리)
   Future<void> _playSiren() async {
     // 이미 해제된 상태면 실행하지 않음
     if (_isDisposed) {
@@ -163,18 +145,6 @@ class SOSController extends GetxController {
     debugPrint('🔊 사이렌 재생 시작...');
 
     try {
-      // 볼륨을 최대로 설정 (먼저 실행)
-      try {
-        _volumeController.setVolume(1.0, showSystemUI: false);
-        debugPrint('✅ 볼륨이 최대로 설정됨');
-
-        // 볼륨 유지 타이머 시작 (별도 함수 호출)
-        _startVolumeKeeper();
-      } catch (e) {
-        debugPrint('⚠️ 볼륨 설정 오류: $e');
-        // 볼륨 설정 실패해도 계속 진행
-      }
-
       // 이미 재생 중인 경우 중지
       if (_audioPlayer != null) {
         if (_audioPlayer!.playing) {
@@ -187,18 +157,20 @@ class SOSController extends GetxController {
         debugPrint('✅ 새 오디오 플레이어 생성됨');
       }
 
-      // 볼륨 최대로 설정
-      await _audioPlayer!.setVolume(1.0);
+      // 오디오 플레이어 설정
+      await _audioPlayer!.setVolume(1.0); // 볼륨 최대로 설정
       debugPrint('✅ 오디오 플레이어 볼륨 최대로 설정됨');
+
+      // 루프 모드 설정
+      await _audioPlayer!.setLoopMode(LoopMode.one);
+      debugPrint('✅ 반복 재생 설정됨');
 
       // 햅틱 피드백 제공
       HapticFeedback.heavyImpact();
 
-      // 간단한 방식으로 오디오 로드 및 재생
+      // 오디오 파일 로드 및 재생
       try {
         debugPrint('📂 사이렌 파일 로드 시도: assets/mp3/siren.mp3');
-        // 루프 모드 설정 (먼저 설정)
-        await _audioPlayer!.setLoopMode(LoopMode.one);
 
         // 오디오 파일 로드
         await _audioPlayer!.setAsset('assets/mp3/siren.mp3');
@@ -210,6 +182,9 @@ class SOSController extends GetxController {
 
         // 상태 업데이트
         setIsAudioPlaying(true);
+
+        // 볼륨 유지 타이머 시작 (just_audio 볼륨만 관리)
+        _startVolumeKeeper();
       } catch (e) {
         debugPrint('⚠️ 사이렌 재생 실패: $e');
 
@@ -236,6 +211,9 @@ class SOSController extends GetxController {
 
           debugPrint('✅ 두 번째 방법으로 사이렌 재생 성공');
           setIsAudioPlaying(true);
+
+          // 성공 시 볼륨 유지 타이머 시작
+          _startVolumeKeeper();
         } catch (e2) {
           debugPrint('⚠️ 두 번째 방법도 실패: $e2');
           setIsAudioPlaying(false);
@@ -254,22 +232,16 @@ class SOSController extends GetxController {
     }
   }
 
-  // 볼륨을 최대로 유지하는 타이머
+  // 오디오 플레이어 볼륨을 최대로 유지하는 타이머
   void _startVolumeKeeper() {
     _volumeKeeper?.cancel();
-    _volumeKeeper = Timer.periodic(const Duration(seconds: 30), (_) async {
-      if (isAudioPlaying) {
+    _volumeKeeper = Timer.periodic(const Duration(seconds: 5), (_) async {
+      if (isAudioPlaying && _audioPlayer != null) {
         try {
-          // 주기적으로 볼륨이 최대인지 확인하고 아니면 다시 최대로 설정
-          double currentVol = await _volumeController.getVolume();
-          if (currentVol < 0.9) {
-            _volumeController.setVolume(1.0, showSystemUI: false);
-            debugPrint('🔊 볼륨 다시 최대로 설정됨 (이전: $currentVol)');
-          }
-
-          // 오디오 플레이어 볼륨도 확인
-          if (_audioPlayer != null && _audioPlayer!.volume < 0.9) {
+          // 오디오 플레이어 볼륨만 확인
+          if (_audioPlayer!.volume < 0.9) {
             await _audioPlayer!.setVolume(1.0);
+            debugPrint('🔊 오디오 플레이어 볼륨 다시 최대로 설정됨');
           }
         } catch (e) {
           debugPrint('⚠️ 볼륨 유지 오류: $e');
@@ -279,8 +251,6 @@ class SOSController extends GetxController {
       }
     });
   }
-
-  // _stopSiren 메서드는 제거하고 대신 cancelSOS를 직접 사용합니다
 
   // 기본 긴급 번호 리스트 (알림을 보내지 않을 번호들)
   final List<String> excludedNumbers = [
