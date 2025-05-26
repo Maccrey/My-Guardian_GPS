@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../services/emergency_contact_service.dart';
 import '../services/location_service.dart';
 import 'package:geocoding/geocoding.dart';
+import '../services/message_service.dart';
 
 class SOSController extends GetxController {
   // Rx 변수를 일반 변수로 변경하고 getter/setter 사용
@@ -502,13 +503,13 @@ class SOSController extends GetxController {
     debugPrint('✅ SOS 액션 실행 시작');
 
     try {
-      // 1단계: 알림 전송 시도
+      // 1단계: 앱 내 메시지로 SOS 상황과 위치를 내 긴급 연락처(앱 사용자)에게 전송
       try {
         if (!_isDisposed) {
-          await _sendEmergencyNotifications();
+          await _sendSOSMessageToAppContacts();
         }
       } catch (e) {
-        debugPrint('⚠️ 긴급 알림 전송 오류: $e');
+        debugPrint('⚠️ SOS 앱 메시지 전송 오류: $e');
       }
 
       // 2단계: 사이렌 소리 명시적으로 중지
@@ -685,6 +686,72 @@ class SOSController extends GetxController {
         duration: const Duration(seconds: 5),
         snackPosition: SnackPosition.BOTTOM,
       );
+    }
+  }
+
+  /// SOS 상황과 위치 정보를 내 긴급 연락처(앱 사용자)에게 앱 내 메시지로 전송
+  Future<void> _sendSOSMessageToAppContacts() async {
+    try {
+      final emergencyContactService = Get.find<EmergencyContactService>();
+      final messageService = Get.find<MessageService>();
+      final allContacts = emergencyContactService.contacts;
+
+      // 앱 사용자로 등록된 긴급 연락처만 필터링
+      final appUserContacts = allContacts
+          .where((c) => c.isAppUser && c.userId != null && c.userId!.isNotEmpty)
+          .toList();
+      if (appUserContacts.isEmpty) {
+        debugPrint('⚠️ 앱 사용자 긴급 연락처가 없습니다.');
+        return;
+      }
+
+      // 위치 정보 가져오기
+      String locationMessage = '';
+      try {
+        final locationService = Get.find<LocationService>();
+        await locationService.getCurrentLocation();
+        final loc = locationService.currentLocation.value;
+        if (loc != null) {
+          // 주소 변환 시도
+          String address = '';
+          try {
+            final placemarks =
+                await placemarkFromCoordinates(loc.latitude, loc.longitude);
+            if (placemarks.isNotEmpty) {
+              final p = placemarks.first;
+              address =
+                  '${p.locality ?? ''} ${p.thoroughfare ?? ''} ${p.name ?? ''}'
+                      .trim();
+            }
+          } catch (_) {}
+          locationMessage =
+              '\n[현재 위치]\n위도: ${loc.latitude}\n경도: ${loc.longitude}${address.isNotEmpty ? '\n주소: $address' : ''}';
+        } else {
+          locationMessage = '\n(위치 정보를 가져올 수 없습니다)';
+        }
+      } catch (e) {
+        locationMessage = '\n(위치 권한이 없거나 위치 정보를 가져올 수 없습니다)';
+      }
+
+      // SOS 메시지 내용
+      final String message = '🆘 긴급 상황입니다!\n도움이 필요합니다.$locationMessage';
+
+      // 각 앱 사용자에게 메시지 전송
+      for (final contact in appUserContacts) {
+        try {
+          final receiverId = contact.userId!;
+          await messageService.sendMessage(
+            receiverId: receiverId,
+            content: message,
+            messageType: 'sos',
+          );
+          debugPrint('✅ ${contact.name}에게 SOS 메시지 전송 완료 (앱 내)');
+        } catch (e) {
+          debugPrint('⚠️ ${contact.name}에게 SOS 메시지 전송 실패: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ SOS 앱 메시지 전송 전체 실패: $e');
     }
   }
 
@@ -1197,7 +1264,7 @@ class _SOSViewState extends State<SOSView> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 10),
                 const Text(
-                  '버튼을 누르면 30초 후 자동으로 개인 긴급 연락처에 알림이 전송되고 119로 연결됩니다.',
+                  '버튼을 누르면 30초 후 자동으로 119로 연결됩니다.',
                   style: TextStyle(fontSize: 14),
                   textAlign: TextAlign.center,
                 ),
@@ -1273,7 +1340,7 @@ class _SOSViewState extends State<SOSView> with WidgetsBindingObserver {
                                 ),
                                 const SizedBox(height: 24),
                                 const Text(
-                                  '초 후 자동으로 개인 긴급 연락처에 알림이 전송됩니다',
+                                  '초 후 자동으로 119로 연결됩니다',
                                   style: TextStyle(fontSize: 16),
                                   textAlign: TextAlign.center,
                                 ),

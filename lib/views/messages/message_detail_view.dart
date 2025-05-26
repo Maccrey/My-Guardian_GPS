@@ -1783,6 +1783,99 @@ class _MessageDetailViewState extends State<MessageDetailView> {
           ),
         );
       }
+    } else if (message.messageType == 'sos') {
+      // SOS 메시지 포매팅 및 지도 버튼
+      // 위치 정보 파싱 시도
+      final RegExp latLngReg = RegExp(r'위도: ([0-9.\-]+)\n경도: ([0-9.\-]+)');
+      final match = latLngReg.firstMatch(message.content);
+      double? latitude;
+      double? longitude;
+      if (match != null && match.groupCount == 2) {
+        latitude = double.tryParse(match.group(1)!);
+        longitude = double.tryParse(match.group(2)!);
+      }
+      // 주소 추출
+      String? address;
+      final addressReg = RegExp(r'주소: (.+)');
+      final addressMatch = addressReg.firstMatch(message.content);
+      if (addressMatch != null && addressMatch.groupCount == 1) {
+        address = addressMatch.group(1);
+      }
+      messageContent = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.warning_amber_rounded,
+                  color: Colors.red.shade700, size: 22),
+              const SizedBox(width: 8),
+              Text('SOS 긴급 메시지',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red.shade700,
+                      fontSize: 20)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message.content,
+            style: TextStyle(
+              color: isCurrentUserSender ? Colors.white : Colors.black87,
+              fontSize: 15,
+            ),
+          ),
+          if (latitude != null && longitude != null) ...[
+            const SizedBox(height: 12),
+            const SizedBox(height: 10),
+            Center(
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  // 앱 내 지도 화면으로 이동하는 대신 외부 지도 앱으로 열기
+                  try {
+                    final String url = defaultTargetPlatform ==
+                            TargetPlatform.iOS
+                        ? 'https://maps.apple.com/?ll=$latitude,$longitude'
+                        : 'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
+
+                    launchUrl(Uri.parse(url),
+                        mode: LaunchMode.externalApplication);
+
+                    // 성공 알림
+                    Get.snackbar(
+                      '지도 열기',
+                      '외부 지도 앱에서 위치를 확인합니다',
+                      snackPosition: SnackPosition.BOTTOM,
+                      backgroundColor: Colors.green.shade600,
+                      colorText: Colors.white,
+                      duration: const Duration(seconds: 2),
+                    );
+                  } catch (e) {
+                    debugPrint('⚠️ 지도 앱 열기 오류: $e');
+                    Get.snackbar(
+                      '오류',
+                      '지도 앱을 열 수 없습니다',
+                      snackPosition: SnackPosition.BOTTOM,
+                      backgroundColor: Colors.red.shade600,
+                      colorText: Colors.white,
+                    );
+                  }
+                },
+                icon: const Icon(Icons.map, size: 18),
+                label: const Text('지도에서 위치 보기'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                  textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ],
+        ],
+      );
     } else if (message.messageType == 'arrival_notification' ||
         message.messageType == 'location_arrival') {
       // 귀가 알림 메시지 파싱 및 표시
@@ -2082,12 +2175,10 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       );
     }
 
-    return Column(
-      crossAxisAlignment: isCurrentUserSender
-          ? CrossAxisAlignment.end
-          : CrossAxisAlignment.start,
+    return Row(
+      mainAxisAlignment:
+          isCurrentUserSender ? MainAxisAlignment.end : MainAxisAlignment.start,
       children: [
-        // 메시지 컨테이너
         Container(
           margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
           constraints: BoxConstraints(
