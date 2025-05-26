@@ -1830,30 +1830,39 @@ class _MessageDetailViewState extends State<MessageDetailView> {
             Center(
               child: ElevatedButton.icon(
                 onPressed: () {
-                  // 앱 내 지도 화면으로 이동하는 대신 외부 지도 앱으로 열기
+                  // 내부 지도에서 위치 보기 (SharedLocationView 사용)
                   try {
-                    final String url = defaultTargetPlatform ==
-                            TargetPlatform.iOS
-                        ? 'https://maps.apple.com/?ll=$latitude,$longitude'
-                        : 'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
-
-                    launchUrl(Uri.parse(url),
-                        mode: LaunchMode.externalApplication);
+                    // 위치 정보가 있으면 내부 지도 화면으로 이동
+                    Get.to(
+                      () => SharedLocationView(
+                        latitude: latitude!,
+                        longitude: longitude!,
+                        message: 'SOS 긴급 상황 위치',
+                        timestamp: message.timestamp,
+                        senderName: message.senderId == _authService.uid
+                            ? '나'
+                            : _getRecipientName(message.senderId),
+                        address: address,
+                        fromMessageDetail: true,
+                      ),
+                      transition: Transition.rightToLeft,
+                      duration: const Duration(milliseconds: 300),
+                    );
 
                     // 성공 알림
                     Get.snackbar(
-                      '지도 열기',
-                      '외부 지도 앱에서 위치를 확인합니다',
+                      '위치 보기',
+                      '앱 내부 지도에서 위치를 확인합니다',
                       snackPosition: SnackPosition.BOTTOM,
                       backgroundColor: Colors.green.shade600,
                       colorText: Colors.white,
                       duration: const Duration(seconds: 2),
                     );
                   } catch (e) {
-                    debugPrint('⚠️ 지도 앱 열기 오류: $e');
+                    debugPrint('⚠️ 지도 화면 열기 오류: $e');
                     Get.snackbar(
                       '오류',
-                      '지도 앱을 열 수 없습니다',
+                      '지도 화면을 열 수 없습니다',
                       snackPosition: SnackPosition.BOTTOM,
                       backgroundColor: Colors.red.shade600,
                       colorText: Colors.white,
