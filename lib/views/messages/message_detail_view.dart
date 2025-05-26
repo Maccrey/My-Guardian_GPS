@@ -480,6 +480,9 @@ class _MessageDetailViewState extends State<MessageDetailView> {
       } else if (success) {
         // 성공한 경우 스크롤 이동
         _safelyScrollToBottom();
+
+        // 진동 피드백 제공
+        HapticFeedback.mediumImpact();
       }
     } catch (e) {
       debugPrint('⚠️ 위치 공유 중 예외 발생: $e');
@@ -1691,7 +1694,40 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                   children: [
                     // 지도에서 보기 버튼
                     GestureDetector(
-                      onTap: () => _openInExternalMap(locationData),
+                      onTap: () {
+                        // 내부 지도에서 위치 보기 (SharedLocationView 사용)
+                        try {
+                          // 위치 정보가 있으면 내부 지도 화면으로 이동
+                          Get.to(
+                            () => SharedLocationView(
+                              latitude: double.parse(
+                                  locationData['latitude'].toString()),
+                              longitude: double.parse(
+                                  locationData['longitude'].toString()),
+                              message: locationData['message'] ?? '위치가 공유되었습니다',
+                              timestamp: message.timestamp,
+                              senderName: message.senderId == _authService.uid
+                                  ? '나'
+                                  : _getRecipientName(message.senderId),
+                              fromMessageDetail: true,
+                            ),
+                            transition: Transition.rightToLeft,
+                            duration: const Duration(milliseconds: 300),
+                          );
+
+                          // 진동 피드백 제공
+                          HapticFeedback.mediumImpact();
+                        } catch (e) {
+                          debugPrint('⚠️ 지도 화면 열기 오류: $e');
+                          Get.snackbar(
+                            '오류',
+                            '지도 화면을 열 수 없습니다',
+                            snackPosition: SnackPosition.BOTTOM,
+                            backgroundColor: Colors.red.shade600,
+                            colorText: Colors.white,
+                          );
+                        }
+                      },
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                             vertical: 6, horizontal: 8),
@@ -1848,6 +1884,9 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                       transition: Transition.rightToLeft,
                       duration: const Duration(milliseconds: 300),
                     );
+
+                    // 진동 피드백 제공
+                    HapticFeedback.mediumImpact();
 
                     // 성공 알림
                     Get.snackbar(
@@ -2013,10 +2052,41 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                 // 지도에서 보기 버튼
                 Center(
                   child: GestureDetector(
-                    onTap: () => _openInExternalMap({
-                      'latitude': arrivalData['latitude'],
-                      'longitude': arrivalData['longitude'],
-                    }),
+                    onTap: () {
+                      // 내부 지도에서 위치 보기 (SharedLocationView 사용)
+                      try {
+                        // 위치 정보가 있으면 내부 지도 화면으로 이동
+                        Get.to(
+                          () => SharedLocationView(
+                            latitude: double.parse(
+                                arrivalData['latitude'].toString()),
+                            longitude: double.parse(
+                                arrivalData['longitude'].toString()),
+                            message: '귀가 위치',
+                            timestamp: message.timestamp,
+                            senderName: message.senderId == _authService.uid
+                                ? '나'
+                                : _getRecipientName(message.senderId),
+                            address: arrivalData['address'],
+                            fromMessageDetail: true,
+                          ),
+                          transition: Transition.rightToLeft,
+                          duration: const Duration(milliseconds: 300),
+                        );
+
+                        // 진동 피드백 제공
+                        HapticFeedback.mediumImpact();
+                      } catch (e) {
+                        debugPrint('⚠️ 지도 화면 열기 오류: $e');
+                        Get.snackbar(
+                          '오류',
+                          '지도 화면을 열 수 없습니다',
+                          snackPosition: SnackPosition.BOTTOM,
+                          backgroundColor: Colors.red.shade600,
+                          colorText: Colors.white,
+                        );
+                      }
+                    },
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                           vertical: 6, horizontal: 12),
@@ -2420,8 +2490,8 @@ class _MessageDetailViewState extends State<MessageDetailView> {
         duration: const Duration(milliseconds: 300),
       );
 
-      // 위치 공유시 진동 피드백 추가 (실제 구현시)
-      // HapticFeedback.mediumImpact();
+      // 위치 공유시 진동 피드백 제공
+      HapticFeedback.mediumImpact();
     } catch (e) {
       debugPrint('⚠️ 위치 정보 파싱 오류: $e');
 
