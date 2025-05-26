@@ -1864,63 +1864,110 @@ class _MessageDetailViewState extends State<MessageDetailView> {
             const SizedBox(height: 12),
             const SizedBox(height: 10),
             Center(
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  // 내부 지도에서 위치 보기 (SharedLocationView 사용)
-                  try {
-                    // 위치 정보가 있으면 내부 지도 화면으로 이동
-                    Get.to(
-                      () => SharedLocationView(
-                        latitude: latitude!,
-                        longitude: longitude!,
-                        message: 'SOS 긴급 상황 위치',
-                        timestamp: message.timestamp,
-                        senderName: message.senderId == _authService.uid
-                            ? '나'
-                            : _getRecipientName(message.senderId),
-                        address: address,
-                        fromMessageDetail: true,
-                      ),
-                      transition: Transition.rightToLeft,
-                      duration: const Duration(milliseconds: 300),
-                    );
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // 내부 지도에서 보기 버튼
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      // 내부 지도에서 위치 보기 (SharedLocationView 사용)
+                      try {
+                        // 위치 정보가 있으면 내부 지도 화면으로 이동
+                        Get.to(
+                          () => SharedLocationView(
+                            latitude: latitude!,
+                            longitude: longitude!,
+                            message: 'SOS 긴급 상황 위치',
+                            timestamp: message.timestamp,
+                            senderName: message.senderId == _authService.uid
+                                ? '나'
+                                : _getRecipientName(message.senderId),
+                            address: address,
+                            fromMessageDetail: true,
+                          ),
+                          transition: Transition.rightToLeft,
+                          duration: const Duration(milliseconds: 300),
+                        );
 
-                    // 진동 피드백 제공
-                    HapticFeedback.mediumImpact();
+                        // 진동 피드백 제공
+                        HapticFeedback.mediumImpact();
 
-                    // 성공 알림
-                    Get.snackbar(
-                      '위치 보기',
-                      '앱 내부 지도에서 위치를 확인합니다',
-                      snackPosition: SnackPosition.BOTTOM,
-                      backgroundColor: Colors.green.shade600,
-                      colorText: Colors.white,
-                      duration: const Duration(seconds: 2),
-                    );
-                  } catch (e) {
-                    debugPrint('⚠️ 지도 화면 열기 오류: $e');
-                    Get.snackbar(
-                      '오류',
-                      '지도 화면을 열 수 없습니다',
-                      snackPosition: SnackPosition.BOTTOM,
-                      backgroundColor: Colors.red.shade600,
-                      colorText: Colors.white,
-                    );
-                  }
-                },
-                icon: const Icon(Icons.map, size: 18),
-                label: const Text('지도에서 위치 보기'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red.shade700,
-                  foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                  textStyle: const TextStyle(fontWeight: FontWeight.bold),
-                ),
+                        // 성공 알림
+                        Get.snackbar(
+                          '위치 보기',
+                          '앱 내부 지도에서 위치를 확인합니다',
+                          snackPosition: SnackPosition.BOTTOM,
+                          backgroundColor: Colors.green.shade600,
+                          colorText: Colors.white,
+                          duration: const Duration(seconds: 2),
+                        );
+                      } catch (e) {
+                        debugPrint('⚠️ 지도 화면 열기 오류: $e');
+                        Get.snackbar(
+                          '오류',
+                          '지도 화면을 열 수 없습니다',
+                          snackPosition: SnackPosition.BOTTOM,
+                          backgroundColor: Colors.red.shade600,
+                          colorText: Colors.white,
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.map, size: 18),
+                    label: const Text('앱 내 지도로 보기'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                      textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+
+                  const SizedBox(width: 10),
+
+                  // 외부 지도로 열기 버튼
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      try {
+                        // 외부 지도 앱으로 열기
+                        final String url = defaultTargetPlatform ==
+                                TargetPlatform.iOS
+                            ? 'https://maps.apple.com/?ll=$latitude,$longitude'
+                            : 'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
+
+                        launchUrl(Uri.parse(url),
+                            mode: LaunchMode.externalApplication);
+
+                        // 진동 피드백 제공
+                        HapticFeedback.mediumImpact();
+                      } catch (e) {
+                        debugPrint('⚠️ 외부 지도 앱 열기 오류: $e');
+                        Get.snackbar(
+                          '오류',
+                          '외부 지도 앱을 열 수 없습니다',
+                          snackPosition: SnackPosition.BOTTOM,
+                          backgroundColor: Colors.red.shade600,
+                          colorText: Colors.white,
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.open_in_new, size: 18),
+                    label: const Text('외부 지도로 보기'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                      textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
               ),
-            ),
+            )
           ],
         ],
       );
