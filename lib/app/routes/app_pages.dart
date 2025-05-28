@@ -1,5 +1,5 @@
 import 'package:get/get.dart';
-import '../views/sos/sos_location_map_view.dart';
+import 'package:watch_over/views/sos/sos_location_map_view.dart';
 
 class AppPages {
   static final routes = [

@@ -456,7 +456,7 @@ class _SharedLocationViewState extends State<SharedLocationView> {
       } else {
         // Android 및 기타 플랫폼에서는 Google Maps URL 스킴 사용
         urlString =
-            'https://www.google.com/maps/search/?api=1&query=${widget.latitude},${widget.longitude}';
+            'https://www.google.com/maps/search/?api=1&query=${widget.latitude},${widget.longitude}&q=${Uri.encodeComponent(widget.message)}';
       }
 
       // URL 파싱
@@ -477,7 +477,7 @@ class _SharedLocationViewState extends State<SharedLocationView> {
           // 대체 방식으로 웹 브라우저에서 열기
           await launchUrl(
             Uri.parse(
-                'https://www.google.com/maps/search/?api=1&query=${widget.latitude},${widget.longitude}'),
+                'https://www.google.com/maps/search/?api=1&query=${widget.latitude},${widget.longitude}&q=${Uri.encodeComponent(widget.message)}'),
             mode: LaunchMode.platformDefault,
           );
         }
@@ -486,7 +486,7 @@ class _SharedLocationViewState extends State<SharedLocationView> {
         // 대체 방식으로 웹 브라우저에서 열기
         await launchUrl(
           Uri.parse(
-              'https://www.google.com/maps/search/?api=1&query=${widget.latitude},${widget.longitude}'),
+              'https://www.google.com/maps/search/?api=1&query=${widget.latitude},${widget.longitude}&q=${Uri.encodeComponent(widget.message)}'),
           mode: LaunchMode.platformDefault,
         );
       }

@@ -1931,10 +1931,10 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                   ElevatedButton.icon(
                     onPressed: () {
                       try {
-                        // 외부 지도 앱으로 열기
+                        // 외부 지도 앱으로 열기 - 위치 마커 추가 형식으로 URL 수정
                         final String url = defaultTargetPlatform ==
                                 TargetPlatform.iOS
-                            ? 'https://maps.apple.com/?ll=$latitude,$longitude'
+                            ? 'https://maps.apple.com/?q=$latitude,$longitude&ll=$latitude,$longitude'
                             : 'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
 
                         launchUrl(Uri.parse(url),
