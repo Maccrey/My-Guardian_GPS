@@ -30,7 +30,6 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<!-- 이 값은 GoogleService-Info.plist 파일의 REVERSED_CLIENT_ID 값과 일치해야 합니다 -->
 				<string>com.googleusercontent.apps.1071355933777-m1i508qebs4no0fm10on2et5q61mbjig</string>
 			</array>
 		</dict>
@@ -131,6 +130,23 @@
 		<true/>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>accounts.google.com</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<false/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
+			<key>googleapis.com</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<false/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
+		</dict>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>이 앱은 로컬 네트워크를 사용하여 디버깅 및 인증 서비스에 연결합니다.</string>
