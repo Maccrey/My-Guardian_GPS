@@ -70,6 +70,7 @@ dependencies:
   permission_handler: ^12.0.0+1
   flutter_native_splash: 2.2.16
   app_links: ^6.4.0
+  get_it: ^8.0.3
   # flutter_local_notifications: 9.9.1
 
 dev_dependencies:

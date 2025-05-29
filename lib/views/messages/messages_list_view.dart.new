@@ -1,0 +1,57 @@
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import '../../services/message_service.dart';
+import '../../services/auth_service.dart';
+import '../../models/message_model.dart';
+import 'message_detail_view.dart';
+import 'dart:convert';
+import 'dart:io';
+import '../../services/image_cache_service.dart';
+
+class MessagesListView extends StatefulWidget {
+  const MessagesListView({Key? key}) : super(key: key);
+
+  @override
+class _MessagesListViewState extends State<MessagesListView> {
+  final MessageService _messageService = Get.find<MessageService>();
+  final AuthService _authService = Get.find<AuthService>();
+  ImageCacheService? _imageCacheService;
+  bool _isImageCacheServiceInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initImageCacheService();
+
+    // 메시지 목록 화면에 들어왔을 때 자동으로 새로고침
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _refreshMessages();
+
+        // 화면에 진입할 때 읽지 않은 메시지 수 업데이트
+        _messageService.updateUnreadCount();
+      }
+    });
+  }
+
+  // ImageCacheService 초기화
+  Future<void> _initImageCacheService() async {
+    try {
+      if (Get.isRegistered<ImageCacheService>()) {
+        _imageCacheService = Get.find<ImageCacheService>();
+        debugPrint('✅ ImageCacheService 찾음');
+      } else {
+        debugPrint('⚠️ ImageCacheService를 찾을 수 없음, 로컬 초기화 시도');
+        final service = ImageCacheService();
+        _imageCacheService = await service.init();
+        Get.put(_imageCacheService!, permanent: true);
+        debugPrint('✅ ImageCacheService 로컬 초기화 성공');
+      }
+      _isImageCacheServiceInitialized = true;
+    } catch (e) {
+      debugPrint('⚠️ ImageCacheService 초기화 오류: $e');
+      _isImageCacheServiceInitialized = false;
+    }
+  }
+

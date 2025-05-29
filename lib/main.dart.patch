@@ -1,0 +1,9 @@
+// ImageCacheService 초기화
+  try {
+    debugPrint('🖼️ ImageCacheService 초기화 시작...');
+    final imageCacheService = await ImageCacheService().init();
+    Get.put(imageCacheService, permanent: true);
+    debugPrint('✅ ImageCacheService 초기화 성공');
+  } catch (e) {
+    debugPrint('⚠️ ImageCacheService 초기화 오류: $e');
+  }
