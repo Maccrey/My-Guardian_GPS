@@ -840,6 +840,14 @@ class LocationSharingService extends GetxController {
 
       print('🔍 [서비스] 현재 인증된 사용자 UID: ${currentUser.uid}');
 
+      // 종료 메시지인 경우 receiverId를 고정값으로 설정
+      String actualReceiverId = receiverId;
+      if (!isStarting) {
+        // 중지 메시지일 경우 고정된 receiverId 사용
+        actualReceiverId = "ndCQmBWxHgW2WYAHKAJLMXyZvk72";
+        print('🔄 [서비스] 위치 공유 중지 메시지용 고정 receiverId 사용: $actualReceiverId');
+      }
+
       // 현재 사용자 정보 가져오기
       final userDoc =
           await _firestore.collection('users').doc(currentUser.uid).get();
@@ -856,7 +864,7 @@ class LocationSharingService extends GetxController {
         final recentMessages = await _firestore
             .collection('messages')
             .where('senderId', isEqualTo: currentUser.uid)
-            .where('receiverId', isEqualTo: receiverId)
+            .where('receiverId', isEqualTo: actualReceiverId)
             .limit(50) // 최근 50개 메시지만 조회
             .get();
 
@@ -901,16 +909,9 @@ class LocationSharingService extends GetxController {
           ? '$message\n$locationInfo'
           : message;
 
-      // 참가자 ID를 일관된 순서로 정렬하여 항상 같은 채팅방 ID가 생성되도록 함
-      List<String> participants = [currentUser.uid, receiverId];
-      participants.sort(); // 알파벳 순서로 정렬하여 일관성 보장
-
-      // 채팅방 ID 조회 또는 생성 (동일한 채팅방 사용을 위해)
-      String chatRoomId = '';
-
-      // 참가자 ID를 직접 조합하여 고정된 채팅방 ID 생성
-      chatRoomId = participants.join('_');
-      print('🏠 [서비스] 채팅방 ID 생성: $chatRoomId');
+      // 채팅방 ID 생성 (senderId_receiverId 형식으로 고정)
+      String chatRoomId = "${currentUser.uid}_$actualReceiverId";
+      print('🏠 [서비스] 채팅방 ID 생성 (senderId_receiverId 형식): $chatRoomId');
 
       // Firestore에서 일치하는 채팅방 검색
       try {
@@ -921,7 +922,7 @@ class LocationSharingService extends GetxController {
         if (!existingDoc.exists) {
           // 문서가 없으면 고정 ID로 새 문서 생성
           await _firestore.collection('chat_rooms').doc(chatRoomId).set({
-            'participants': participants,
+            'participants': [currentUser.uid, actualReceiverId],
             'createdAt': FieldValue.serverTimestamp(),
             'lastMessageAt': FieldValue.serverTimestamp(),
           });
@@ -937,14 +938,14 @@ class LocationSharingService extends GetxController {
       // 메시지 데이터 구성 - MessageModel과 완벽히 호환되도록 필드명 수정
       Map<String, dynamic> messageDoc = {
         'senderId': currentUser.uid, // 현재 인증된 사용자의 UID 사용
-        'receiverId': receiverId,
+        'receiverId': actualReceiverId, // 고정된 receiverId 사용
         'content': fullMessage,
         'messageType': 'location_sharing',
 
         // Message 모델의 data 필드에 구조화된 데이터 저장
         'data': {
-          'latitude': _lastKnownPosition?.latitude,
-          'longitude': _lastKnownPosition?.longitude,
+          'latitude': isStarting ? _lastKnownPosition?.latitude : null,
+          'longitude': isStarting ? _lastKnownPosition?.longitude : null,
           'message': message,
           'senderName': userName,
         },
@@ -968,7 +969,7 @@ class LocationSharingService extends GetxController {
 
       // Firebase 메시지 상세 로깅
       print(
-          '📝 [서비스] 위치 공유 메시지 저장 시도 - receiverId: $receiverId, isStarting: $isStarting');
+          '📝 [서비스] 위치 공유 메시지 저장 시도 - receiverId: $actualReceiverId, chatRoomId: $chatRoomId, isStarting: $isStarting');
       print('🔍 [서비스] 메시지에 설정된 senderId: ${currentUser.uid}');
       print(
           '📝 [서비스] 메시지 데이터: senderId=${currentUser.uid}, locationId=$locationId');
@@ -983,7 +984,7 @@ class LocationSharingService extends GetxController {
           'action': 'location_message_saved',
           'messageId': docRef.id,
           'senderId': currentUser.uid,
-          'receiverId': receiverId,
+          'receiverId': actualReceiverId,
           'isStarting': isStarting,
           'timestamp': FieldValue.serverTimestamp(),
           'chatRoomId': chatRoomId, // 채팅방 ID 추가 (디버깅용)
@@ -1011,7 +1012,7 @@ class LocationSharingService extends GetxController {
 
         // FCM 푸시 알림 전송
         await _sendPushNotification(
-            receiverId, userName, fullMessage, isStarting, locationId);
+            actualReceiverId, userName, fullMessage, isStarting, locationId);
 
         print('✅ [서비스] 위치 공유 ${isStarting ? "시작" : "종료"} 메시지 전송 완료');
       } catch (e) {

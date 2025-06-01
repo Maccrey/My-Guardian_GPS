@@ -24,7 +24,9 @@ class LocationSharingController extends GetxController {
 
   // 모든 위치 공유 중지
   Future<void> stopAllSharing() async {
-    await _locationService.stopAllLocationSharing();
+    for (String contactId in _locationService.sharingToUserIds) {
+      await stopSharing(contactId);
+    }
   }
 
   // 위치 공유 상태 확인

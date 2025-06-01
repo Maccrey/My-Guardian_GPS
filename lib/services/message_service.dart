@@ -440,11 +440,15 @@ class MessageService extends GetxController {
       // 고유 ID 생성
       final String messageId = const Uuid().v4();
 
-      // 일관된 채팅방 ID 생성 (참가자 ID 정렬 후 결합)
-      List<String> participants = [currentUserId, receiverId];
+      // 일관된 채팅방 ID 생성 (항상 정렬된 ID 사용)
+      // 정규화된 ID 사용하여 모든 메시지 타입에서 일관된 채팅방 형성
+      final String normalizedSenderId = _normalizeUserId(currentUserId);
+      final String normalizedReceiverId = _normalizeUserId(receiverId);
+
+      List<String> participants = [normalizedSenderId, normalizedReceiverId];
       participants.sort(); // 알파벳 순서로 정렬하여 일관성 보장
       final String chatRoomId = participants.join('_');
-      debugPrint('🏠 채팅방 ID 생성: $chatRoomId');
+      debugPrint('🏠 일관된 채팅방 ID 생성: $chatRoomId (정규화된 ID 사용)');
 
       // 채팅방이 없으면 생성
       try {
@@ -454,7 +458,8 @@ class MessageService extends GetxController {
         if (!chatRoomDoc.exists) {
           debugPrint('➕ 새 채팅방 생성: $chatRoomId');
           await _firestore.collection('chat_rooms').doc(chatRoomId).set({
-            'participants': participants,
+            'participants': [currentUserId, receiverId], // 원래 ID 보존
+            'normalizedParticipants': participants, // 정규화된 ID 추가
             'createdAt': FieldValue.serverTimestamp(),
             'lastMessageAt': FieldValue.serverTimestamp(),
           });
@@ -478,7 +483,7 @@ class MessageService extends GetxController {
           'timestamp': FieldValue.serverTimestamp(),
           'isRead': false,
           'messageType': messageType,
-          'chatRoomId': chatRoomId, // 채팅방 ID 추가
+          'chatRoomId': chatRoomId, // 일관된 채팅방 ID 사용
         };
 
         // 답장 메시지인 경우 답장 정보 추가
@@ -753,12 +758,13 @@ class MessageService extends GetxController {
         String normalizedSenderId = _normalizeUserId(m.senderId);
         String normalizedReceiverId = _normalizeUserId(m.receiverId);
 
+        // 정규화된 ID를 사용하여 비교
         bool isMatch = (normalizedSenderId == normalizedCurrentUserId &&
                 normalizedReceiverId == normalizedUserId) ||
             (normalizedReceiverId == normalizedCurrentUserId &&
                 normalizedSenderId == normalizedUserId);
 
-        // 직접 ID 비교도 시도
+        // 직접 ID 비교도 백업으로 유지
         bool isDirectMatch =
             (m.senderId == currentUserId && m.receiverId == userId) ||
                 (m.receiverId == currentUserId && m.senderId == userId);
@@ -830,64 +836,103 @@ class MessageService extends GetxController {
 
       debugPrint('📊 현재 사용자 관련 메시지 수: ${userMessages.length}');
 
-      // 메시지를 채팅방 ID 기준으로 그룹화
-      final Map<String, List<Message>> conversationsByRoom = {};
+      // 메시지를 상대방 ID 기준으로 그룹화 (채팅방 ID 대신)
+      final Map<String, List<Message>> conversationsByUser = {};
 
       for (var message in userMessages) {
-        // 채팅방 ID 결정
-        String roomKey;
+        // 상대방 ID 결정 - 현재 사용자가 발신자라면 수신자가 상대방, 아니면 발신자가 상대방
+        String otherUserId = message.senderId == currentUserId
+            ? message.receiverId
+            : message.senderId;
 
-        // 1. 메시지에 chatRoomId가 있으면 그것을 사용
+        // 상대방 ID 정규화 (타 서비스와 동일하게)
+        final String normalizedOtherUserId = _normalizeUserId(otherUserId);
+
+        // chatRoomId가 있으면 먼저 확인 (위치 공유 메시지 등의 경우)
         if (message.chatRoomId != null && message.chatRoomId!.isNotEmpty) {
-          roomKey = message.chatRoomId!;
-          debugPrint('🔍 메시지에서 채팅방 ID 사용: $roomKey');
+          // chatRoomId에서 상대방 ID 추출 시도
+          final String chatRoomId = message.chatRoomId!;
+
+          // chatRoomId가 ID 조합 형식인지 확인 (user1_user2 형식)
+          if (chatRoomId.contains('_')) {
+            final parts = chatRoomId.split('_');
+            if (parts.length == 2) {
+              // ID 파트 중 현재 사용자가 아닌 것이 상대방 ID
+              String potentialOtherId = '';
+
+              if (parts[0] != normalizedCurrentUserId &&
+                  parts[0] != currentUserId) {
+                potentialOtherId = parts[0];
+              } else if (parts[1] != normalizedCurrentUserId &&
+                  parts[1] != currentUserId) {
+                potentialOtherId = parts[1];
+              }
+
+              // 유효한 ID면 기존 ID 대신 사용
+              if (potentialOtherId.isNotEmpty) {
+                debugPrint(
+                    '🔍 채팅방 ID에서 상대방 ID 추출: $potentialOtherId (원래: $otherUserId)');
+                otherUserId = potentialOtherId;
+              }
+            }
+          }
         }
-        // 2. 없으면 참가자 ID로 생성 (발신자와 수신자 ID 정렬 후 결합)
-        else {
-          List<String> participants = [message.senderId, message.receiverId];
-          participants.sort(); // 알파벳순 정렬
-          roomKey = participants.join('_');
-          debugPrint('🔍 참가자로 채팅방 키 생성: $roomKey');
-        }
+
+        // 정규화된 상대방 ID
+        final String userKey = _normalizeUserId(otherUserId);
+
+        debugPrint('🔍 상대방으로 그룹화: $otherUserId (정규화: $userKey)');
 
         // 해당 키에 메시지 추가
-        if (!conversationsByRoom.containsKey(roomKey)) {
-          conversationsByRoom[roomKey] = [];
+        if (!conversationsByUser.containsKey(userKey)) {
+          conversationsByUser[userKey] = [];
         }
-        conversationsByRoom[roomKey]!.add(message);
+        conversationsByUser[userKey]!.add(message);
       }
 
-      debugPrint('👥 대화방 수: ${conversationsByRoom.length}');
+      debugPrint('👥 대화 상대 수: ${conversationsByUser.length}');
 
-      // 각 대화방별 최신 메시지 찾기
+      // 각 대화 상대별 최신 메시지 찾기
       final List<Message> conversationList = [];
 
-      for (String roomKey in conversationsByRoom.keys) {
-        final roomMessages = conversationsByRoom[roomKey]!;
+      for (String userKey in conversationsByUser.keys) {
+        final userMessages = conversationsByUser[userKey]!;
 
-        if (roomMessages.isNotEmpty) {
+        if (userMessages.isNotEmpty) {
           // 시간순 정렬 후 첫 번째 메시지 (가장 최신)
-          roomMessages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-          final latestMessage = roomMessages.first;
+          userMessages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+          final latestMessage = userMessages.first;
 
-          // 채팅방 ID가 없는 오래된 메시지에 채팅방 ID를 추가
-          Message updatedMessage = latestMessage;
-          if (latestMessage.chatRoomId == null ||
-              latestMessage.chatRoomId!.isEmpty) {
-            updatedMessage = latestMessage.copyWith(chatRoomId: roomKey);
-            debugPrint('🔄 메시지에 채팅방 ID 추가: $roomKey');
+          // 이미 동일한 상대방이 추가되었는지 확인 (chatRoomId까지 확인)
+          bool isDuplicate = false;
+          for (var existing in conversationList) {
+            final existingOtherId = existing.senderId == currentUserId
+                ? existing.receiverId
+                : existing.senderId;
+
+            final normalizedExistingId = _normalizeUserId(existingOtherId);
+
+            // chatRoomId가 있다면 그것도 비교
+            if (normalizedExistingId == userKey) {
+              isDuplicate = true;
+              break;
+            }
+
+            // chatRoomId 기반 추가 검사
+            if (existing.chatRoomId != null &&
+                latestMessage.chatRoomId != null &&
+                existing.chatRoomId == latestMessage.chatRoomId) {
+              isDuplicate = true;
+              break;
+            }
           }
 
-          // 이미 동일한 채팅방이 추가되었는지 확인
-          final isDuplicate =
-              conversationList.any((m) => m.chatRoomId == roomKey);
-
           if (!isDuplicate) {
-            conversationList.add(updatedMessage);
+            conversationList.add(latestMessage);
             debugPrint(
-                '✅ 대화 목록에 추가: $roomKey (메시지 유형: ${updatedMessage.messageType})');
+                '✅ 대화 목록에 추가: $userKey (메시지 유형: ${latestMessage.messageType})');
           } else {
-            debugPrint('⚠️ 중복 대화 무시: $roomKey');
+            debugPrint('⚠️ 중복 대화 무시: $userKey');
           }
         }
       }
