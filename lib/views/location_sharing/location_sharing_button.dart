@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../services/location_sharing_service.dart';
 import '../../services/message_service.dart';
+import '../../services/auth_service.dart';
+import 'location_sharing_list_view.dart';
 
 /// 위치 공유 버튼 위젯
 class LocationSharingButton extends StatelessWidget {
@@ -100,6 +102,60 @@ class LocationSharingButton extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 4),
+            // 모든 위치 공유 관리 버튼 추가
+            if (_locationService.sharingToUserIds.length > 1)
+              TextButton.icon(
+                onPressed: () {
+                  // 위치 공유 목록 페이지로 이동
+                  try {
+                    // 인증 상태 확인
+                    final authService = Get.find<AuthService>();
+                    if (authService.isAuthenticated) {
+                      // 인증된 경우에만 위치 공유 목록 화면으로 이동
+                      Get.to(() => LocationSharingListView());
+                    } else {
+                      // 인증되지 않은 경우 안내 메시지 표시
+                      Get.dialog(
+                        AlertDialog(
+                          title: const Text('로그인 필요'),
+                          content: const Text('위치 공유 기능을 사용하려면 로그인이 필요합니다.'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Get.back(),
+                              child: const Text('취소'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () {
+                                Get.back();
+                                Get.offAllNamed('/');
+                              },
+                              child: const Text('로그인'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    print('⚠️ 위치 공유 목록 화면으로 이동 중 오류: $e');
+                    Get.snackbar(
+                      '오류',
+                      '위치 공유 목록 화면을 열 수 없습니다',
+                      backgroundColor: Colors.red.withOpacity(0.8),
+                      colorText: Colors.white,
+                      snackPosition: SnackPosition.BOTTOM,
+                    );
+                  }
+                },
+                icon: const Icon(
+                  Icons.list,
+                  size: 16,
+                ),
+                label: Text(
+                  '모든 위치 공유 관리 (${_locationService.sharingToUserIds.length})',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
             // 상태 표시
             Padding(
               padding: const EdgeInsets.only(top: 4.0),

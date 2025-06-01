@@ -1387,4 +1387,53 @@ class LocationSharingService extends GetxController {
     print('ℹ️ [서비스] 위치 공유 ID를 찾을 수 없음');
     return null;
   }
+
+  // 활성 공유 정보 가져오기
+  Map<String, SharedLocation> getActiveSharing() {
+    return Map<String, SharedLocation>.from(_activeSharing);
+  }
+
+  // 수신자 이름 가져오기 (긴급 연락처 또는 사용자)
+  Future<String> getReceiverName(String receiverId) async {
+    try {
+      // Firestore에서 사용자 또는 긴급 연락처 정보 조회
+      final userDoc =
+          await _firestore.collection('users').doc(receiverId).get();
+
+      // 사용자가 존재하면 사용자 정보 반환
+      if (userDoc.exists) {
+        final userData = userDoc.data();
+        if (userData != null) {
+          final nickname = userData['nickname'];
+          final displayName = userData['displayName'];
+          final name = nickname ?? displayName ?? '사용자';
+          return name;
+        }
+      }
+
+      // 긴급 연락처에서 검색
+      final currentUser = _auth.currentUser;
+      if (currentUser != null) {
+        final contactsCollection = _firestore
+            .collection('users')
+            .doc(currentUser.uid)
+            .collection('emergency_contacts');
+
+        final contactQuery =
+            await contactsCollection.where('id', isEqualTo: receiverId).get();
+
+        if (contactQuery.docs.isNotEmpty) {
+          final contactData = contactQuery.docs.first.data();
+          final name = contactData['name'] ?? '긴급 연락처';
+          return name;
+        }
+      }
+
+      // 기본값
+      return '연락처';
+    } catch (e) {
+      print('⚠️ [서비스] 수신자 이름 조회 오류: $e');
+      return '연락처';
+    }
+  }
 }

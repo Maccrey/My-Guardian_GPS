@@ -10,6 +10,8 @@ import 'sos_view.dart';
 import 'messages/messages_list_view.dart';
 import 'home_arrival_view.dart';
 import 'location_sharing/emergency_contact_location_view.dart';
+import '../services/location_sharing_service.dart';
+import 'location_sharing/location_sharing_list_view.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({Key? key}) : super(key: key);
@@ -252,6 +254,119 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
                     return const SizedBox.shrink();
                   }
                 }),
+
+              // 위치 공유 상태 배너 추가
+              GetBuilder<LocationSharingService>(
+                init: Get.find<LocationSharingService>(),
+                builder: (controller) {
+                  return Obx(() {
+                    if (controller.isSharingLocation.value) {
+                      return Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 12, horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.green.shade300),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.location_on,
+                              color: Colors.green.shade700,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    '위치 공유 활성화',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${controller.sharingToUserIds.length - 1}명의 연락처와 위치 공유 중',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[700],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                // 위치 공유 목록 화면으로 이동
+                                try {
+                                  // 명시적으로 인스턴스를 생성하여 이동
+                                  final authService = Get.find<AuthService>();
+                                  if (authService.isAuthenticated) {
+                                    // 인증된 경우에만 위치 공유 목록 화면으로 이동
+                                    Get.to(() => LocationSharingListView());
+                                  } else {
+                                    // 인증되지 않은 경우 안내 메시지 표시
+                                    Get.dialog(
+                                      AlertDialog(
+                                        title: const Text('로그인 필요'),
+                                        content: const Text(
+                                            '위치 공유 기능을 사용하려면 로그인이 필요합니다.'),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Get.back(),
+                                            child: const Text('취소'),
+                                          ),
+                                          ElevatedButton(
+                                            onPressed: () {
+                                              Get.back();
+                                              Get.offAllNamed('/');
+                                            },
+                                            child: const Text('로그인'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  print('⚠️ 위치 공유 목록 화면으로 이동 중 오류: $e');
+                                  Get.snackbar(
+                                    '오류',
+                                    '위치 공유 목록 화면을 열 수 없습니다',
+                                    backgroundColor:
+                                        Colors.red.withOpacity(0.8),
+                                    colorText: Colors.white,
+                                    snackPosition: SnackPosition.BOTTOM,
+                                  );
+                                }
+                              },
+                              style: TextButton.styleFrom(
+                                backgroundColor: Colors.green.shade50,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: Text(
+                                '목록 보기',
+                                style: TextStyle(
+                                  color: Colors.green.shade700,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    } else {
+                      return const SizedBox.shrink();
+                    }
+                  });
+                },
+              ),
 
               // 안내 메시지
               const Column(

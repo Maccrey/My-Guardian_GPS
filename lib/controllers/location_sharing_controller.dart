@@ -9,8 +9,15 @@ class LocationSharingController extends GetxController {
   // 위치 공유 상태
   RxBool get isSharingLocation => _locationService.isSharingLocation;
 
+  // 위치 공유 중인 사용자 ID 목록
+  RxList<String> get sharingToUserIds => _locationService.sharingToUserIds;
+
   // 위치 공유 중인 사용자 수
   RxInt get sharingCount => _locationService.sharingToUserIds.length.obs;
+
+  // 활성 공유 정보 가져오기
+  Map<String, SharedLocation> get activeSharing =>
+      _locationService.getActiveSharing();
 
   // 위치 공유 시작
   Future<bool> startSharing(String contactId) async {
@@ -24,9 +31,7 @@ class LocationSharingController extends GetxController {
 
   // 모든 위치 공유 중지
   Future<void> stopAllSharing() async {
-    for (String contactId in _locationService.sharingToUserIds) {
-      await stopSharing(contactId);
-    }
+    await _locationService.stopAllLocationSharing();
   }
 
   // 위치 공유 상태 확인
@@ -42,5 +47,10 @@ class LocationSharingController extends GetxController {
   // 위치 업데이트 간격 설정
   void setUpdateInterval(int seconds) {
     _locationService.setUpdateInterval(seconds);
+  }
+
+  // 수신자 이름 가져오기 (긴급 연락처 또는 사용자)
+  Future<String> getReceiverName(String receiverId) async {
+    return await _locationService.getReceiverName(receiverId);
   }
 }
