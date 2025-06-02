@@ -27,7 +27,7 @@ class LocationSharingService extends GetxController {
   final Map<String, Timer> _fallbackTimers = {};
 
   // 위치 업데이트 간격 (초)
-  final RxInt updateIntervalSeconds = 5.obs;
+  final RxInt updateIntervalSeconds = 10.obs;
 
   // 위치 공유 상태 (활성화 여부)
   final RxBool isSharingLocation = false.obs;
@@ -42,6 +42,9 @@ class LocationSharingService extends GetxController {
   // 마지막으로 알려진 위치 (오류 발생 시 폴백용)
   Position? _lastKnownPosition;
 
+  // 데이터 절약 모드 상태
+  final RxBool isDataSavingEnabled = false.obs;
+
   // 서비스 초기화
   @override
   void onInit() {
@@ -53,6 +56,9 @@ class LocationSharingService extends GetxController {
       // 백그라운드에서 마지막 위치 가져오기 시도
       _getLastKnownPosition();
     });
+
+    // 데이터 절약 모드 설정 로드
+    _loadDataSavingMode();
 
     _setupConnectivityListener();
   }
@@ -424,12 +430,19 @@ class LocationSharingService extends GetxController {
     try {
       print('🔄 [서비스] 위치 추적 시작: receiverId=$receiverId');
 
-      // 위치 추적 시작
+      // 위치 추적 시작 - 데이터 절약 모드에 따라 설정 조정
       final stream = Geolocator.getPositionStream(
         locationSettings: LocationSettings(
-          accuracy: LocationAccuracy.low, // 정확도 요구사항 더 낮춤 (배터리 절약 및 타임아웃 방지)
-          distanceFilter: 20, // 더 큰 거리 필터 (불필요한 업데이트 감소)
-          timeLimit: Duration(seconds: 30), // 타임아웃 시간 증가 (10초 → 30초)
+          // 데이터 절약 모드에 따라 정확도와 필터 조정
+          accuracy: isDataSavingEnabled.value
+              ? LocationAccuracy.reduced
+              : LocationAccuracy.low,
+          distanceFilter:
+              isDataSavingEnabled.value ? 50 : 20, // 데이터 절약 모드에서는 50미터마다 업데이트
+          timeLimit: Duration(
+              seconds: isDataSavingEnabled.value
+                  ? 120
+                  : 60), // 데이터 절약 모드에서는 타임아웃 120초
         ),
       );
 
@@ -520,9 +533,13 @@ class LocationSharingService extends GetxController {
 
     print('🔄 [서비스] 폴백 위치 타이머 시작: receiverId=$receiverId');
 
-    // 새 타이머 시작
-    _fallbackTimers[receiverId] = Timer.periodic(
-        Duration(seconds: updateIntervalSeconds.value * 2), (timer) {
+    // 새 타이머 시작 - 데이터 절약 모드에 따라 간격 조정
+    int intervalSeconds = isDataSavingEnabled.value
+        ? updateIntervalSeconds.value * 3 // 데이터 절약 모드에서는 간격 3배 증가
+        : updateIntervalSeconds.value * 2;
+
+    _fallbackTimers[receiverId] =
+        Timer.periodic(Duration(seconds: intervalSeconds), (timer) {
       // 매 타이머 실행 시 공유 상태 다시 확인 (더 엄격한 검사)
       if (!_activeSharing.containsKey(receiverId)) {
         print('🛑 [서비스] 위치 공유 취소됨: 폴백 타이머 중지 - receiverId=$receiverId');
@@ -575,12 +592,16 @@ class LocationSharingService extends GetxController {
       final hasPermission = await checkLocationPermission();
       if (!hasPermission) return null;
 
-      // 더 긴 타임아웃 설정 및 저정확도 위치도 허용
+      // 더 긴 타임아웃 설정 및 저정확도 위치도 허용 - 데이터 절약 모드에 따라 조정
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.low, // 정확도 요구사항 낮춤
-        timeLimit: const Duration(seconds: 15), // 시간 제한 증가
+        desiredAccuracy: isDataSavingEnabled.value
+            ? LocationAccuracy.reduced
+            : LocationAccuracy.low,
+        timeLimit: Duration(
+            seconds:
+                isDataSavingEnabled.value ? 60 : 30), // 데이터 절약 모드에서는 타임아웃 60초
       ).timeout(
-        const Duration(seconds: 15),
+        Duration(seconds: isDataSavingEnabled.value ? 60 : 30),
         onTimeout: () {
           print('위치 가져오기 타임아웃: 마지막 알려진 위치 사용');
           // 타임아웃 시 마지막 알려진 위치 사용
@@ -1444,6 +1465,33 @@ class LocationSharingService extends GetxController {
     } catch (e) {
       print('⚠️ [서비스] 수신자 이름 조회 오류: $e');
       return '연락처';
+    }
+  }
+
+  // 데이터 절약 모드 설정 로드하는 메서드 추가
+  Future<void> _loadDataSavingMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      isDataSavingEnabled.value = prefs.getBool('isDataSavingEnabled') ?? false;
+      print(
+          '✅ [서비스] 데이터 절약 모드 설정 로드됨: ${isDataSavingEnabled.value ? "활성화" : "비활성화"}');
+    } catch (e) {
+      print('⚠️ [서비스] 데이터 절약 모드 설정 로드 오류: $e');
+      isDataSavingEnabled.value = false; // 기본값은 비활성화
+    }
+  }
+
+  // 데이터 절약 모드 설정 메서드 추가
+  void setDataSavingMode(bool enabled) {
+    if (isDataSavingEnabled.value == enabled) return;
+
+    isDataSavingEnabled.value = enabled;
+    print('✅ [서비스] 데이터 절약 모드 ${enabled ? "활성화" : "비활성화"}됨');
+
+    // 활성 스트림 재시작 (데이터 절약 모드 설정 적용)
+    final userIds = List<String>.from(sharingToUserIds);
+    for (final userId in userIds) {
+      _startPositionTracking(userId);
     }
   }
 }

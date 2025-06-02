@@ -116,11 +116,11 @@ class _EmergencyContactLocationViewState
         elevation: 0,
         actions: [
           // 사용자 검색 버튼
-          IconButton(
-            icon: const Icon(Icons.person_search),
-            tooltip: '다른 사용자 검색',
-            onPressed: () => Get.toNamed('/location-sharing/user-search'),
-          ),
+          // IconButton(
+          //   icon: const Icon(Icons.person_search),
+          //   tooltip: '다른 사용자 검색',
+          //   onPressed: () => Get.toNamed('/location-sharing/user-search'),
+          // ),
         ],
       ),
       body: Obx(() {

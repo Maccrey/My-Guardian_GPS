@@ -114,6 +114,22 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
+  // 데이터 절약 모드 토글 메서드
+  void _toggleDataSavingMode(bool value) async {
+    settingsService.isDataSavingEnabled.value = value;
+    await settingsService.saveSettings();
+
+    Get.snackbar(
+      '데이터 절약 모드 ${value ? '활성화' : '비활성화'}됨',
+      value
+          ? '데이터 사용량이 줄어들지만 위치 정확도와 이미지 품질이 낮아질 수 있습니다.'
+          : '정상 데이터 사용량으로 위치 정확도와 이미지 품질이 향상됩니다.',
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: value ? Colors.green.shade100 : Colors.blue.shade100,
+      duration: const Duration(seconds: 3),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -236,12 +252,69 @@ class _SettingsViewState extends State<SettingsView> {
                   title: const Text('데이터 절약 모드'),
                   subtitle: const Text('모바일 데이터 사용량을 줄입니다'),
                   value: settingsService.isDataSavingEnabled.value,
-                  onChanged: (value) {
-                    settingsService.isDataSavingEnabled.value = value;
-                    settingsService.saveSettings();
-                  },
-                  secondary: const Icon(Icons.data_saver_off),
+                  onChanged: _toggleDataSavingMode,
+                  secondary: Icon(
+                    Icons.data_saver_off,
+                    color: settingsService.isDataSavingEnabled.value
+                        ? Colors.green
+                        : Colors.grey,
+                  ),
                 )),
+            // 데이터 절약 모드 설명 카드 추가
+            Obx(() => settingsService.isDataSavingEnabled.value
+                ? Card(
+                    margin:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.info_outline,
+                                  color: Colors.blue.shade700),
+                              const SizedBox(width: 8),
+                              const Text(
+                                '데이터 절약 모드 정보',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            '• 위치 업데이트 간격이 더 길어집니다 (10초 → 60초)',
+                            style: TextStyle(fontSize: 14),
+                          ),
+                          const Text(
+                            '• 위치 정확도가 낮아집니다 (배터리 절약)',
+                            style: TextStyle(fontSize: 14),
+                          ),
+                          const Text(
+                            '• 이미지 캐시 기간이 늘어납니다 (30일 → 60일)',
+                            style: TextStyle(fontSize: 14),
+                          ),
+                          const Text(
+                            '• 이미지 다운로드 품질이 낮아질 수 있습니다',
+                            style: TextStyle(fontSize: 14),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '데이터 절약 모드는 최대 70%까지 데이터 사용량을 줄일 수 있습니다.',
+                            style: TextStyle(
+                              color: Colors.green.shade700,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink()),
             const Divider(),
 
             // 정보 섹션

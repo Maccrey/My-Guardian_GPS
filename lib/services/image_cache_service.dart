@@ -26,6 +26,9 @@ class ImageCacheService extends GetxService {
   // 캐시 만료 시간 (30일)
   static const Duration _cacheExpiration = Duration(days: 30);
 
+  // 데이터 절약 모드에서의 캐시 만료 시간 (60일)
+  static const Duration _dataSavingCacheExpiration = Duration(days: 60);
+
   // 저장된 메타데이터
   final Map<String, dynamic> _profileImageMeta = {};
   final Map<String, dynamic> _messageImageMeta = {};
@@ -34,6 +37,9 @@ class ImageCacheService extends GetxService {
   late final Directory _appCacheDir;
   late final Directory _profileImagesDir;
   late final Directory _messageImagesDir;
+
+  // 데이터 절약 모드 상태
+  bool _isDataSavingEnabled = false;
 
   bool _initialized = false;
 
@@ -54,6 +60,9 @@ class ImageCacheService extends GetxService {
 
       // 메타데이터 로드
       await _loadMetadata();
+
+      // 데이터 절약 모드 설정 로드
+      await _loadDataSavingMode();
 
       _initialized = true;
       debugPrint('✅ 이미지 캐시 서비스 초기화 완료');
@@ -106,6 +115,31 @@ class ImageCacheService extends GetxService {
     return digest.toString() + path.extension(url).toLowerCase();
   }
 
+  /// 데이터 절약 모드 설정 로드 메서드 추가
+  Future<void> _loadDataSavingMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _isDataSavingEnabled = prefs.getBool('isDataSavingEnabled') ?? false;
+      debugPrint(
+          '✅ 이미지 캐시 서비스 데이터 절약 모드: ${_isDataSavingEnabled ? "활성화" : "비활성화"}');
+    } catch (e) {
+      debugPrint('⚠️ 데이터 절약 모드 설정 로드 오류: $e');
+      _isDataSavingEnabled = false; // 오류 시 기본값은 비활성화
+    }
+  }
+
+  /// 데이터 절약 모드 설정 메서드 추가
+  void setDataSavingMode(bool enabled) {
+    if (_isDataSavingEnabled == enabled) return;
+
+    _isDataSavingEnabled = enabled;
+    debugPrint('✅ 이미지 캐시 서비스 데이터 절약 모드 ${enabled ? "활성화" : "비활성화"}됨');
+  }
+
+  /// 현재 캐시 만료 시간 계산 메서드 추가
+  Duration get _currentCacheExpiration =>
+      _isDataSavingEnabled ? _dataSavingCacheExpiration : _cacheExpiration;
+
   /// 프로필 이미지 캐싱
   ///
   /// [url] 이미지 URL
@@ -151,6 +185,7 @@ class ImageCacheService extends GetxService {
             'filePath': filePath,
             'uploadDate':
                 uploadDate?.toIso8601String() ?? now.toIso8601String(),
+            'dataSavingMode': _isDataSavingEnabled,
           };
 
           await _saveMetadata();
@@ -167,7 +202,7 @@ class ImageCacheService extends GetxService {
       if (!forceUpdate &&
           await file.exists() &&
           cachedUrl == url &&
-          (now.difference(lastUpdated!) < _cacheExpiration) &&
+          (now.difference(lastUpdated!) < _currentCacheExpiration) &&
           (uploadDate == null ||
               cachedUploadDate == null ||
               uploadDate.isAtSameMomentAs(cachedUploadDate))) {
@@ -186,6 +221,7 @@ class ImageCacheService extends GetxService {
           'lastUpdated': now.toIso8601String(),
           'filePath': filePath,
           'uploadDate': uploadDate?.toIso8601String() ?? now.toIso8601String(),
+          'dataSavingMode': _isDataSavingEnabled,
         };
 
         await _saveMetadata();
@@ -229,7 +265,7 @@ class ImageCacheService extends GetxService {
           await file.exists() &&
           cachedUrl == url &&
           (lastUpdated != null &&
-              now.difference(lastUpdated) < _cacheExpiration)) {
+              now.difference(lastUpdated) < _currentCacheExpiration)) {
         debugPrint('✅ 메시지 이미지 캐시 사용: $messageId');
         return filePath;
       }
@@ -244,6 +280,7 @@ class ImageCacheService extends GetxService {
           'url': url,
           'lastUpdated': now.toIso8601String(),
           'filePath': filePath,
+          'dataSavingMode': _isDataSavingEnabled,
         };
 
         await _saveMetadata();
@@ -294,13 +331,14 @@ class ImageCacheService extends GetxService {
 
     try {
       final now = DateTime.now();
+      final currentExpiration = _currentCacheExpiration;
 
       // 프로필 이미지 캐시 정리
       final profileKeysToRemove = <String>[];
 
       _profileImageMeta.forEach((uid, metadata) {
         final lastUpdated = DateTime.parse(metadata['lastUpdated']);
-        if (now.difference(lastUpdated) > _cacheExpiration) {
+        if (now.difference(lastUpdated) > currentExpiration) {
           final filePath = metadata['filePath'] as String?;
           if (filePath != null) {
             final file = File(filePath);
@@ -321,7 +359,7 @@ class ImageCacheService extends GetxService {
 
       _messageImageMeta.forEach((messageId, metadata) {
         final lastUpdated = DateTime.parse(metadata['lastUpdated']);
-        if (now.difference(lastUpdated) > _cacheExpiration) {
+        if (now.difference(lastUpdated) > currentExpiration) {
           final filePath = metadata['filePath'] as String?;
           if (filePath != null) {
             final file = File(filePath);

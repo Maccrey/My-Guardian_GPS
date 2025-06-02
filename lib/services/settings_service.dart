@@ -2,6 +2,8 @@ import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'location_service.dart';
+import 'location_sharing_service.dart';
+import 'image_cache_service.dart';
 
 class SettingsService extends GetxController {
   // 설정 상태 변수
@@ -13,6 +15,12 @@ class SettingsService extends GetxController {
 
   // LocationService 인스턴스 - nullable로 변경
   LocationService? _locationService;
+
+  // 위치 공유 서비스 인스턴스 - nullable로 변경
+  LocationSharingService? _locationSharingService;
+
+  // 이미지 캐시 서비스 인스턴스 - nullable로 변경
+  ImageCacheService? _imageCacheService;
 
   // 설정 키 상수
   static const String _darkModeKey = 'isDarkMode';
@@ -39,9 +47,21 @@ class SettingsService extends GetxController {
       if (Get.isRegistered<LocationService>()) {
         _locationService = Get.find<LocationService>();
       }
+
+      // LocationSharingService 인스턴스 가져오기
+      if (Get.isRegistered<LocationSharingService>()) {
+        _locationSharingService = Get.find<LocationSharingService>();
+      }
+
+      // ImageCacheService 인스턴스 가져오기
+      if (Get.isRegistered<ImageCacheService>()) {
+        _imageCacheService = Get.find<ImageCacheService>();
+      }
     } catch (e) {
-      debugPrint('⚠️ LocationService를 찾을 수 없습니다: $e');
+      debugPrint('⚠️ 서비스 인스턴스를 찾을 수 없습니다: $e');
       _locationService = null;
+      _locationSharingService = null;
+      _imageCacheService = null;
     }
 
     // 설정 불러오기
@@ -85,6 +105,9 @@ class SettingsService extends GetxController {
 
       // 위치 서비스 설정 적용
       _applyLocationServiceSettings();
+
+      // 데이터 절약 모드 설정 적용
+      _applyDataSavingMode();
 
       print('✅ 설정 저장 완료');
     } catch (e) {
@@ -166,5 +189,40 @@ class SettingsService extends GetxController {
     // 테마 설정 적용
     _applyTheme();
     print('✅ 설정 초기화 완료');
+  }
+
+  // 데이터 절약 모드 토글 메서드 추가
+  Future<void> toggleDataSavingMode() async {
+    isDataSavingEnabled.value = !isDataSavingEnabled.value;
+    await saveSettings();
+    _applyDataSavingMode();
+  }
+
+  // 데이터 절약 모드 설정 적용 메서드 추가
+  void _applyDataSavingMode() {
+    try {
+      // LocationService 데이터 절약 모드 설정
+      if (_locationService != null) {
+        _locationService!.setDataSavingMode(isDataSavingEnabled.value);
+        debugPrint(
+            '✅ LocationService 데이터 절약 모드 설정 적용됨: ${isDataSavingEnabled.value ? "활성화" : "비활성화"}');
+      }
+
+      // LocationSharingService 데이터 절약 모드 설정
+      if (_locationSharingService != null) {
+        _locationSharingService!.setDataSavingMode(isDataSavingEnabled.value);
+        debugPrint(
+            '✅ LocationSharingService 데이터 절약 모드 설정 적용됨: ${isDataSavingEnabled.value ? "활성화" : "비활성화"}');
+      }
+
+      // ImageCacheService 데이터 절약 모드 설정
+      if (_imageCacheService != null) {
+        _imageCacheService!.setDataSavingMode(isDataSavingEnabled.value);
+        debugPrint(
+            '✅ ImageCacheService 데이터 절약 모드 설정 적용됨: ${isDataSavingEnabled.value ? "활성화" : "비활성화"}');
+      }
+    } catch (e) {
+      debugPrint('⚠️ 데이터 절약 모드 설정 적용 오류: $e');
+    }
   }
 }

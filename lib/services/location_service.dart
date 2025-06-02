@@ -103,6 +103,18 @@ class LocationService extends GetxController {
   // 공유된 위치를 표시할지 여부
   final RxBool showSharedLocations = true.obs;
 
+  // 데이터 절약 모드 활성화 여부
+  final RxBool isDataSavingEnabled = false.obs;
+
+  // 위치 업데이트 간격 (초) - 데이터 절약 모드에 따라 달라짐
+  final RxInt normalUpdateIntervalSeconds = 10.obs;
+  final RxInt dataSavingUpdateIntervalSeconds = 60.obs;
+
+  // 위치 정확도 - 데이터 절약 모드에 따라 달라짐
+  LocationAccuracy get currentLocationAccuracy => isDataSavingEnabled.value
+      ? LocationAccuracy.reduced
+      : LocationAccuracy.high;
+
   @override
   void onInit() {
     super.onInit();
@@ -155,12 +167,17 @@ class LocationService extends GetxController {
       isLocationServiceEnabled.value =
           prefs.getBool('isLocationEnabled') ?? true;
 
+      // 데이터 절약 모드 설정 확인
+      isDataSavingEnabled.value = prefs.getBool('isDataSavingEnabled') ?? false;
+
       // 위치 서비스 상태에 따라 지도 기능 초기화
       debugPrint(
           '✅ 위치 서비스 초기 상태: ${isLocationServiceEnabled.value ? "활성화" : "비활성화"}');
+      debugPrint('✅ 데이터 절약 모드: ${isDataSavingEnabled.value ? "활성화" : "비활성화"}');
     } catch (e) {
       debugPrint('⚠️ 위치 서비스 상태 확인 오류: $e');
       isLocationServiceEnabled.value = true; // 오류 시 기본적으로 활성화
+      isDataSavingEnabled.value = false; // 오류 시 기본적으로 비활성화
     }
   }
 
@@ -232,9 +249,9 @@ class LocationService extends GetxController {
       isLoading.value = true;
       errorMsg.value = '';
 
-      // 현재 위치 가져오기
+      // 현재 위치 가져오기 - 데이터 절약 모드에 따라 정확도 조정
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        desiredAccuracy: currentLocationAccuracy,
       );
 
       LatLng location = LatLng(position.latitude, position.longitude);
@@ -288,11 +305,15 @@ class LocationService extends GetxController {
       locationHistory.add(currentLocation.value!);
     }
 
-    // 위치 변경 이벤트 구독
+    // 위치 변경 이벤트 구독 - 데이터 절약 모드에 따라 설정 조정
     _positionStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 10, // 10미터마다 업데이트
+      locationSettings: LocationSettings(
+        accuracy: currentLocationAccuracy,
+        distanceFilter:
+            isDataSavingEnabled.value ? 50 : 10, // 데이터 절약 모드에서는 50미터마다 업데이트
+        timeLimit: Duration(
+            seconds:
+                isDataSavingEnabled.value ? 120 : 60), // 데이터 절약 모드에서는 타임아웃 120초
       ),
     ).listen((Position position) {
       // 새로운 위치 업데이트
@@ -1050,6 +1071,20 @@ class LocationService extends GetxController {
     } catch (e) {
       debugPrint('❌ 공유 위치 삭제 실패: $e');
       return false;
+    }
+  }
+
+  // 데이터 절약 모드 설정 메서드 추가
+  void setDataSavingMode(bool enabled) {
+    if (isDataSavingEnabled.value == enabled) return;
+
+    isDataSavingEnabled.value = enabled;
+    debugPrint('✅ 데이터 절약 모드 ${enabled ? "활성화" : "비활성화"}됨');
+
+    // 추적 중인 경우 재시작하여 새 설정 적용
+    if (isTracking.value) {
+      stopTracking();
+      startTracking();
     }
   }
 
