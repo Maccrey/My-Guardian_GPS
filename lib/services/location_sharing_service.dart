@@ -832,13 +832,13 @@ class LocationSharingService extends GetxController {
         print('⚠️ [서비스] 사용자 인증 상태 새로고침 실패: $authError');
       }
 
-      final currentUser = _auth.currentUser;
-      if (currentUser == null) {
+      final currentUserAuth = _auth.currentUser;
+      if (currentUserAuth == null) {
         print('⚠️ [서비스] 메시지 전송 실패: 로그인된 사용자 없음');
         throw Exception('로그인된 사용자가 없습니다. 로그인 후 다시 시도하세요.');
       }
 
-      print('🔍 [서비스] 현재 인증된 사용자 UID: ${currentUser.uid}');
+      print('🔍 [서비스] 현재 인증된 사용자 UID: ${currentUserAuth.uid}');
 
       // 종료 메시지인 경우 receiverId를 고정값으로 설정
       String actualReceiverId = receiverId;
@@ -850,9 +850,9 @@ class LocationSharingService extends GetxController {
 
       // 현재 사용자 정보 가져오기
       final userDoc =
-          await _firestore.collection('users').doc(currentUser.uid).get();
+          await _firestore.collection('users').doc(currentUserAuth.uid).get();
       final userName =
-          userDoc.data()?['nickname'] ?? currentUser.displayName ?? '사용자';
+          userDoc.data()?['nickname'] ?? currentUserAuth.displayName ?? '사용자';
 
       // 위치 공유 ID (시작할 때만 사용)
       String? locationId = isStarting ? _activeSharing[receiverId]?.id : null;
@@ -863,7 +863,7 @@ class LocationSharingService extends GetxController {
         // 인덱스 오류 방지를 위해 간소화된 쿼리 사용
         final recentMessages = await _firestore
             .collection('messages')
-            .where('senderId', isEqualTo: currentUser.uid)
+            .where('senderId', isEqualTo: currentUserAuth.uid)
             .where('receiverId', isEqualTo: actualReceiverId)
             .limit(50) // 최근 50개 메시지만 조회
             .get();
@@ -910,7 +910,7 @@ class LocationSharingService extends GetxController {
           : message;
 
       // 채팅방 ID 생성 (senderId_receiverId 형식으로 고정)
-      String chatRoomId = "${currentUser.uid}_$actualReceiverId";
+      String chatRoomId = "${currentUserAuth.uid}_$actualReceiverId";
       print('🏠 [서비스] 채팅방 ID 생성 (senderId_receiverId 형식): $chatRoomId');
 
       // Firestore에서 일치하는 채팅방 검색
@@ -922,7 +922,7 @@ class LocationSharingService extends GetxController {
         if (!existingDoc.exists) {
           // 문서가 없으면 고정 ID로 새 문서 생성
           await _firestore.collection('chat_rooms').doc(chatRoomId).set({
-            'participants': [currentUser.uid, actualReceiverId],
+            'participants': [currentUserAuth.uid, actualReceiverId],
             'createdAt': FieldValue.serverTimestamp(),
             'lastMessageAt': FieldValue.serverTimestamp(),
           });
@@ -937,7 +937,7 @@ class LocationSharingService extends GetxController {
 
       // 메시지 데이터 구성 - MessageModel과 완벽히 호환되도록 필드명 수정
       Map<String, dynamic> messageDoc = {
-        'senderId': currentUser.uid, // 현재 인증된 사용자의 UID 사용
+        'senderId': currentUserAuth.uid, // 현재 인증된 사용자의 UID 사용
         'receiverId': actualReceiverId, // 고정된 receiverId 사용
         'content': fullMessage,
         'messageType': 'location_sharing',
@@ -970,9 +970,9 @@ class LocationSharingService extends GetxController {
       // Firebase 메시지 상세 로깅
       print(
           '📝 [서비스] 위치 공유 메시지 저장 시도 - receiverId: $actualReceiverId, chatRoomId: $chatRoomId, isStarting: $isStarting');
-      print('🔍 [서비스] 메시지에 설정된 senderId: ${currentUser.uid}');
+      print('🔍 [서비스] 메시지에 설정된 senderId: ${currentUserAuth.uid}');
       print(
-          '📝 [서비스] 메시지 데이터: senderId=${currentUser.uid}, locationId=$locationId');
+          '📝 [서비스] 메시지 데이터: senderId=${currentUserAuth.uid}, locationId=$locationId');
 
       try {
         // Firestore에 메시지 저장
@@ -983,7 +983,7 @@ class LocationSharingService extends GetxController {
         _firestore.collection('debug_logs').add({
           'action': 'location_message_saved',
           'messageId': docRef.id,
-          'senderId': currentUser.uid,
+          'senderId': currentUserAuth.uid,
           'receiverId': actualReceiverId,
           'isStarting': isStarting,
           'timestamp': FieldValue.serverTimestamp(),
@@ -1396,7 +1396,20 @@ class LocationSharingService extends GetxController {
   // 수신자 이름 가져오기 (긴급 연락처 또는 사용자)
   Future<String> getReceiverName(String receiverId) async {
     try {
-      // Firestore에서 사용자 또는 긴급 연락처 정보 조회
+      // 현재 로그인된 사용자 확인
+      final authUser = _auth.currentUser;
+
+      // 로그인되지 않은 경우
+      if (authUser == null) {
+        return '연락처';
+      }
+
+      // 현재 사용자 본인인 경우 바로 '나'를 반환
+      if (authUser.uid == receiverId) {
+        return '나';
+      }
+
+      // Firestore에서 사용자 정보 조회
       final userDoc =
           await _firestore.collection('users').doc(receiverId).get();
 
@@ -1412,21 +1425,18 @@ class LocationSharingService extends GetxController {
       }
 
       // 긴급 연락처에서 검색
-      final currentUser = _auth.currentUser;
-      if (currentUser != null) {
-        final contactsCollection = _firestore
-            .collection('users')
-            .doc(currentUser.uid)
-            .collection('emergency_contacts');
+      final contactsCollection = _firestore
+          .collection('users')
+          .doc(authUser.uid)
+          .collection('emergency_contacts');
 
-        final contactQuery =
-            await contactsCollection.where('id', isEqualTo: receiverId).get();
+      final contactQuery =
+          await contactsCollection.where('id', isEqualTo: receiverId).get();
 
-        if (contactQuery.docs.isNotEmpty) {
-          final contactData = contactQuery.docs.first.data();
-          final name = contactData['name'] ?? '긴급 연락처';
-          return name;
-        }
+      if (contactQuery.docs.isNotEmpty) {
+        final contactData = contactQuery.docs.first.data();
+        final name = contactData['name'] ?? '긴급 연락처';
+        return name;
       }
 
       // 기본값

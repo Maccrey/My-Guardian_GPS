@@ -76,7 +76,9 @@ class LocationSharingListView extends StatelessWidget {
           if ((sharedLocation.senderId == currentUserId ||
                   sharedLocation.receiverId == currentUserId) &&
               !(sharedLocation.senderId == currentUserId &&
-                  sharedLocation.receiverId == currentUserId)) {
+                  sharedLocation.receiverId == currentUserId) &&
+              // 수신자가 자신의 ID와 같은 경우도 제외 (본인 연락처는 표시하지 않음)
+              sharedLocation.receiverId != currentUserId) {
             sharedLocationIds.add(entry.key);
           }
         }
@@ -113,6 +115,12 @@ class LocationSharingListView extends StatelessWidget {
                 builder: (context, snapshot) {
                   final receiverName = snapshot.data ?? '연락처';
                   final sharedLocation = activeSharing[locationId];
+
+                  // 본인 연락처인 경우 표시하지 않음 (receiverName이 '연락처'인 경우 건너뛰기)
+                  if (receiverName == '연락처' &&
+                      sharedLocation?.senderId == currentUserId) {
+                    return const SizedBox.shrink(); // 빈 위젯 반환하여 표시하지 않음
+                  }
 
                   return LocationSharingListItem(
                     receiverId: locationId,
