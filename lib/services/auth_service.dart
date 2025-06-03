@@ -795,13 +795,13 @@ class AuthService extends GetxController {
   }
 
   // 구글 로그인 메서드
+  @override
   Future<bool> signInWithGoogle() async {
     setLoading(true);
     setError(null);
 
     try {
       if (_useMockAuth) {
-        // Mock 환경에서는 지연만 시뮬레이션
         await Future.delayed(const Duration(seconds: 2));
         final mockGoogleUser = UserModel(
           uid: 'google-mock-${DateTime.now().millisecondsSinceEpoch}',
@@ -810,185 +810,47 @@ class AuthService extends GetxController {
         );
         _currentUser.value = mockGoogleUser;
         _isAuthenticated.value = true;
-        logger.i('✅ Mock Google 로그인 성공');
         setLoading(false);
         return true;
-      } else {
-        // 실제 Google 로그인 처리
-        logger.i('✅ Google 로그인 시작...');
-
-        if (_isGoogleSignInInProgress.value) {
-          logger.w('⚠️ 이미 구글 로그인이 진행 중입니다');
-          setLoading(false);
-          return false; // 중복 실행 방지
-        }
-        _isGoogleSignInInProgress.value = true;
-
-        try {
-          // Firebase Console에서 가져온 웹 클라이언트 ID
-          // iOS와 Android 모두 동일한 클라이언트 ID 사용
-          final String? webClientId = (defaultTargetPlatform ==
-                      TargetPlatform.android ||
-                  defaultTargetPlatform == TargetPlatform.iOS)
-              ? "1071355933777-m0h2ud9umafo496iptjf5fln8i0vjdsc.apps.googleusercontent.com"
-              : null;
-
-          logger.d("Using webClientId for Google Sign-In: $webClientId");
-          logger.d("Current platform: $defaultTargetPlatform");
-
-          // 구글 로그인 인스턴스 생성 시 옵션 설정 추가
-          final GoogleSignIn googleSignIn = GoogleSignIn(
-            scopes: ['email', 'profile'],
-            serverClientId: webClientId,
-            // iOS에서 사파리로 인증할 때 앱으로 돌아오기 위한 설정
-            signInOption: SignInOption.standard,
-          );
-
-          // 기존 세션 확인 및 정리
-          bool wasSignedIn = false;
-          try {
-            wasSignedIn = await googleSignIn.isSignedIn();
-            if (wasSignedIn) {
-              logger.i("기존 Google 세션이 있어 로그아웃 시도...");
-              await googleSignIn.signOut();
-              // 세션 정리 후 잠시 대기 (iOS에서 문제 방지)
-              await Future.delayed(const Duration(milliseconds: 300));
-              logger.i("기존 Google 세션 로그아웃 완료");
-            }
-          } catch (e) {
-            logger.w("기존 Google 세션 확인/로그아웃 중 오류 (진행 계속): $e");
-            // 오류가 발생해도 계속 진행
-          }
-
-          // Google 계정 선택 및 로그인 시도
-          logger.i("Google 계정 선택 화면 표시 시도...");
-          final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
-
-          if (googleUser == null) {
-            logger.w('⚠️ Google 로그인이 사용자에 의해 취소되었거나 실패했습니다');
-            setError('Google 로그인이 취소되었습니다.');
-            _isGoogleSignInInProgress.value = false;
-            setLoading(false);
-            return false;
-          }
-
-          logger.i('✅ Google 계정 선택 완료: ${googleUser.email}');
-
-          // 인증 정보 가져오기 시도
-          logger.i('Google 인증 정보 요청 중...');
-          final GoogleSignInAuthentication googleAuth =
-              await googleUser.authentication;
-
-          // 토큰 검증 로직 강화
-          if (googleAuth.idToken == null || googleAuth.idToken!.isEmpty) {
-            logger.e('❌ Google ID 토큰을 가져오지 못했습니다.');
-            logger.d(
-                'Google Auth Details: accessToken: ${googleAuth.accessToken != null ? "있음" : "없음"}, '
-                'idToken: ${googleAuth.idToken != null ? "있음" : "없음"}, '
-                'serverAuthCode: ${googleAuth.serverAuthCode != null ? "있음" : "없음"}');
-
-            setError('Google 로그인 인증에 실패했습니다. 네트워크 연결을 확인하고 다시 시도해주세요.');
-            _isGoogleSignInInProgress.value = false;
-            setLoading(false);
-
-            // 문제 해결을 위해 세션 정리 시도
-            try {
-              await googleSignIn.signOut();
-              logger.i("문제 해결을 위해 Google 세션 정리 완료");
-            } catch (e) {
-              logger.w("Google 세션 정리 중 오류: $e");
-            }
-
-            return false;
-          }
-
-          // Firebase 인증 자격 증명 생성
-          logger.i('Firebase 인증 자격 증명 생성 중...');
-          final AuthCredential credential = GoogleAuthProvider.credential(
-            accessToken: googleAuth.accessToken,
-            idToken: googleAuth.idToken,
-          );
-
-          // Firebase에 로그인 시도
-          logger.i('Firebase에 Google 자격 증명으로 로그인 시도...');
-          final UserCredential userCredential =
-              await _auth.signInWithCredential(credential);
-          final User? user = userCredential.user;
-
-          if (user == null) {
-            logger.e('❌ Firebase 사용자 정보 획득 실패');
-            setError('Google 계정으로 Firebase 로그인에 실패했습니다.');
-            _isGoogleSignInInProgress.value = false;
-            setLoading(false);
-            return false;
-          }
-
-          logger.i('✅ Firebase 로그인 성공: ${user.uid}');
-
-          // Firestore에서 사용자 정보 확인/등록
-          final docSnapshot =
-              await _firestore.collection('users').doc(user.uid).get();
-
-          if (!docSnapshot.exists) {
-            logger.i('새로운 사용자 Firestore에 등록 중: ${user.uid}');
-            final newUser = UserModel(
-              uid: user.uid,
-              email: user.email,
-              nickname: user.displayName ?? user.email?.split('@')[0] ?? '사용자',
-              profileImageUrl: user.photoURL,
-            );
-            await _saveUserData(user.uid, newUser);
-            _currentUser.value = newUser;
-          } else {
-            logger.i('기존 사용자 Firestore 정보 로드: ${user.uid}');
-            await _fetchUserData(user.uid);
-          }
-
-          _isAuthenticated.value = true;
-          logger.i('✅ Google 로그인 전체 프로세스 성공: ${user.uid}');
-          _isGoogleSignInInProgress.value = false;
-          setLoading(false);
-          return true;
-        } catch (e) {
-          _isGoogleSignInInProgress.value = false;
-          logger.e('❌ Google 로그인 중 예외 발생: $e');
-
-          String errorMessage = 'Google 로그인 중 오류가 발생했습니다.';
-          String detailedError = e.toString();
-
-          if (e is FirebaseAuthException) {
-            errorMessage = 'Firebase 인증 오류: ${e.message} (코드: ${e.code})';
-            logger.e('Firebase 오류 코드: ${e.code}, 메시지: ${e.message}');
-          } else if (detailedError.contains('PlatformException')) {
-            // GoogleSignIn의 PlatformException 처리
-            if (detailedError.contains('SIGN_IN_CANCELLED')) {
-              errorMessage = 'Google 로그인이 취소되었습니다.';
-            } else if (detailedError.contains('NETWORK_ERROR')) {
-              errorMessage = '네트워크 오류로 Google 로그인에 실패했습니다. 인터넷 연결을 확인하세요.';
-            } else if (detailedError.contains('sign_in_failed')) {
-              errorMessage = 'Google 로그인 실패: 인증 과정에서 오류가 발생했습니다.';
-            } else if (detailedError.contains('connection')) {
-              errorMessage = '네트워크 연결 오류: 인터넷 연결을 확인하고 다시 시도해주세요.';
-            } else {
-              // 자세한 오류 메시지 포함
-              errorMessage =
-                  'Google 로그인 실패: ${detailedError.split(',').skip(1).join(',').trim()}';
-            }
-          } else if (detailedError.contains('connection') ||
-              detailedError.contains('network')) {
-            errorMessage = '네트워크 연결 오류: 인터넷 연결을 확인하고 다시 시도해주세요.';
-          }
-
-          logger.e('오류 상세 정보: $detailedError');
-          setError(errorMessage);
-          setLoading(false);
-          return false;
-        }
       }
+
+      // 구글 로그인 인스턴스 생성 - 서버 클라이언트 ID 제거
+      final GoogleSignIn googleSignIn = GoogleSignIn();
+
+      // 기존 세션 확인 및 정리
+      final isSignedIn = await googleSignIn.isSignedIn();
+      if (isSignedIn) {
+        await googleSignIn.signOut();
+      }
+
+      // 로그인 시도
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+      if (googleUser == null) {
+        setError('Google 로그인이 취소되었습니다.');
+        setLoading(false);
+        return false;
+      }
+
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final userCredential = await _auth.signInWithCredential(credential);
+      if (userCredential.user != null) {
+        await _fetchUserData(userCredential.user!.uid);
+        setLoading(false);
+        return true;
+      }
+
+      setError('Google 로그인에 실패했습니다.');
+      setLoading(false);
+      return false;
     } catch (e) {
-      _isGoogleSignInInProgress.value = false;
-      logger.e('❌ Google 로그인 외부 catch 블록 오류: $e');
-      setError('Google 로그인 중 예기치 않은 오류가 발생했습니다. 다시 시도해주세요.');
+      print('❌ Google 로그인 오류: $e');
+      setError('로그인 중 오류가 발생했습니다: ${e.toString()}');
       setLoading(false);
       return false;
     }
