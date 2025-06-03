@@ -167,10 +167,12 @@ class LoginViewModel extends GetxController {
       return false;
     }
 
-    // 로그인 요청
-    final success = await _authService.login(email, password);
+    // 로그인 요청 - 자동 로그인 옵션 전달
+    debugPrint('🔑 로그인 시도: 자동 로그인=${rememberMe.value}');
+    final success =
+        await _authService.login(email, password, rememberMe: rememberMe.value);
 
-    // 로그인 성공 시 정보 저장
+    // 로그인 성공 시 SharedPreferences에도 상태 저장 (UI 상태 유지용)
     if (success) {
       await _saveLoginInfo(email, password);
     }

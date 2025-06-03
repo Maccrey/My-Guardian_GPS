@@ -238,9 +238,8 @@ class _SettingsViewState extends State<SettingsView> {
                   title: const Text('생체 인증'),
                   subtitle: const Text('앱 잠금에 생체 인증을 사용합니다'),
                   value: settingsService.isBiometricEnabled.value,
-                  onChanged: (value) {
-                    settingsService.isBiometricEnabled.value = value;
-                    settingsService.saveSettings();
+                  onChanged: (value) async {
+                    await settingsService.toggleBiometricAuth();
                   },
                   secondary: const Icon(Icons.fingerprint),
                 )),

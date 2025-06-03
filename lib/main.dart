@@ -38,6 +38,8 @@ import 'views/location_sharing/emergency_contact_location_view.dart';
 import 'views/location_sharing/location_tracking_view.dart';
 import 'views/location_sharing/user_search_location_view.dart';
 import 'views/user_search_contact_view.dart';
+import 'services/biometric_service.dart';
+import 'views/app_lock_screen.dart';
 
 import 'firebase_options.dart';
 
@@ -174,6 +176,21 @@ class _MyAppState extends State<MyApp> {
         urlHandler.init();
       });
     }
+
+    // 앱 잠금 상태 확인
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // 이미 AuthService가 초기화되어 있는지 확인
+      if (Get.isRegistered<AuthService>() &&
+          Get.isRegistered<BiometricService>()) {
+        final authService = Get.find<AuthService>();
+        final biometricService = Get.find<BiometricService>();
+
+        // 로그인 상태이고 앱 잠금이 활성화된 경우 잠금 화면으로 이동
+        if (authService.isAuthenticated && biometricService.isAppLocked.value) {
+          Get.to(() => const AppLockScreen());
+        }
+      }
+    });
   }
 
   @override
@@ -202,6 +219,18 @@ class _MyAppState extends State<MyApp> {
     } catch (e) {
       debugPrint('⚠️ AuthService 초기화 오류: $e');
       debugPrint('⚠️ 오류 스택: ${StackTrace.current}');
+    }
+
+    // 생체인증 서비스 초기화
+    try {
+      if (!Get.isRegistered<BiometricService>()) {
+        debugPrint('👆 BiometricService 초기화 시작...');
+        final biometricService = BiometricService();
+        Get.put(biometricService, permanent: true);
+        debugPrint('✅ BiometricService 초기화 성공');
+      }
+    } catch (e) {
+      debugPrint('⚠️ BiometricService 초기화 오류: $e');
     }
 
     // 메시지 서비스 초기화
@@ -349,6 +378,7 @@ class _MyAppState extends State<MyApp> {
             Get.put(EmergencyContactService());
           }),
         ),
+        GetPage(name: '/app-lock', page: () => const AppLockScreen()),
       ],
     );
   }

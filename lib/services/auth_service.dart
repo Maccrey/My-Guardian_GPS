@@ -9,6 +9,7 @@ import '../models/user_model.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:typed_data';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 // 로깅을 위한 인스턴스
 final logger = Logger(
@@ -29,6 +30,7 @@ class AuthService extends GetxController {
   // Firebase 인스턴스 (웹이 아닌 경우에만 사용)
   late final FirebaseAuth _auth;
   late final FirebaseFirestore _firestore;
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
   // Mock 데이터를 위한 변수
   final List<UserModel> _mockUsers = [];
@@ -68,6 +70,9 @@ class AuthService extends GetxController {
     if (!_useMockAuth) {
       // Firebase 인증 상태 변경 감지 (웹이 아닌 경우에만)
       _auth.authStateChanges().listen(_handleAuthStateChange);
+
+      // 자동 로그인 시도
+      _tryAutoLogin();
     }
   }
 
@@ -81,6 +86,21 @@ class AuthService extends GetxController {
       // 로그인 상태 - Firestore에서 사용자 정보 가져오기
       _isAuthenticated.value = true;
       await _fetchUserData(firebaseUser.uid);
+    }
+  }
+
+  // 자동 로그인 시도
+  Future<void> _tryAutoLogin() async {
+    try {
+      final email = await _secureStorage.read(key: 'auth_email');
+      final password = await _secureStorage.read(key: 'auth_password');
+
+      if (email != null && password != null) {
+        print('✅ 저장된 로그인 정보 발견: 자동 로그인 시도');
+        await login(email, password, rememberMe: true);
+      }
+    } catch (e) {
+      print('⚠️ 자동 로그인 시도 중 오류: $e');
     }
   }
 
@@ -108,7 +128,8 @@ class AuthService extends GetxController {
   }
 
   // 로그인 메소드
-  Future<bool> login(String email, String password) async {
+  Future<bool> login(String email, String password,
+      {bool rememberMe = false}) async {
     setLoading(true);
     setError(null);
 
@@ -122,6 +143,12 @@ class AuthService extends GetxController {
           // 비밀번호 검증 (실제로는 암호화되어야 함)
           _currentUser.value = user;
           _isAuthenticated.value = true;
+
+          // 자동 로그인 설정 저장
+          if (rememberMe) {
+            await _saveCredentials(email, password);
+          }
+
           setLoading(false);
           return true;
         } else {
@@ -141,6 +168,12 @@ class AuthService extends GetxController {
       if (userCredential.user != null) {
         // 사용자 정보 가져오기
         await _fetchUserData(userCredential.user!.uid);
+
+        // 자동 로그인 설정 저장
+        if (rememberMe) {
+          await _saveCredentials(email, password);
+        }
+
         setLoading(false);
         return true;
       } else {
@@ -172,6 +205,28 @@ class AuthService extends GetxController {
       setError(errorMessage);
       setLoading(false);
       return false;
+    }
+  }
+
+  // 인증 정보 저장
+  Future<void> _saveCredentials(String email, String password) async {
+    try {
+      await _secureStorage.write(key: 'auth_email', value: email);
+      await _secureStorage.write(key: 'auth_password', value: password);
+      print('✅ 로그인 정보 저장 완료');
+    } catch (e) {
+      print('⚠️ 로그인 정보 저장 오류: $e');
+    }
+  }
+
+  // 인증 정보 삭제
+  Future<void> _clearCredentials() async {
+    try {
+      await _secureStorage.delete(key: 'auth_email');
+      await _secureStorage.delete(key: 'auth_password');
+      print('✅ 로그인 정보 삭제 완료');
+    } catch (e) {
+      print('⚠️ 로그인 정보 삭제 오류: $e');
     }
   }
 
@@ -462,12 +517,17 @@ class AuthService extends GetxController {
   }
 
   // 로그아웃 메소드
-  Future<void> logout() async {
+  Future<void> logout({bool clearSavedCredentials = true}) async {
     setLoading(true);
 
     try {
       if (!_useMockAuth) {
         await _auth.signOut();
+      }
+
+      // 인증 정보 삭제 (요청된 경우에만)
+      if (clearSavedCredentials) {
+        await _clearCredentials();
       }
 
       _currentUser.value = null;
