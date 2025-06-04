@@ -95,7 +95,9 @@
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>위치 정보를 사용하여 현재 위치를 확인하고 서비스를 제공합니다.</string>
 	<key>NSFaceIDUsageDescription</key>
-	<string>앱 잠금 해제를 위해 Face ID를 사용합니다.</string>
+	<string>앱 잠금 해제 및 보안 인증을 위해 Face ID 또는 Touch ID를 사용합니다.</string>
+	<key>NSLocalAuthenticationUsageDescription</key>
+	<string>앱 잠금 기능 사용을 위해 생체인증이 필요합니다.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

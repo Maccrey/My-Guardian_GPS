@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
+import '../services/biometric_service.dart';
 
 class LoginViewModel extends GetxController {
   // 서비스 의존성
   final AuthService _authService;
+  BiometricService? _biometricService;
 
   // 컨트롤러
   late TextEditingController emailController;
@@ -14,6 +16,7 @@ class LoginViewModel extends GetxController {
   // UI 상태
   final RxBool isPasswordVisible = false.obs;
   final RxBool rememberMe = false.obs;
+  final RxBool isBiometricAvailable = false.obs;
 
   // SharedPreferences 키
   static const String _rememberMeKey = 'remember_me';
@@ -21,7 +24,51 @@ class LoginViewModel extends GetxController {
   static const String _passwordKey = 'saved_password';
 
   // 생성자
-  LoginViewModel(this._authService);
+  LoginViewModel(this._authService) {
+    // BiometricService 초기화 시도
+    _initBiometricService();
+  }
+
+  // BiometricService 초기화
+  Future<void> _initBiometricService() async {
+    try {
+      if (Get.isRegistered<BiometricService>()) {
+        _biometricService = Get.find<BiometricService>();
+        debugPrint('✅ LoginViewModel: BiometricService 찾음');
+
+        // 생체인증 사용 가능 여부 확인
+        isBiometricAvailable.value =
+            _biometricService!.isBiometricAvailable.value;
+        if (isBiometricAvailable.value) {
+          debugPrint(
+              '✅ 생체인증 사용 가능: ${_biometricService!.isBiometricAvailable.value}');
+        } else {
+          debugPrint(
+              '⚠️ 생체인증 사용 불가: ${_biometricService!.biometricError.value}');
+        }
+      } else {
+        debugPrint('⚠️ LoginViewModel: BiometricService 찾을 수 없음');
+        isBiometricAvailable.value = false;
+
+        // 필요한 경우 서비스 등록 시도
+        try {
+          _biometricService = BiometricService();
+          Get.put(_biometricService!, permanent: true);
+          debugPrint('✅ LoginViewModel: BiometricService 등록 시도 완료');
+
+          // 생체인증 사용 가능 여부 다시 확인
+          await Future.delayed(const Duration(milliseconds: 500));
+          isBiometricAvailable.value =
+              _biometricService!.isBiometricAvailable.value;
+        } catch (e) {
+          debugPrint('❌ LoginViewModel: BiometricService 등록 실패 - $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ 생체인증 서비스 초기화 오류: $e');
+      isBiometricAvailable.value = false;
+    }
+  }
 
   @override
   void onInit() {
@@ -139,6 +186,11 @@ class LoginViewModel extends GetxController {
   bool get isLoading => _authService.isLoading;
   String? get error => _authService.error;
   bool get isAuthenticated => _authService.isAuthenticated;
+  bool get canUseBiometric =>
+      isBiometricAvailable.value &&
+      rememberMe.value &&
+      emailController.text.isNotEmpty &&
+      passwordController.text.isNotEmpty;
 
   // 비밀번호 표시/숨김 토글
   void togglePasswordVisibility() {
@@ -149,6 +201,41 @@ class LoginViewModel extends GetxController {
   void toggleRememberMe() {
     rememberMe.value = !rememberMe.value;
     debugPrint('✅ 로그인 정보 저장: ${rememberMe.value}');
+  }
+
+  // 생체인증으로 로그인
+  Future<bool> loginWithBiometric() async {
+    debugPrint('🔍 생체인증 로그인 시도');
+
+    if (_biometricService == null) {
+      debugPrint('⚠️ 생체인증 서비스가 초기화되지 않았습니다');
+      _authService.setError('생체인증 서비스를 사용할 수 없습니다');
+      return false;
+    }
+
+    if (!isBiometricAvailable.value) {
+      debugPrint('⚠️ 생체인증 사용 불가: ${_biometricService!.biometricError.value}');
+      _authService.setError(_biometricService!.biometricError.value);
+      return false;
+    }
+
+    // 저장된 이메일과 비밀번호가 있는지 확인
+    if (emailController.text.isEmpty || passwordController.text.isEmpty) {
+      debugPrint('⚠️ 저장된 로그인 정보가 없습니다');
+      _authService.setError('생체인증을 사용하려면 먼저 로그인 정보가 저장되어 있어야 합니다');
+      return false;
+    }
+
+    // 생체인증 시도
+    final success = await _biometricService!.authenticate();
+    if (!success) {
+      debugPrint('⚠️ 생체인증 실패');
+      return false;
+    }
+
+    // 생체인증 성공 후 저장된 정보로 로그인
+    debugPrint('✅ 생체인증 성공: 저장된 정보로 로그인 시도');
+    return await login();
   }
 
   // 로그인 처리

@@ -234,6 +234,59 @@ class LoginView extends StatelessWidget {
                               )),
                           const SizedBox(height: 16),
 
+                          // 생체인증 버튼 추가
+                          Obx(() {
+                            // 생체인증을 사용할 수 있고, 이전에 로그인 정보를 저장한 경우에만 표시
+                            if (controller.canUseBiometric) {
+                              return Column(
+                                children: [
+                                  ElevatedButton.icon(
+                                    onPressed: controller.isLoading
+                                        ? null
+                                        : () async {
+                                            if (await controller
+                                                .loginWithBiometric()) {
+                                              Get.snackbar(
+                                                '성공',
+                                                '생체인증 로그인 성공!',
+                                                snackPosition:
+                                                    SnackPosition.BOTTOM,
+                                              );
+                                              Get.offAllNamed('/home');
+                                            } else if (controller.error !=
+                                                null) {
+                                              Get.snackbar(
+                                                '오류',
+                                                controller.error!,
+                                                snackPosition:
+                                                    SnackPosition.BOTTOM,
+                                              );
+                                            }
+                                          },
+                                    icon: const Icon(Icons.fingerprint),
+                                    label: const Text('생체인증으로 로그인'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.white,
+                                      foregroundColor:
+                                          Theme.of(context).colorScheme.primary,
+                                      elevation: 0,
+                                      minimumSize: const Size.fromHeight(48),
+                                      side: BorderSide(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                ],
+                              );
+                            }
+                            return const SizedBox.shrink();
+                          }),
+
                           // 소셜 로그인 옵션
                           Row(
                             children: [

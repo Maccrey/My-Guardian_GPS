@@ -3,12 +3,14 @@ import 'package:get/get.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:local_auth/error_codes.dart' as auth_error;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/foundation.dart';
 
 class BiometricService extends GetxService {
   final LocalAuthentication _auth = LocalAuthentication();
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   final RxBool isBiometricAvailable = false.obs;
   final RxBool isAppLocked = false.obs;
+  final RxString biometricError = ''.obs;
 
   @override
   void onInit() {
@@ -19,11 +21,46 @@ class BiometricService extends GetxService {
 
   Future<void> _checkBiometricAvailability() async {
     try {
-      isBiometricAvailable.value =
-          await _auth.canCheckBiometrics && await _auth.isDeviceSupported();
-      print('✅ 생체인증 가용성 확인: ${isBiometricAvailable.value}');
+      // 기기가 생체인증을 지원하는지 먼저 확인
+      final bool isDeviceSupported = await _auth.isDeviceSupported();
+      if (!isDeviceSupported) {
+        print('⚠️ 이 기기는 생체인증을 지원하지 않습니다.');
+        biometricError.value = '이 기기는 생체인증을 지원하지 않습니다.';
+        isBiometricAvailable.value = false;
+        return;
+      }
+
+      // 기기에 생체인증이 등록되어 있는지 확인
+      final bool canCheckBiometrics = await _auth.canCheckBiometrics;
+      if (!canCheckBiometrics) {
+        print('⚠️ 기기에 등록된 생체인증이 없습니다.');
+        biometricError.value =
+            '기기에 등록된 생체인증이 없습니다. 기기 설정에서 지문 또는 생체인식을 등록해주세요.';
+        isBiometricAvailable.value = false;
+        return;
+      }
+
+      // 사용 가능한 생체인증 유형 확인
+      final List<BiometricType> availableBiometrics =
+          await _auth.getAvailableBiometrics();
+      if (availableBiometrics.isEmpty) {
+        print('⚠️ 사용 가능한 생체인증 유형이 없습니다.');
+        biometricError.value =
+            '사용 가능한 생체인증 유형이 없습니다. 기기 설정에서 지문 또는 생체인식을 등록해주세요.';
+        isBiometricAvailable.value = false;
+        return;
+      }
+
+      print('✅ 사용 가능한 생체인증 유형: $availableBiometrics');
+      isBiometricAvailable.value = true;
+      biometricError.value = '';
+    } on PlatformException catch (e) {
+      print('⚠️ 생체인증 가용성 확인 중 플랫폼 오류: ${e.code} - ${e.message}');
+      biometricError.value = '생체인증 확인 중 오류가 발생했습니다: ${e.message}';
+      isBiometricAvailable.value = false;
     } catch (e) {
       print('⚠️ 생체인증 가용성 확인 오류: $e');
+      biometricError.value = '생체인증 확인 중 오류가 발생했습니다';
       isBiometricAvailable.value = false;
     }
   }
@@ -41,7 +78,12 @@ class BiometricService extends GetxService {
 
   Future<bool> authenticate() async {
     if (!isBiometricAvailable.value) {
-      print('⚠️ 생체인증 사용 불가능');
+      print('⚠️ 생체인증 사용 불가능: ${biometricError.value}');
+      Get.snackbar(
+          '오류',
+          biometricError.value.isNotEmpty
+              ? biometricError.value
+              : '생체인증 서비스를 사용할 수 없습니다');
       return false;
     }
 
@@ -58,21 +100,31 @@ class BiometricService extends GetxService {
       print('✅ 생체인증 결과: $result');
       return result;
     } on PlatformException catch (e) {
-      if (e.code == auth_error.notAvailable ||
-          e.code == auth_error.notEnrolled ||
+      String errorMessage = '생체 인증 중 오류가 발생했습니다';
+
+      if (e.code == auth_error.notAvailable) {
+        errorMessage = '생체 인증을 사용할 수 없습니다. 기기 설정을 확인해주세요.';
+      } else if (e.code == auth_error.notEnrolled) {
+        errorMessage = '기기에 생체 인증이 등록되어 있지 않습니다. 기기 설정에서 등록해주세요.';
+      } else if (e.code == auth_error.lockedOut ||
           e.code == auth_error.permanentlyLockedOut) {
-        print('⚠️ 생체인증 오류: ${e.code} - ${e.message}');
-        Get.snackbar('오류', '기기에 생체 인증이 설정되어 있지 않습니다');
-      } else {
-        print('❌ 생체인증 오류: ${e.code} - ${e.message}');
-        Get.snackbar('오류', '생체 인증 오류: ${e.message}');
+        errorMessage = '여러 번 실패로 생체 인증이 잠겼습니다. 잠시 후 다시 시도하거나 기기 비밀번호를 사용하세요.';
       }
+
+      print('⚠️ 생체인증 오류: ${e.code} - ${e.message}');
+      Get.snackbar('오류', errorMessage);
       return false;
     } catch (e) {
       print('❌ 생체인증 중 예상치 못한 오류: $e');
       Get.snackbar('오류', '생체 인증 중 오류가 발생했습니다');
       return false;
     }
+  }
+
+  // 생체인증 상태 새로고침
+  Future<void> refreshBiometricStatus() async {
+    await _checkBiometricAvailability();
+    return;
   }
 
   Future<void> setAppLock(bool enabled) async {

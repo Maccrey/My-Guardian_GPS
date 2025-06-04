@@ -1,13 +1,13 @@
 package com.maccrey.watch_over
 
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugins.GeneratedPluginRegistrant
 import androidx.annotation.NonNull
 import io.flutter.plugin.common.MethodChannel
 import android.content.Context
 
-class MainActivity: FlutterActivity() {
+class MainActivity: FlutterFragmentActivity() {
     private val CHANNEL = "com.gps_search.maps/api_key"
     
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
@@ -19,7 +19,7 @@ class MainActivity: FlutterActivity() {
             when (call.method) {
                 "getGoogleMapsApiKey" -> {
                     // 리소스에서 API 키 가져오기
-                    val apiKey = context.getString(R.string.google_maps_api_key)
+                    val apiKey = this.getString(R.string.google_maps_api_key)
                     println("✅ Android에서 Maps API 키 반환: $apiKey")
                     result.success(apiKey)
                 }

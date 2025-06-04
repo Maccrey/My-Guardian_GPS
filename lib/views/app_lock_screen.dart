@@ -7,7 +7,22 @@ class AppLockScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final BiometricService biometricService = Get.find<BiometricService>();
+    BiometricService? biometricService;
+
+    try {
+      if (Get.isRegistered<BiometricService>()) {
+        biometricService = Get.find<BiometricService>();
+        debugPrint('✅ AppLockScreen: BiometricService 찾음');
+      } else {
+        debugPrint('⚠️ AppLockScreen: BiometricService를 찾을 수 없습니다.');
+        // 서비스가 등록되지 않은 경우 즉시 등록 시도
+        biometricService = BiometricService();
+        Get.put(biometricService, permanent: true);
+        debugPrint('✅ AppLockScreen: BiometricService 등록 시도 완료');
+      }
+    } catch (e) {
+      debugPrint('❌ AppLockScreen: BiometricService 오류 - $e');
+    }
 
     return Scaffold(
       body: Container(
@@ -68,9 +83,20 @@ class AppLockScreen extends StatelessWidget {
                     ),
                   ),
                   onPressed: () async {
-                    final success = await biometricService.authenticate();
-                    if (success) {
-                      Get.offAllNamed('/home');
+                    if (biometricService != null) {
+                      final success = await biometricService.authenticate();
+                      if (success) {
+                        Get.offAllNamed('/home');
+                      }
+                    } else {
+                      // 서비스를 찾지 못한 경우 에러 메시지 표시
+                      Get.snackbar(
+                        '오류',
+                        '생체인증 서비스를 찾을 수 없습니다. 앱을 다시 시작해주세요.',
+                        backgroundColor: Colors.red,
+                        colorText: Colors.white,
+                        snackPosition: SnackPosition.BOTTOM,
+                      );
                     }
                   },
                 ),

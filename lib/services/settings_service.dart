@@ -64,7 +64,24 @@ class SettingsService extends GetxController {
 
       // BiometricService 인스턴스 가져오기
       if (Get.isRegistered<BiometricService>()) {
-        _biometricService = Get.find<BiometricService>();
+        try {
+          _biometricService = Get.find<BiometricService>();
+          debugPrint('✅ SettingsService: BiometricService 찾음');
+        } catch (e) {
+          debugPrint('❌ SettingsService: BiometricService 찾기 실패 - $e');
+          _biometricService = null;
+        }
+      } else {
+        debugPrint('⚠️ SettingsService: BiometricService가 등록되지 않았습니다.');
+        try {
+          // 서비스가 등록되지 않은 경우 직접 등록 시도
+          _biometricService = BiometricService();
+          Get.put(_biometricService!, permanent: true);
+          debugPrint('✅ SettingsService: BiometricService 등록 시도 완료');
+        } catch (e) {
+          debugPrint('❌ SettingsService: BiometricService 등록 실패 - $e');
+          _biometricService = null;
+        }
       }
     } catch (e) {
       debugPrint('⚠️ 서비스 인스턴스를 찾을 수 없습니다: $e');
@@ -247,11 +264,22 @@ class SettingsService extends GetxController {
       return;
     }
 
+    // 생체인증 상태 새로고침 - 최신 상태 확인
+    await _biometricService!.refreshBiometricStatus();
+
     // 생체인증 가능 여부 확인
     if (!_biometricService!.isBiometricAvailable.value) {
-      print('⚠️ 이 기기에서는 생체인증을 사용할 수 없습니다.');
-      Get.snackbar('오류', '이 기기에서는 생체인증을 사용할 수 없습니다');
+      print(
+          '⚠️ 이 기기에서는 생체인증을 사용할 수 없습니다: ${_biometricService!.biometricError.value}');
+
+      // 구체적인 오류 메시지가 있으면 해당 메시지 표시
+      final errorMessage = _biometricService!.biometricError.value.isNotEmpty
+          ? _biometricService!.biometricError.value
+          : '이 기기에서는 생체인증을 사용할 수 없습니다';
+
+      Get.snackbar('오류', errorMessage);
       isBiometricEnabled.value = false;
+      await saveSettings();
       return;
     }
 
@@ -261,8 +289,7 @@ class SettingsService extends GetxController {
       final success = await _biometricService!.authenticate();
       if (!success) {
         print('⚠️ 생체인증 실패');
-        Get.snackbar('인증 실패', '생체인증에 실패했습니다');
-        return;
+        return; // 이미 authenticate 메서드 내에서 스낵바 표시됨
       }
     }
 
@@ -288,9 +315,100 @@ class SettingsService extends GetxController {
   // 생체인증 설정 적용
   void _applyBiometricSettings() {
     if (_biometricService != null) {
+      // 생체인증 상태 업데이트
+      _biometricService!.refreshBiometricStatus();
+
+      // 생체인증이 사용 불가능한데 활성화 상태라면 비활성화
+      if (!_biometricService!.isBiometricAvailable.value &&
+          isBiometricEnabled.value) {
+        print('⚠️ 생체인증이 비활성화됨: 생체인증을 사용할 수 없음');
+        isBiometricEnabled.value = false;
+      }
+
       // 앱 잠금 설정 업데이트
       _biometricService!.setAppLock(isBiometricEnabled.value);
       print('✅ 생체인증 설정 적용: ${isBiometricEnabled.value ? "활성화" : "비활성화"}');
+    }
+  }
+
+  // 생체인증 활성화 설정 변경
+  Future<void> setBiometricEnabled(bool enabled) async {
+    isBiometricEnabled.value = enabled;
+    await saveSettings();
+
+    // 생체 인증 서비스가 null인 경우 먼저 초기화 시도
+    if (_biometricService == null) {
+      debugPrint('⚠️ 생체인증 서비스가 null입니다. 초기화를 시도합니다.');
+      try {
+        if (Get.isRegistered<BiometricService>()) {
+          _biometricService = Get.find<BiometricService>();
+          debugPrint('✅ 생체인증 서비스를 성공적으로 찾았습니다.');
+        } else {
+          _biometricService = BiometricService();
+          Get.put(_biometricService!, permanent: true);
+          debugPrint('✅ 생체인증 서비스를 새로 등록했습니다.');
+        }
+      } catch (e) {
+        debugPrint('❌ 생체인증 서비스 초기화 실패: $e');
+        return;
+      }
+    }
+
+    // 생체 인증 상태 새로고침
+    try {
+      await _biometricService!.refreshBiometricStatus();
+    } catch (e) {
+      debugPrint('❌ 생체인증 상태 새로고침 실패: $e');
+    }
+
+    // 생체 인증을 활성화하려는데 기기가 지원하지 않는 경우
+    if (!_biometricService!.isBiometricAvailable.value && enabled) {
+      debugPrint(
+          '⚠️ 이 기기에서는 생체인증을 사용할 수 없습니다: ${_biometricService!.biometricError.value}');
+
+      // 사용자에게 알림
+      final errorMessage = _biometricService!.biometricError.value.isNotEmpty
+          ? _biometricService!.biometricError.value
+          : '이 기기에서는 생체인증을 사용할 수 없습니다.';
+
+      Get.snackbar(
+        '생체인증 사용 불가',
+        errorMessage,
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+
+      // 설정 값 롤백
+      isBiometricEnabled.value = false;
+      await saveSettings();
+      return;
+    }
+
+    // 생체 인증을 활성화하는 경우 인증 확인
+    if (enabled) {
+      try {
+        final success = await _biometricService!.authenticate();
+        if (!success) {
+          // 인증 실패 시 설정 값 롤백
+          isBiometricEnabled.value = false;
+          await saveSettings();
+          return;
+        }
+      } catch (e) {
+        debugPrint('❌ 생체인증 실패: $e');
+        // 오류 발생 시 설정 값 롤백
+        isBiometricEnabled.value = false;
+        await saveSettings();
+        return;
+      }
+    }
+
+    // 앱 잠금 설정
+    try {
+      await _biometricService!.setAppLock(isBiometricEnabled.value);
+    } catch (e) {
+      debugPrint('❌ 앱 잠금 설정 실패: $e');
     }
   }
 }

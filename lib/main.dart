@@ -226,11 +226,23 @@ class _MyAppState extends State<MyApp> {
       if (!Get.isRegistered<BiometricService>()) {
         debugPrint('👆 BiometricService 초기화 시작...');
         final biometricService = BiometricService();
-        Get.put(biometricService, permanent: true);
-        debugPrint('✅ BiometricService 초기화 성공');
+        final result =
+            Get.put<BiometricService>(biometricService, permanent: true);
+        if (result == null) {
+          debugPrint('❌ BiometricService 초기화 실패: Get.put() 결과가 null입니다');
+        } else {
+          debugPrint('✅ BiometricService 초기화 성공: ${result.runtimeType}');
+          // 초기화 확인을 위한 테스트
+          debugPrint('✅ 생체인증 가용성: ${result.isBiometricAvailable.value}');
+        }
+      } else {
+        final registeredService = Get.find<BiometricService>();
+        debugPrint(
+            '✅ BiometricService 이미 등록됨: ${registeredService.runtimeType}');
       }
     } catch (e) {
-      debugPrint('⚠️ BiometricService 초기화 오류: $e');
+      debugPrint('❌ BiometricService 초기화 오류: $e');
+      debugPrint('❌ 오류 스택: ${StackTrace.current}');
     }
 
     // 메시지 서비스 초기화
