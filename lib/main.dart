@@ -29,7 +29,7 @@ import 'views/map_view.dart';
 import 'views/settings/settings_view.dart';
 import 'services/settings_service.dart';
 import 'utils/url_handler.dart';
-import 'views/profile_edit_view.dart';
+import 'views/profile/profile_edit_view.dart';
 import 'services/map_api_service.dart';
 import 'views/home_arrival_view.dart';
 import 'services/location_sharing_service.dart';

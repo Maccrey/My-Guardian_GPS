@@ -1237,7 +1237,7 @@ class ProfileEditView extends GetView<ProfileEditController> {
                 ),
               ),
             ),
-            dialogTheme: DialogTheme(
+            dialogTheme: DialogThemeData(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
