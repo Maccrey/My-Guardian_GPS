@@ -104,7 +104,18 @@ class SettingsService extends GetxController {
       isLocationEnabled.value = prefs.getBool(_locationEnabledKey) ?? true;
       isNotificationEnabled.value =
           prefs.getBool(_notificationEnabledKey) ?? true;
-      isBiometricEnabled.value = prefs.getBool(_biometricEnabledKey) ?? false;
+
+      // 생체인증 설정은 BiometricService에서 가져온 실제 앱 잠금 상태를 우선으로 함
+      if (_biometricService != null && _biometricService!.isAppLocked.value) {
+        isBiometricEnabled.value = true;
+        debugPrint(
+            '✅ BiometricService에서 앱 잠금 상태 가져옴: ${_biometricService!.isAppLocked.value}');
+      } else {
+        isBiometricEnabled.value = prefs.getBool(_biometricEnabledKey) ?? false;
+        debugPrint(
+            '✅ SharedPreferences에서 생체인증 설정 가져옴: ${isBiometricEnabled.value}');
+      }
+
       isDataSavingEnabled.value = prefs.getBool(_dataSavingEnabledKey) ?? false;
 
       // 테마 설정 적용
@@ -256,6 +267,15 @@ class SettingsService extends GetxController {
     }
   }
 
+  // 생체인증 상태 동기화 (BiometricService에서 호출)
+  void syncBiometricSetting(bool enabled) {
+    if (isBiometricEnabled.value != enabled) {
+      debugPrint('📱 생체인증 설정 동기화: ${isBiometricEnabled.value} -> $enabled');
+      isBiometricEnabled.value = enabled;
+      saveSettings();
+    }
+  }
+
   // 생체인증 토글 메서드
   Future<void> toggleBiometricAuth() async {
     if (_biometricService == null) {
@@ -323,11 +343,11 @@ class SettingsService extends GetxController {
           isBiometricEnabled.value) {
         print('⚠️ 생체인증이 비활성화됨: 생체인증을 사용할 수 없음');
         isBiometricEnabled.value = false;
+      } else {
+        // 앱 잠금 설정 업데이트 (설정 값과 앱 잠금 상태 동기화)
+        _biometricService!.setAppLock(isBiometricEnabled.value);
+        print('✅ 생체인증 설정 적용: ${isBiometricEnabled.value ? "활성화" : "비활성화"}');
       }
-
-      // 앱 잠금 설정 업데이트
-      _biometricService!.setAppLock(isBiometricEnabled.value);
-      print('✅ 생체인증 설정 적용: ${isBiometricEnabled.value ? "활성화" : "비활성화"}');
     }
   }
 

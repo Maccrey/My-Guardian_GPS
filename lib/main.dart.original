@@ -29,7 +29,7 @@ import 'views/map_view.dart';
 import 'views/settings/settings_view.dart';
 import 'services/settings_service.dart';
 import 'utils/url_handler.dart';
-import 'views/profile_edit_view.dart';
+import 'views/profile/profile_edit_view.dart';
 import 'services/map_api_service.dart';
 import 'views/home_arrival_view.dart';
 import 'services/location_sharing_service.dart';
@@ -38,6 +38,8 @@ import 'views/location_sharing/emergency_contact_location_view.dart';
 import 'views/location_sharing/location_tracking_view.dart';
 import 'views/location_sharing/user_search_location_view.dart';
 import 'views/user_search_contact_view.dart';
+import 'services/biometric_service.dart';
+import 'views/app_lock_screen.dart';
 
 import 'firebase_options.dart';
 
@@ -174,6 +176,37 @@ class _MyAppState extends State<MyApp> {
         urlHandler.init();
       });
     }
+
+    // 앱 잠금 상태 확인 및 생체인증 서비스 초기화
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        // 생체인증 서비스 먼저 초기화
+        if (!Get.isRegistered<BiometricService>()) {
+          debugPrint('👆 BiometricService 초기화 시작...');
+          final biometricService = BiometricService();
+          Get.put<BiometricService>(biometricService, permanent: true);
+          debugPrint('✅ BiometricService 초기화 성공');
+        }
+
+        // 이미 AuthService가 초기화되어 있는지 확인
+        if (Get.isRegistered<AuthService>() &&
+            Get.isRegistered<BiometricService>()) {
+          final authService = Get.find<AuthService>();
+          final biometricService = Get.find<BiometricService>();
+
+          // 앱 잠금 상태 확인
+          await biometricService.refreshBiometricStatus();
+
+          // 로그인 상태이고 앱 잠금이 활성화된 경우 잠금 화면으로 이동
+          if (authService.isAuthenticated &&
+              biometricService.isAppLocked.value) {
+            Get.to(() => const AppLockScreen());
+          }
+        }
+      } catch (e) {
+        debugPrint('❌ 생체인증 및 앱 잠금 초기화 오류: $e');
+      }
+    });
   }
 
   @override
@@ -202,6 +235,30 @@ class _MyAppState extends State<MyApp> {
     } catch (e) {
       debugPrint('⚠️ AuthService 초기화 오류: $e');
       debugPrint('⚠️ 오류 스택: ${StackTrace.current}');
+    }
+
+    // 생체인증 서비스 초기화
+    try {
+      if (!Get.isRegistered<BiometricService>()) {
+        debugPrint('👆 BiometricService 초기화 시작...');
+        final biometricService = BiometricService();
+        final result =
+            Get.put<BiometricService>(biometricService, permanent: true);
+        if (result == null) {
+          debugPrint('❌ BiometricService 초기화 실패: Get.put() 결과가 null입니다');
+        } else {
+          debugPrint('✅ BiometricService 초기화 성공: ${result.runtimeType}');
+          // 초기화 확인을 위한 테스트
+          debugPrint('✅ 생체인증 가용성: ${result.isBiometricAvailable.value}');
+        }
+      } else {
+        final registeredService = Get.find<BiometricService>();
+        debugPrint(
+            '✅ BiometricService 이미 등록됨: ${registeredService.runtimeType}');
+      }
+    } catch (e) {
+      debugPrint('❌ BiometricService 초기화 오류: $e');
+      debugPrint('❌ 오류 스택: ${StackTrace.current}');
     }
 
     // 메시지 서비스 초기화
@@ -349,6 +406,7 @@ class _MyAppState extends State<MyApp> {
             Get.put(EmergencyContactService());
           }),
         ),
+        GetPage(name: '/app-lock', page: () => const AppLockScreen()),
       ],
     );
   }

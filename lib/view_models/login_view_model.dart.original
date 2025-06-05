@@ -87,15 +87,12 @@ class LoginViewModel extends GetxController {
               _biometricService!.isBiometricAvailable.value;
           debugPrint(
               '✅ 생체인증 상태 새로고침 완료: 사용 가능=${isBiometricAvailable.value}, 앱 잠금=${_biometricService!.isAppLocked.value}');
-
-          // 저장된 로그인 정보 불러오기
-          _loadSavedLoginInfo();
         });
-      } else {
-        // 생체인증 서비스가 없어도 저장된 로그인 정보는 불러오기
-        _loadSavedLoginInfo();
       }
     });
+
+    // 저장된 로그인 정보 불러오기
+    _loadSavedLoginInfo();
   }
 
   // 저장된 로그인 정보 불러오기

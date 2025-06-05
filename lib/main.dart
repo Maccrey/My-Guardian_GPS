@@ -152,6 +152,28 @@ void main() async {
   Get.put(LocationSharingService());
   Get.put(LocationSharingController());
 
+  // 앱 시작 시 저장된 알림 확인
+  try {
+    // 앱이 재시작될 때 발송되지 못한 귀가 알림이 있는지 확인
+    HomeArrivalService.getInstance().then((service) {
+      service.checkPendingArrivalNotification();
+    });
+    debugPrint('✅ 귀가 알림 확인 시작됨');
+  } catch (e) {
+    debugPrint('⚠️ 귀가 알림 확인 오류: $e');
+  }
+
+  // 생체인증 서비스 초기화 및 설정 서비스와 동기화
+  try {
+    if (Get.isRegistered<BiometricService>()) {
+      final biometricService = Get.find<BiometricService>();
+      biometricService.initializeOnAppStart();
+      debugPrint('✅ 앱 시작 시 생체인증 서비스 초기화 완료');
+    }
+  } catch (e) {
+    debugPrint('⚠️ 생체인증 서비스 초기화 오류: $e');
+  }
+
   runApp(const MyApp());
 }
 
@@ -177,18 +199,39 @@ class _MyAppState extends State<MyApp> {
       });
     }
 
-    // 앱 잠금 상태 확인
+    // 앱 잠금 상태 확인 및 생체인증 서비스 초기화
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // 이미 AuthService가 초기화되어 있는지 확인
-      if (Get.isRegistered<AuthService>() &&
-          Get.isRegistered<BiometricService>()) {
-        final authService = Get.find<AuthService>();
-        final biometricService = Get.find<BiometricService>();
-
-        // 로그인 상태이고 앱 잠금이 활성화된 경우 잠금 화면으로 이동
-        if (authService.isAuthenticated && biometricService.isAppLocked.value) {
-          Get.to(() => const AppLockScreen());
+      try {
+        // 생체인증 서비스 먼저 초기화
+        BiometricService biometricService;
+        if (!Get.isRegistered<BiometricService>()) {
+          debugPrint('👆 BiometricService 초기화 시작...');
+          biometricService = BiometricService();
+          Get.put<BiometricService>(biometricService, permanent: true);
+          debugPrint('✅ BiometricService 초기화 성공');
+        } else {
+          biometricService = Get.find<BiometricService>();
+          debugPrint('✅ BiometricService 이미 등록됨');
         }
+
+        // 생체인증 상태 새로고침 (앱 재시작 시 설정 로드)
+        await biometricService.refreshBiometricStatus();
+        debugPrint(
+            '✅ 생체인증 상태 새로고침 완료: 앱 잠금=${biometricService.isAppLocked.value}');
+
+        // 이미 AuthService가 초기화되어 있는지 확인
+        if (Get.isRegistered<AuthService>()) {
+          final authService = Get.find<AuthService>();
+
+          // 로그인 상태이고 앱 잠금이 활성화된 경우 잠금 화면으로 이동
+          if (authService.isAuthenticated &&
+              biometricService.isAppLocked.value) {
+            debugPrint('🔒 인증된 사용자 + 앱 잠금 활성화: 잠금 화면으로 이동');
+            Get.to(() => const AppLockScreen());
+          }
+        }
+      } catch (e) {
+        debugPrint('❌ 생체인증 및 앱 잠금 초기화 오류: $e');
       }
     });
   }
@@ -219,30 +262,6 @@ class _MyAppState extends State<MyApp> {
     } catch (e) {
       debugPrint('⚠️ AuthService 초기화 오류: $e');
       debugPrint('⚠️ 오류 스택: ${StackTrace.current}');
-    }
-
-    // 생체인증 서비스 초기화
-    try {
-      if (!Get.isRegistered<BiometricService>()) {
-        debugPrint('👆 BiometricService 초기화 시작...');
-        final biometricService = BiometricService();
-        final result =
-            Get.put<BiometricService>(biometricService, permanent: true);
-        if (result == null) {
-          debugPrint('❌ BiometricService 초기화 실패: Get.put() 결과가 null입니다');
-        } else {
-          debugPrint('✅ BiometricService 초기화 성공: ${result.runtimeType}');
-          // 초기화 확인을 위한 테스트
-          debugPrint('✅ 생체인증 가용성: ${result.isBiometricAvailable.value}');
-        }
-      } else {
-        final registeredService = Get.find<BiometricService>();
-        debugPrint(
-            '✅ BiometricService 이미 등록됨: ${registeredService.runtimeType}');
-      }
-    } catch (e) {
-      debugPrint('❌ BiometricService 초기화 오류: $e');
-      debugPrint('❌ 오류 스택: ${StackTrace.current}');
     }
 
     // 메시지 서비스 초기화

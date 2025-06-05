@@ -20,7 +20,6 @@ class BiometricService extends GetxService {
     _checkBiometricAvailability().then((_) {
       _checkAppLockStatus();
     });
-    debugPrint('✅ BiometricService onInit 완료');
   }
 
   Future<void> _checkBiometricAvailability() async {
@@ -28,7 +27,7 @@ class BiometricService extends GetxService {
       // 기기가 생체인증을 지원하는지 먼저 확인
       final bool isDeviceSupported = await _auth.isDeviceSupported();
       if (!isDeviceSupported) {
-        debugPrint('⚠️ 이 기기는 생체인증을 지원하지 않습니다.');
+        print('⚠️ 이 기기는 생체인증을 지원하지 않습니다.');
         biometricError.value = '이 기기는 생체인증을 지원하지 않습니다.';
         isBiometricAvailable.value = false;
         return;
@@ -37,7 +36,7 @@ class BiometricService extends GetxService {
       // 기기에 생체인증이 등록되어 있는지 확인
       final bool canCheckBiometrics = await _auth.canCheckBiometrics;
       if (!canCheckBiometrics) {
-        debugPrint('⚠️ 기기에 등록된 생체인증이 없습니다.');
+        print('⚠️ 기기에 등록된 생체인증이 없습니다.');
         biometricError.value =
             '기기에 등록된 생체인증이 없습니다. 기기 설정에서 지문 또는 생체인식을 등록해주세요.';
         isBiometricAvailable.value = false;
@@ -48,22 +47,22 @@ class BiometricService extends GetxService {
       final List<BiometricType> availableBiometrics =
           await _auth.getAvailableBiometrics();
       if (availableBiometrics.isEmpty) {
-        debugPrint('⚠️ 사용 가능한 생체인증 유형이 없습니다.');
+        print('⚠️ 사용 가능한 생체인증 유형이 없습니다.');
         biometricError.value =
             '사용 가능한 생체인증 유형이 없습니다. 기기 설정에서 지문 또는 생체인식을 등록해주세요.';
         isBiometricAvailable.value = false;
         return;
       }
 
-      debugPrint('✅ 사용 가능한 생체인증 유형: $availableBiometrics');
+      print('✅ 사용 가능한 생체인증 유형: $availableBiometrics');
       isBiometricAvailable.value = true;
       biometricError.value = '';
     } on PlatformException catch (e) {
-      debugPrint('⚠️ 생체인증 가용성 확인 중 플랫폼 오류: ${e.code} - ${e.message}');
+      print('⚠️ 생체인증 가용성 확인 중 플랫폼 오류: ${e.code} - ${e.message}');
       biometricError.value = '생체인증 확인 중 오류가 발생했습니다: ${e.message}';
       isBiometricAvailable.value = false;
     } catch (e) {
-      debugPrint('⚠️ 생체인증 가용성 확인 오류: $e');
+      print('⚠️ 생체인증 가용성 확인 오류: $e');
       biometricError.value = '생체인증 확인 중 오류가 발생했습니다';
       isBiometricAvailable.value = false;
     }
@@ -74,27 +73,27 @@ class BiometricService extends GetxService {
       final status = await _storage.read(key: 'app_lock_status');
       final isBiometricEnabledValue = status == 'true';
       isAppLocked.value = isBiometricEnabledValue;
-      debugPrint('✅ 앱 잠금 상태 확인: ${isAppLocked.value}');
+      print('✅ 앱 잠금 상태 확인: ${isAppLocked.value}');
 
       // 설정 서비스에 생체인증 상태 동기화
       try {
         if (Get.isRegistered<SettingsService>()) {
           final settingsService = Get.find<SettingsService>();
           settingsService.syncBiometricSetting(isBiometricEnabledValue);
-          debugPrint('✅ 설정 서비스에 생체인증 상태 동기화 완료');
+          print('✅ 설정 서비스에 생체인증 상태 동기화 완료');
         }
       } catch (e) {
-        debugPrint('⚠️ 설정 서비스 동기화 오류: $e');
+        print('⚠️ 설정 서비스 동기화 오류: $e');
       }
     } catch (e) {
-      debugPrint('⚠️ 앱 잠금 상태 확인 오류: $e');
+      print('⚠️ 앱 잠금 상태 확인 오류: $e');
       isAppLocked.value = false;
     }
   }
 
   Future<bool> authenticate() async {
     if (!isBiometricAvailable.value) {
-      debugPrint('⚠️ 생체인증 사용 불가능: ${biometricError.value}');
+      print('⚠️ 생체인증 사용 불가능: ${biometricError.value}');
       Get.snackbar(
           '오류',
           biometricError.value.isNotEmpty
@@ -104,7 +103,7 @@ class BiometricService extends GetxService {
     }
 
     try {
-      debugPrint('🔍 생체인증 요청 시작');
+      print('🔍 생체인증 요청 시작');
       final bool result = await _auth.authenticate(
         localizedReason: '계속하려면 생체 인증이 필요합니다',
         options: const AuthenticationOptions(
@@ -113,7 +112,7 @@ class BiometricService extends GetxService {
         ),
       );
 
-      debugPrint('✅ 생체인증 결과: $result');
+      print('✅ 생체인증 결과: $result');
       return result;
     } on PlatformException catch (e) {
       String errorMessage = '생체 인증 중 오류가 발생했습니다';
@@ -127,11 +126,11 @@ class BiometricService extends GetxService {
         errorMessage = '여러 번 실패로 생체 인증이 잠겼습니다. 잠시 후 다시 시도하거나 기기 비밀번호를 사용하세요.';
       }
 
-      debugPrint('⚠️ 생체인증 오류: ${e.code} - ${e.message}');
+      print('⚠️ 생체인증 오류: ${e.code} - ${e.message}');
       Get.snackbar('오류', errorMessage);
       return false;
     } catch (e) {
-      debugPrint('❌ 생체인증 중 예상치 못한 오류: $e');
+      print('❌ 생체인증 중 예상치 못한 오류: $e');
       Get.snackbar('오류', '생체 인증 중 오류가 발생했습니다');
       return false;
     }
@@ -139,11 +138,8 @@ class BiometricService extends GetxService {
 
   // 생체인증 상태 새로고침
   Future<void> refreshBiometricStatus() async {
-    debugPrint('🔄 생체인증 상태 새로고침 시작');
     await _checkBiometricAvailability();
     await _checkAppLockStatus();
-    debugPrint(
-        '✅ 생체인증 상태 새로고침 완료: 사용 가능=${isBiometricAvailable.value}, 앱 잠금=${isAppLocked.value}');
     return;
   }
 
@@ -151,28 +147,9 @@ class BiometricService extends GetxService {
     try {
       await _storage.write(key: 'app_lock_status', value: enabled.toString());
       isAppLocked.value = enabled;
-      debugPrint('✅ 앱 잠금 설정 완료: $enabled');
+      print('✅ 앱 잠금 설정 완료: $enabled');
     } catch (e) {
-      debugPrint('❌ 앱 잠금 설정 오류: $e');
+      print('❌ 앱 잠금 설정 오류: $e');
     }
-  }
-
-  // 앱 시작 시 생체인증 상태 확인 및 초기화
-  Future<void> initializeOnAppStart() async {
-    debugPrint('🚀 앱 시작 시 생체인증 상태 초기화 시작');
-    await refreshBiometricStatus();
-
-    // 앱 잠금 상태를 설정 서비스와 동기화
-    try {
-      if (Get.isRegistered<SettingsService>()) {
-        final settingsService = Get.find<SettingsService>();
-        settingsService.isBiometricEnabled.value = isAppLocked.value;
-        debugPrint('✅ 앱 시작 시 설정 서비스와 생체인증 상태 동기화: ${isAppLocked.value}');
-      }
-    } catch (e) {
-      debugPrint('⚠️ 앱 시작 시 설정 서비스 동기화 오류: $e');
-    }
-
-    debugPrint('✅ 앱 시작 시 생체인증 상태 초기화 완료');
   }
 }
