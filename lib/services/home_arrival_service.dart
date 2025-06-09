@@ -9,6 +9,7 @@ import 'package:watch_over/services/location_service.dart';
 import 'package:watch_over/services/auth_service.dart';
 import 'package:watch_over/services/message_service.dart';
 import 'package:watch_over/services/emergency_contact_service.dart';
+import 'package:watch_over/services/home_location_service.dart';
 
 /// 귀가 알림 및 안전 도착 서비스
 class HomeArrivalService extends GetxController {
@@ -31,6 +32,7 @@ class HomeArrivalService extends GetxController {
   final RxList<String> messageRecipientIds = <String>[].obs;
   final RxString arrivalMessage = '집에 안전하게 도착했습니다.'.obs;
   final RxInt homeRadiusMeters = 50.obs; // 집 근처로 간주할 반경(미터)
+  final RxString lastEventMessage = ''.obs;
 
   // 상수
   static const String PREF_TRACKING_ENABLED = 'home_arrival_tracking_enabled';
@@ -48,6 +50,12 @@ class HomeArrivalService extends GetxController {
   late MessageService _messageService;
   late AuthService _authService;
   late EmergencyContactService _emergencyContactService;
+  HomeLocationService? _homeLocationService;
+
+  // 위치 추적 타이머 및 상태
+  Timer? _trackingTimer;
+  static const int _trackingIntervalSeconds = 10; // 위치 확인 주기(초)
+  bool _hasSentArrivalMessage = false;
 
   // 초기화
   Future<void> _init() async {
@@ -57,6 +65,7 @@ class HomeArrivalService extends GetxController {
       _authService = Get.find<AuthService>();
       _messageService = Get.find<MessageService>();
       _emergencyContactService = Get.find<EmergencyContactService>();
+      _homeLocationService = await HomeLocationService.getInstance();
 
       // 알림 초기화 (임시로 주석 처리)
       // await _initNotifications();
@@ -65,8 +74,9 @@ class HomeArrivalService extends GetxController {
       await _loadSettings();
 
       debugPrint('✅ HomeArrivalService 초기화 성공');
-    } catch (e) {
-      debugPrint('❌ HomeArrivalService 초기화 오류: $e');
+    } catch (e, stack) {
+      debugPrint('❌ HomeArrivalService 초기화 오류: $e\n$stack');
+      lastEventMessage.value = '귀가알림 서비스 초기화 오류: $e';
     }
   }
 
@@ -238,55 +248,183 @@ class HomeArrivalService extends GetxController {
     }
   }
 
-  // 추적 중지
-  Future<void> stopTracking() async {
+  // 집 위치와 현재 위치의 거리 계산 및 메시지 전송
+  Future<void> _checkProximityAndNotify() async {
     try {
-      // 먼저 현재 상태 확인 (알림 표시 조건용)
-      final wasTracking = isTrackingEnabled.value;
-
-      // 추적 상태 업데이트
-      isTrackingEnabled.value = false;
-      isArrivingHome.value = false;
-      trackingStatus.value = '추적 비활성화';
-
-      // 완료 알림 표시 (추적이 실제로 활성화되어 있었을 때만)
-      if (wasTracking) {
-        // 알림 플러그인 문제로 임시 주석 처리
-        // await _showHomeArrivalCompletionNotification();
-        debugPrint('✅ [임시] 귀가 알림 완료 알림 (콘솔에만 표시)');
+      // HomeLocationService 초기화 확인 및 재시도
+      if (_homeLocationService == null) {
+        debugPrint(
+            '🔄 _checkProximityAndNotify: HomeLocationService 초기화 시도 중...');
+        try {
+          _homeLocationService = await HomeLocationService.getInstance();
+          debugPrint('✅ HomeLocationService 초기화 성공');
+        } catch (e) {
+          debugPrint('❌ HomeLocationService 초기화 실패: $e');
+          lastEventMessage.value = '집 위치 서비스 초기화 실패: $e';
+          await stopTracking();
+          return;
+        }
       }
 
-      // 설정 저장
-      await _saveSettings();
+      // 집 위치 확인
+      final homeLocation = _homeLocationService!.getSelectedHomeLocation();
+      if (homeLocation == null) {
+        debugPrint('❌ 선택된 집 위치 정보가 없습니다.');
+        lastEventMessage.value = '집 위치 정보가 없습니다. 추적을 중지합니다.';
+        await stopTracking();
+        return;
+      }
 
-      debugPrint('✅ 귀가 추적 중지');
-    } catch (e) {
-      debugPrint('❌ 귀가 추적 중지 오류: $e');
+      final double homeLat = homeLocation.latitude;
+      final double homeLng = homeLocation.longitude;
+
+      // 현재 위치 획득
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        lastEventMessage.value = '위치 서비스가 꺼져 있습니다. 추적을 중지합니다.';
+        await stopTracking();
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        lastEventMessage.value = '위치 권한이 없습니다. 추적을 중지합니다.';
+        await stopTracking();
+        return;
+      }
+
+      // 현재 위치 가져오기
+      final Position position = await Geolocator.getCurrentPosition();
+
+      // 거리 계산
+      final double distance = Geolocator.distanceBetween(
+        homeLat,
+        homeLng,
+        position.latitude,
+        position.longitude,
+      );
+
+      debugPrint(
+          '📏 집과의 거리: ${distance.toStringAsFixed(2)}m (목표 거리: ${homeRadiusMeters.value}m)');
+      lastEventMessage.value = '집과의 거리: ${distance.toStringAsFixed(0)}m';
+
+      // 추적 상태에 거리 정보 추가
+      trackingStatus.value =
+          '집 근처 감지 중... (${distance.toStringAsFixed(0)}m 남음)';
+
+      // 집 반경 내에 들어왔는지 확인 (기본값: 30m)
+      if (distance <= homeRadiusMeters.value && !_hasSentArrivalMessage) {
+        _hasSentArrivalMessage = true;
+        debugPrint('🏠 집 반경(${homeRadiusMeters.value}m) 내 진입 감지');
+
+        // 메시지 전송
+        await _sendArrivalMessage();
+        lastEventMessage.value = '집에 도착하여 귀가알림을 전송했습니다.';
+        debugPrint('✅ 집 반경 내 진입, 메시지 전송 완료');
+
+        // 추적 중지
+        await stopTracking();
+      }
+    } catch (e, stack) {
+      debugPrint('❌ 거리 계산/메시지 전송 오류: $e\n$stack');
+      lastEventMessage.value = '귀가알림 오류: $e';
+      await stopTracking();
     }
   }
 
-  // 추적 시작
+  // 메시지 전송 로직
+  Future<void> _sendArrivalMessage() async {
+    for (final recipientId in messageRecipientIds) {
+      try {
+        debugPrint('📤 귀가 알림 메시지 전송 시도: $recipientId');
+
+        // 긴급 연락처 ID인지 확인 (일반적으로 사용자 ID와 구분하기 위한 접두사 체크)
+        final isEmergencyContact = recipientId.startsWith('emergency_') ||
+            _emergencyContactService.contacts
+                .any((contact) => contact.id == recipientId);
+
+        if (isEmergencyContact) {
+          // 긴급 연락처에 메시지 전송
+          debugPrint('📱 긴급 연락처에 메시지 전송: $recipientId');
+          final success = await _messageService.sendMessageToEmergencyContact(
+            contactId: recipientId,
+            content: arrivalMessage.value,
+            messageType: 'home_arrival',
+          );
+
+          if (success) {
+            debugPrint('✅ 긴급 연락처에 귀가 알림 메시지 전송 성공: $recipientId');
+            lastEventMessage.value = '긴급 연락처에 귀가 알림 메시지 전송 성공';
+          } else {
+            throw Exception('긴급 연락처 메시지 전송 실패');
+          }
+        } else {
+          // 일반 사용자에게 메시지 전송
+          await _messageService.sendMessage(
+            receiverId: recipientId,
+            content: arrivalMessage.value,
+            messageType: 'home_arrival',
+          );
+          debugPrint('✅ 사용자에게 귀가 알림 메시지 전송 성공: $recipientId');
+          lastEventMessage.value = '귀가 알림 메시지 전송 성공';
+        }
+      } catch (e, stack) {
+        debugPrint('❌ 귀가 알림 메시지 전송 실패: $e\n$stack');
+        lastEventMessage.value = '귀가 알림 메시지 전송 실패: $e';
+      }
+    }
+  }
+
+  // 추적 시작 (포그라운드 위치 추적 포함)
+  @override
   Future<bool> startTracking() async {
     try {
-      // 이미 추적 중이면 무시
       if (isTrackingEnabled.value) {
         debugPrint('⚠️ 이미 귀가 추적 중입니다.');
         return true;
+      }
+
+      // HomeLocationService 초기화 확인 및 재시도
+      if (_homeLocationService == null) {
+        debugPrint('🔄 HomeLocationService 초기화 시도 중...');
+        try {
+          _homeLocationService = await HomeLocationService.getInstance();
+          debugPrint('✅ HomeLocationService 초기화 성공');
+        } catch (e) {
+          debugPrint('❌ HomeLocationService 초기화 실패: $e');
+          lastEventMessage.value = 'HomeLocationService 초기화 실패: $e';
+          return false;
+        }
+      }
+
+      // 집 위치 확인
+      final homeLocation = _homeLocationService!.getSelectedHomeLocation();
+      if (homeLocation == null) {
+        debugPrint('❌ 선택된 집 위치가 없습니다.');
+        lastEventMessage.value = '선택된 집 위치가 없습니다. 먼저 집 위치를 등록해주세요.';
+        return false;
       }
 
       // 위치 권한 확인
       bool hasPermission = await _checkLocationPermission();
       if (!hasPermission) {
         debugPrint('❌ 위치 권한이 없어 귀가 추적을 시작할 수 없습니다.');
+        lastEventMessage.value = '위치 권한이 없어 귀가 추적을 시작할 수 없습니다.';
         return false;
       }
 
-      // 수신자 목록 확인
+      // 수신자 확인
       if (messageRecipientIds.isEmpty) {
-        // 비상 연락처에서 첫 번째 연락처를 기본으로 설정
-        final List<dynamic> contacts = _emergencyContactService.contacts;
+        debugPrint('⚠️ 메시지 수신자가 없습니다. 긴급 연락처에서 첫 번째 연락처를 사용합니다.');
+        final contacts = _emergencyContactService.contacts;
         if (contacts.isNotEmpty) {
           messageRecipientIds.add(contacts.first.id);
+          debugPrint('✅ 긴급 연락처 추가됨: ${contacts.first.id}');
+        } else {
+          debugPrint('❌ 사용 가능한 긴급 연락처가 없습니다.');
+          lastEventMessage.value = '메시지 수신자가 지정되지 않았습니다.';
+          return false;
         }
       }
 
@@ -294,14 +432,23 @@ class HomeArrivalService extends GetxController {
       isTrackingEnabled.value = true;
       isArrivingHome.value = true;
       trackingStatus.value = '집 근처 감지 중...';
-
-      // 설정 저장
       await _saveSettings();
+      _hasSentArrivalMessage = false;
 
-      debugPrint('✅ 귀가 추적 시작');
+      // 위치 추적 타이머 시작
+      _trackingTimer?.cancel();
+      _trackingTimer = Timer.periodic(
+        const Duration(seconds: _trackingIntervalSeconds),
+        (_) => _checkProximityAndNotify(),
+      );
+
+      debugPrint(
+          '✅ 귀가 추적(포그라운드) 시작: 집 위치=${homeLocation.name}, 수신자=${messageRecipientIds.join(", ")}');
+      lastEventMessage.value = '귀가 추적이 시작되었습니다. 집에 도착하면 알림이 전송됩니다.';
       return true;
     } catch (e) {
       debugPrint('❌ 귀가 추적 시작 오류: $e');
+      lastEventMessage.value = '귀가 추적 시작 오류: $e';
       return false;
     }
   }
@@ -402,6 +549,27 @@ class HomeArrivalService extends GetxController {
     homeRadiusMeters.value = radiusMeters;
     await _saveSettings();
     debugPrint('✅ 집 반경 설정 완료: ${radiusMeters}m');
+  }
+
+  // 추적 중지 (포그라운드 위치 추적 중지)
+  @override
+  Future<void> stopTracking() async {
+    try {
+      final wasTracking = isTrackingEnabled.value;
+      isTrackingEnabled.value = false;
+      isArrivingHome.value = false;
+      trackingStatus.value = '추적 비활성화';
+      _trackingTimer?.cancel();
+      _trackingTimer = null;
+      _hasSentArrivalMessage = false;
+      if (wasTracking) {
+        debugPrint('✅ [임시] 귀가 알림 완료 알림 (콘솔에만 표시)');
+      }
+      await _saveSettings();
+      debugPrint('✅ 귀가 추적(포그라운드) 중지');
+    } catch (e) {
+      debugPrint('❌ 귀가 추적 중지 오류: $e');
+    }
   }
 
   // 서비스 종료 시 정리

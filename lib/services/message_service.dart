@@ -21,12 +21,6 @@ class MessageService extends GetxController {
   final AuthService _authService = Get.find<AuthService>();
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // 테스트 모드 플래그 (Firebase 연결 전 테스트 목적)
-  final bool _useMockAuth = kDebugMode;
-
-  // Firebase 권한 오류 발생 시 Firestore 업데이트 건너뛰기 플래그
-  bool _skipFirestoreUpdates = false;
-
   // 읽지 않은 메시지 수
   final RxInt unreadMessageCount = 0.obs;
 
@@ -94,7 +88,7 @@ class MessageService extends GetxController {
     super.onClose();
   }
 
-  // 메시지 초기화 - 가짜 메시지 제거, 실제 Firebase 데이터만 사용
+  // 메시지 초기화 - 실제 Firebase 데이터만 사용
   Future<void> _initMessages() async {
     isLoading.value = true;
     hasError.value = false;
@@ -199,13 +193,8 @@ class MessageService extends GetxController {
       // 더 구체적인 오류 처리
       if (e.toString().contains('permission-denied')) {
         debugPrint('🔒 Firebase 권한 오류: 메시지를 불러올 권한이 없습니다.');
-        debugPrint('💡 테스트 데이터를 제공합니다.');
-
-        // 권한 오류 시 테스트 데이터 생성
-        _provideTestMessages(currentUserId);
-
-        errorMessage.value = 'Firebase 권한 문제가 있어 테스트 데이터를 표시합니다.';
-        hasError.value = false; // 테스트 데이터를 제공하므로 오류 상태는 false로 설정
+        errorMessage.value = 'Firebase 권한 문제가 있어 메시지를 표시할 수 없습니다.';
+        hasError.value = true;
       } else if (e.toString().contains('network')) {
         // 네트워크 오류
         errorMessage.value = '네트워크 연결 문제로 메시지를 불러올 수 없습니다.';
@@ -223,43 +212,10 @@ class MessageService extends GetxController {
             'Firebase에서 메시지를 불러오는 중 오류가 발생했습니다.\n${e.toString().split('\n').first}';
         hasError.value = true;
         debugPrint('🆘 일반 오류: ${e.toString()}');
-
-        // 오류 발생 시에도 테스트 데이터 제공 (앱이 동작하도록)
-        _provideTestMessages(currentUserId);
       }
     } finally {
       isLoading.value = false;
     }
-  }
-
-  // 권한 오류 시 테스트 메시지 제공 (2개의 테스트 메시지 생성)
-  void _provideTestMessages(String currentUserId) {
-    final testUserId = 'test-user-1';
-    final now = DateTime.now();
-
-    final List<Message> testMessages = [
-      Message(
-        id: 'test-msg-1',
-        senderId: currentUserId,
-        receiverId: testUserId,
-        content: '안녕하세요! 테스트 메시지입니다.',
-        timestamp: now.subtract(const Duration(minutes: 5)),
-        isRead: true,
-        messageType: 'text',
-      ),
-      Message(
-        id: 'test-msg-2',
-        senderId: testUserId,
-        receiverId: currentUserId,
-        content: '네, 반갑습니다! 권한 오류가 있어 테스트 데이터를 표시합니다.',
-        timestamp: now.subtract(const Duration(minutes: 2)),
-        isRead: false,
-        messageType: 'text',
-      ),
-    ];
-
-    messages.value = testMessages;
-    debugPrint('✅ 테스트 메시지 ${testMessages.length}개가 생성되었습니다.');
   }
 
   // Firebase Firestore 메시지 구독 - 실시간 데이터만 사용
@@ -291,20 +247,17 @@ class MessageService extends GetxController {
             debugPrint('📩 Firestore 변경 감지: ${snapshot.docs.length}개 문서');
 
             // 변경 세부 정보 로그
-            if (kDebugMode) {
-              // 변경된 문서 로그
-              for (var change in snapshot.docChanges) {
-                switch (change.type) {
-                  case DocumentChangeType.added:
-                    debugPrint('🆕 새 메시지 추가됨: ${change.doc.id}');
-                    break;
-                  case DocumentChangeType.modified:
-                    debugPrint('📝 메시지 업데이트됨: ${change.doc.id}');
-                    break;
-                  case DocumentChangeType.removed:
-                    debugPrint('🗑️ 메시지 삭제됨: ${change.doc.id}');
-                    break;
-                }
+            for (var change in snapshot.docChanges) {
+              switch (change.type) {
+                case DocumentChangeType.added:
+                  debugPrint('🆕 새 메시지 추가됨: ${change.doc.id}');
+                  break;
+                case DocumentChangeType.modified:
+                  debugPrint('📝 메시지 업데이트됨: ${change.doc.id}');
+                  break;
+                case DocumentChangeType.removed:
+                  debugPrint('🗑️ 메시지 삭제됨: ${change.doc.id}');
+                  break;
               }
             }
 
@@ -399,16 +352,15 @@ class MessageService extends GetxController {
         return;
       }
 
-      // 상대방이 보낸 메시지 중 읽지 않은 메시지만 카운트
-      final unread = messages
-          .where((message) =>
-              !message.isRead &&
-              message.receiverId == _authService.uid &&
-              message.senderId != _authService.uid)
+      final String currentUserId = _authService.uid!;
+      int count = messages
+          .where((m) =>
+              m.receiverId == currentUserId &&
+              !m.isRead &&
+              m.senderId != currentUserId)
           .length;
-
-      unreadMessageCount.value = unread;
-      debugPrint('📊 읽지 않은 메시지 수 업데이트: $unread (상대방이 보낸 메시지만 계산)');
+      unreadMessageCount.value = count;
+      debugPrint('📊 읽지 않은 메시지 수: $count');
     } catch (e) {
       debugPrint('⚠️ 읽지 않은 메시지 수 계산 오류: $e');
       unreadMessageCount.value = 0;
@@ -579,31 +531,6 @@ class MessageService extends GetxController {
   // 메시지 읽음 상태 변경
   Future<void> markMessageAsRead(String messageId) async {
     try {
-      // 로컬 메시지 상태 업데이트
-      final int index = messages.indexWhere((m) => m.id == messageId);
-      if (index >= 0) {
-        final Message updatedMessage = messages[index].copyWith(isRead: true);
-        messages[index] = updatedMessage;
-
-        // UI 업데이트를 위해 메시지 목록 변경 알림
-        messages.refresh();
-      }
-
-      // 읽지 않은 메시지 수 업데이트
-      _updateUnreadCount();
-
-      // 현재 사용자가 로그인 되어있지 않은 경우 Firestore 업데이트 시도하지 않음
-      if (_authService.currentUser == null || _authService.uid == null) {
-        debugPrint('⚠️ 로그인되어 있지 않아 Firestore 업데이트를 시도하지 않습니다.');
-        return;
-      }
-
-      // 개발 모드이거나 Firestore 업데이트 건너뛰기 플래그가 활성화된 경우 업데이트 시도하지 않음
-      if (kDebugMode || _useMockAuth || _skipFirestoreUpdates) {
-        debugPrint('⚠️ 개발 모드이거나 이전 권한 오류로 인해 Firestore 업데이트를 건너뜁니다.');
-        return;
-      }
-
       // Firestore 메시지 상태 업데이트 - 오류 발생해도 UI 영향 없음
       try {
         await _firestore.collection('messages').doc(messageId).update({
@@ -613,13 +540,9 @@ class MessageService extends GetxController {
       } catch (e) {
         // Firebase 업데이트 실패는 UI에 영향을 주지 않음 (로컬 상태는 이미 업데이트됨)
         debugPrint('⚠️ Firestore 메시지 읽음 상태 업데이트 실패: $e');
-
-        // 권한 오류 발생 시 향후 시도를 건너뛰도록 플래그 설정
         if (e.toString().contains('permission-denied')) {
           debugPrint('🔒 Firebase 권한 오류: 메시지 읽음 상태를 업데이트할 권한이 없습니다.');
           debugPrint('🔒 로컬 UI 상태는 정상적으로 업데이트되었습니다.');
-          _skipFirestoreUpdates = true;
-          debugPrint('⚠️ 향후 Firestore 업데이트 시도를 중단합니다.');
         }
       }
     } catch (e) {
@@ -677,12 +600,6 @@ class MessageService extends GetxController {
         return;
       }
 
-      // 개발 모드이거나 Firestore 업데이트 건너뛰기 플래그가 활성화된 경우 업데이트 시도하지 않음
-      if (kDebugMode || _useMockAuth || _skipFirestoreUpdates) {
-        debugPrint('⚠️ 개발 모드이거나 이전 권한 오류로 인해 Firestore 업데이트를 건너뜁니다.');
-        return;
-      }
-
       // Firestore 메시지 상태 업데이트 (배치 작업) - 오류 발생해도 UI 영향 없음
       try {
         final batch = _firestore.batch();
@@ -705,13 +622,9 @@ class MessageService extends GetxController {
       } catch (e) {
         // Firebase 업데이트 실패는 UI에 영향을 주지 않음 (로컬 상태는 이미 업데이트됨)
         debugPrint('⚠️ Firestore 메시지 읽음 상태 업데이트 실패: $e');
-
-        // 권한 오류 발생 시 향후 시도를 건너뛰도록 플래그 설정
         if (e.toString().contains('permission-denied')) {
           debugPrint('🔒 Firebase 권한 오류: 메시지 읽음 상태를 업데이트할 권한이 없습니다.');
           debugPrint('🔒 로컬 UI 상태는 정상적으로 업데이트되었습니다.');
-          _skipFirestoreUpdates = true;
-          debugPrint('⚠️ 향후 Firestore 업데이트 시도를 중단합니다.');
         }
       }
     } catch (e) {
@@ -1623,7 +1536,6 @@ class MessageService extends GetxController {
           } catch (writeError) {
             if (writeError.toString().contains('permission-denied')) {
               debugPrint('🔒 메시지 쓰기 권한 없음: Firebase 보안 규칙 확인 필요');
-              _skipFirestoreUpdates = true;
               debugPrint('⚠️ Firestore 업데이트를 건너뛰도록 설정되었습니다.');
             } else {
               debugPrint('⚠️ 메시지 쓰기 권한 확인 중 오류: $writeError');
@@ -1633,7 +1545,6 @@ class MessageService extends GetxController {
       } catch (e) {
         if (e.toString().contains('permission-denied')) {
           debugPrint('🔒 메시지 읽기 권한 없음: Firebase 보안 규칙 확인 필요');
-          _skipFirestoreUpdates = true;
           debugPrint('⚠️ Firestore 업데이트를 건너뛰도록 설정되었습니다.');
         } else {
           debugPrint('⚠️ 메시지 읽기 권한 확인 중 오류: $e');
@@ -1641,32 +1552,9 @@ class MessageService extends GetxController {
       }
 
       // 권한 확인 요약
-      if (_skipFirestoreUpdates) {
-        debugPrint('🚫 권한 검사 결과: Firestore 업데이트가 비활성화되었습니다. 로컬 상태만 유지합니다.');
-      } else {
-        debugPrint('✅ 권한 검사 결과: Firestore 읽기/쓰기 권한이 정상적으로 확인되었습니다.');
-      }
+      debugPrint('✅ 권한 검사 결과: Firestore 읽기/쓰기 권한이 정상적으로 확인되었습니다.');
     } catch (e) {
       debugPrint('⚠️ Firebase 권한 확인 중 예상치 못한 오류: $e');
-    }
-  }
-
-  // 공개 메서드: 권한 문제 감지 시 로컬 모드로 전환
-  void enableLocalOnlyMode() {
-    _skipFirestoreUpdates = true;
-    debugPrint('⚠️ 로컬 전용 모드가 활성화되었습니다. Firestore 업데이트를 시도하지 않습니다.');
-  }
-
-  // 공개 메서드: 권한 상태 확인 및 필요시 재설정
-  Future<void> checkAndResetPermissions() async {
-    if (_skipFirestoreUpdates) {
-      debugPrint('🔄 권한 상태 재확인 중...');
-      _skipFirestoreUpdates = false; // 일단 초기화
-      await _checkFirebasePermissions(); // 권한 다시 확인
-
-      if (!_skipFirestoreUpdates) {
-        debugPrint('✅ Firestore 업데이트가 다시 활성화되었습니다.');
-      }
     }
   }
 
@@ -1845,5 +1733,52 @@ class MessageService extends GetxController {
 
     print('ℹ️ [메시지 서비스] 위치 공유 ID를 찾을 수 없음');
     return null;
+  }
+
+  // 긴급 연락처에 메시지 보내기
+  Future<bool> sendMessageToEmergencyContact({
+    required String contactId,
+    required String content,
+    String messageType = 'text',
+    Map<String, dynamic>? metadata,
+  }) async {
+    try {
+      debugPrint('📤 긴급 연락처에 메시지 전송 시도: $contactId');
+
+      // 현재 사용자 정보 확인
+      final currentUser = _authService.currentUser;
+      if (currentUser == null || currentUser.uid.isEmpty) {
+        debugPrint('❌ 메시지 전송 실패: 로그인되지 않음');
+        return false;
+      }
+
+      // 메시지 ID 생성
+      final messageId = const Uuid().v4();
+
+      // 메시지 생성 시간
+      final timestamp = DateTime.now();
+
+      // 메시지 데이터 구성
+      final messageData = {
+        'id': messageId,
+        'senderId': currentUser.uid,
+        'receiverId': contactId, // 긴급 연락처 ID
+        'content': content,
+        'timestamp': timestamp.toIso8601String(),
+        'isRead': false,
+        'messageType': messageType,
+        'metadata': metadata ?? {},
+        'isEmergencyContact': true, // 긴급 연락처 표시
+      };
+
+      // Firestore에 메시지 저장
+      await _firestore.collection('messages').doc(messageId).set(messageData);
+
+      debugPrint('✅ 긴급 연락처에 메시지 전송 성공: $messageId');
+      return true;
+    } catch (e) {
+      debugPrint('❌ 긴급 연락처에 메시지 전송 오류: $e');
+      return false;
+    }
   }
 }

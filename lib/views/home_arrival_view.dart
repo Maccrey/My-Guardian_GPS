@@ -20,7 +20,8 @@ class HomeArrivalView extends StatefulWidget {
   State<HomeArrivalView> createState() => _HomeArrivalViewState();
 }
 
-class _HomeArrivalViewState extends State<HomeArrivalView> {
+class _HomeArrivalViewState extends State<HomeArrivalView>
+    with SingleTickerProviderStateMixin {
   // 서비스
   late final HomeLocationService _homeLocationService;
   final LocationService _locationService = Get.find<LocationService>();
@@ -54,12 +55,14 @@ class _HomeArrivalViewState extends State<HomeArrivalView> {
   final TextEditingController _searchController = TextEditingController();
 
   // 탭 컨트롤러
-  final TabController? _tabController = null;
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _initializeServices();
+    // 탭 컨트롤러 직접 초기화
+    _tabController = TabController(length: 2, vsync: this);
   }
 
   @override
@@ -67,6 +70,7 @@ class _HomeArrivalViewState extends State<HomeArrivalView> {
     _messageController.dispose();
     _locationNameController.dispose();
     _searchController.dispose();
+    _tabController.dispose(); // TabController 해제
     super.dispose();
   }
 
@@ -369,19 +373,36 @@ class _HomeArrivalViewState extends State<HomeArrivalView> {
 
         // 메시지 구성 - 위치 정보와 함께
         final fullMessage = '🏠 귀가 알림: $message\n'
-            '📍 ${selectedHome.name} (${selectedHome.address})\n'
-            '📱 전화 번호: ${selectedContact.phoneNumber}';
+            '📍 ${selectedHome.name} (${selectedHome.address})';
 
-        // SMS 앱 열기 (실제로는 SMS 전송 구현 필요)
-        // 여기서는 스낵바만 표시
-        Get.snackbar(
-          '알림 전송',
-          '${selectedContact.name}님에게 귀가 알림을 전송했습니다.',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green.shade600,
-          colorText: Colors.white,
-          duration: const Duration(seconds: 5),
+        // 실제로 메시지 전송 (MessageService 사용)
+        final success = await _messageService.sendMessageToEmergencyContact(
+          contactId: selectedContact.id,
+          content: fullMessage,
+          messageType: 'home_arrival',
         );
+
+        if (success) {
+          Get.snackbar(
+            '알림 전송',
+            '${selectedContact.name}님에게 귀가 알림을 전송했습니다.',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.green.shade600,
+            colorText: Colors.white,
+            duration: const Duration(seconds: 5),
+          );
+
+          // 메시지 필드 초기화
+          _messageController.clear();
+        } else {
+          Get.snackbar(
+            '실패',
+            '귀가 알림 전송에 실패했습니다.',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red.shade700,
+            colorText: Colors.white,
+          );
+        }
 
         // 메시지 필드 초기화
         _messageController.clear();
@@ -402,63 +423,61 @@ class _HomeArrivalViewState extends State<HomeArrivalView> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('귀가 알림'),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: '알림 보내기'),
-              Tab(text: '위치 관리'),
-            ],
-          ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('귀가 알림'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: '알림 보내기'),
+            Tab(text: '위치 관리'),
+          ],
         ),
-        body: Obx(() {
-          if (_isLoading.value && !_isInitialized.value) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          }
-
-          if (_errorMessage.value.isNotEmpty && !_isInitialized.value) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline,
-                        size: 48, color: Colors.red),
-                    const SizedBox(height: 16),
-                    Text(
-                      '오류가 발생했습니다',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(_errorMessage.value),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: _initializeServices,
-                      child: const Text('다시 시도'),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
-
-          return TabBarView(
-            children: [
-              // 알림 보내기 탭
-              _buildSendNotificationTab(),
-
-              // 위치 관리 탭
-              _buildLocationManagementTab(),
-            ],
-          );
-        }),
       ),
+      body: Obx(() {
+        if (_isLoading.value && !_isInitialized.value) {
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        }
+
+        if (_errorMessage.value.isNotEmpty && !_isInitialized.value) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text(
+                    '오류가 발생했습니다',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(_errorMessage.value),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _initializeServices,
+                    child: const Text('다시 시도'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return TabBarView(
+          controller: _tabController,
+          children: [
+            // 알림 보내기 탭
+            _buildSendNotificationTab(),
+
+            // 위치 관리 탭
+            _buildLocationManagementTab(),
+          ],
+        );
+      }),
     );
   }
 
@@ -496,7 +515,7 @@ class _HomeArrivalViewState extends State<HomeArrivalView> {
                               TextButton(
                                 onPressed: () {
                                   // 위치 관리 탭으로 이동
-                                  DefaultTabController.of(context).animateTo(1);
+                                  _tabController.animateTo(1);
                                 },
                                 child: const Text('변경'),
                               ),
@@ -881,40 +900,165 @@ class _HomeArrivalViewState extends State<HomeArrivalView> {
 
               const SizedBox(height: 16),
 
-              // 알림 보내기 버튼
+              // 알림 보내기 버튼 + 포그라운드 귀가알림(자동 추적) 토글 버튼
               Obx(() {
                 final selectedHome =
                     _homeLocationService.getSelectedHomeLocation();
                 final canSend = selectedHome != null &&
                     (_selectedUser.value != null ||
                         _selectedEmergencyContact.value != null);
+                final isTracking = _homeArrivalService.isTrackingEnabled.value;
+                final trackingStatus = _homeArrivalService.trackingStatus.value;
+                final bool disableInputs = isTracking;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton.icon(
+                        onPressed:
+                            canSend && !_isLoading.value && !disableInputs
+                                ? _sendHomeArrivalNotification
+                                : null,
+                        icon: _isLoading.value
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.send),
+                        label: const Text(
+                          '귀가 알림 보내기',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      '자동 귀가알림 상태: $trackingStatus',
+                      style: TextStyle(
+                        color: isTracking ? Colors.green : Colors.grey,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          if (isTracking) {
+                            await _homeArrivalService.stopTracking();
+                          } else {
+                            if (selectedHome == null) {
+                              Get.snackbar('집 위치 없음', '집 위치를 먼저 등록해주세요.',
+                                  snackPosition: SnackPosition.BOTTOM,
+                                  backgroundColor: Colors.red.shade700,
+                                  colorText: Colors.white);
+                              return;
+                            }
+                            if (_selectedNotificationMethod.value == 'user' &&
+                                _selectedUser.value != null) {
+                              await _homeArrivalService.setMessageRecipients(
+                                  [_selectedUser.value!.uid!]);
+                            } else if (_selectedNotificationMethod.value ==
+                                    'emergency' &&
+                                _selectedEmergencyContact.value != null) {
+                              // 긴급 연락처 ID 전달
+                              debugPrint(
+                                  '🔍 긴급 연락처 ID 설정: ${_selectedEmergencyContact.value!.id}');
+                              await _homeArrivalService.setMessageRecipients(
+                                  [_selectedEmergencyContact.value!.id]);
+                            } else {
+                              Get.snackbar('수신자 없음', '알림을 받을 사용자를 선택해주세요.',
+                                  snackPosition: SnackPosition.BOTTOM,
+                                  backgroundColor: Colors.red.shade700,
+                                  colorText: Colors.white);
+                              return;
+                            }
+                            await _homeArrivalService.setArrivalMessage(
+                                _messageController.text.trim().isEmpty
+                                    ? '집에 안전하게 도착했습니다.'
+                                    : _messageController.text.trim());
+                            final started =
+                                await _homeArrivalService.startTracking();
+                            if (!started) {
+                              Get.snackbar('귀가알림 시작 실패', '위치 권한 또는 설정을 확인해주세요.',
+                                  snackPosition: SnackPosition.BOTTOM,
+                                  backgroundColor: Colors.red.shade700,
+                                  colorText: Colors.white);
+                            }
+                          }
+                          setState(() {});
+                        },
+                        icon: Icon(isTracking
+                            ? Icons.pause_circle
+                            : Icons.play_circle),
+                        label:
+                            Text(isTracking ? '귀가알림 자동추적 중지' : '귀가알림 자동추적 시작'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor:
+                              isTracking ? Colors.red : Colors.blue,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                    // 안내 메시지 표시
+                    Obx(() {
+                      final msg = _homeArrivalService.lastEventMessage.value;
+                      if (msg.isEmpty) return const SizedBox.shrink();
 
-                return SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton.icon(
-                    onPressed: canSend && !_isLoading.value
-                        ? _sendHomeArrivalNotification
-                        : null,
-                    icon: _isLoading.value
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.send),
-                    label: const Text(
-                      '귀가 알림 보내기',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
+                      // 거리 정보 메시지인 경우 snackbar로 표시
+                      if (msg.startsWith('집과의 거리:')) {
+                        Future.delayed(const Duration(milliseconds: 100), () {
+                          Get.snackbar(
+                            '위치 정보',
+                            msg,
+                            snackPosition: SnackPosition.TOP,
+                            backgroundColor: Colors.blue.shade700,
+                            colorText: Colors.white,
+                            duration: const Duration(seconds: 3),
+                            margin: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 10),
+                            borderRadius: 8,
+                          );
+                          // 메시지 초기화 (snackbar로 표시했으므로)
+                          _homeArrivalService.lastEventMessage.value = '';
+                        });
+                        return const SizedBox.shrink();
+                      }
+
+                      // 다른 메시지는 기존처럼 컨테이너로 표시
+                      Future.delayed(const Duration(seconds: 5), () {
+                        if (_homeArrivalService.lastEventMessage.value == msg) {
+                          _homeArrivalService.lastEventMessage.value = '';
+                        }
+                      });
+                      return Container(
+                        margin: const EdgeInsets.only(top: 16),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 12, horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.black87,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          msg,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 15),
+                          textAlign: TextAlign.center,
+                        ),
+                      );
+                    }),
+                  ],
                 );
               }),
             ],

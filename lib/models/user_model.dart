@@ -112,23 +112,25 @@ class UserModel {
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'uid': uid,
-      'email': email,
-      'password': password,
-      'nickname': nickname,
-      'birthDate': birthDate?.toIso8601String(),
-      'country': country,
-      'countryCode': countryCode,
-      'userType': userType,
-      'photoUrl': photoUrl,
-      'profileImageUrl': profileImageUrl ?? photoUrl,
-      'lastActive': lastActive?.toIso8601String(),
-      'profileImageUploadDate': profileImageUploadDate?.toIso8601String(),
-      'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : null,
-      'isActive': isActive,
-      'phoneNumber': phoneNumber,
-    };
+    final data = <String, dynamic>{};
+    if (uid.isNotEmpty) data['uid'] = uid;
+    if (email != null) data['email'] = email;
+    if (password != null) data['password'] = password;
+    if (nickname != null) data['nickname'] = nickname;
+    if (birthDate != null) data['birthDate'] = birthDate!.toIso8601String();
+    if (country != null) data['country'] = country;
+    if (countryCode != null) data['countryCode'] = countryCode;
+    if (userType != null) data['userType'] = userType;
+    if (photoUrl != null) data['photoUrl'] = photoUrl;
+    if (profileImageUrl != null) data['profileImageUrl'] = profileImageUrl;
+    if (lastActive != null) data['lastActive'] = lastActive!.toIso8601String();
+    if (profileImageUploadDate != null)
+      data['profileImageUploadDate'] =
+          profileImageUploadDate!.toIso8601String();
+    if (createdAt != null) data['createdAt'] = Timestamp.fromDate(createdAt!);
+    data['isActive'] = isActive;
+    if (phoneNumber != null) data['phoneNumber'] = phoneNumber;
+    return data;
   }
 
   /// 프로필 이미지 변경 여부 확인

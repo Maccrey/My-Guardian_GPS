@@ -207,6 +207,25 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
                                         color: Colors.blue.shade800,
                                       ),
                                     )),
+                                // 집과의 거리 표시 추가
+                                Obx(() {
+                                  final msg = _homeArrivalService
+                                      .lastEventMessage.value;
+                                  if (msg.startsWith('집과의 거리:')) {
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 4.0),
+                                      child: Text(
+                                        msg,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.blue.shade900,
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                  return const SizedBox.shrink();
+                                }),
                               ],
                             ),
                           ),

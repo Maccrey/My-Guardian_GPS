@@ -21,6 +21,8 @@ class RegisterViewModel extends GetxController {
   final RxString selectedCountry = RxString('');
   final RxString selectedCountryCode = RxString('');
   final RxBool isGuardianMode = false.obs; // 보호자 모드 여부 (기본값: 일반 사용자)
+  final RxString error = ''.obs;
+  final RxBool isPasswordMatch = true.obs;
 
   // 생성자
   RegisterViewModel(this._authService);
@@ -38,8 +40,18 @@ class RegisterViewModel extends GetxController {
 
   // Getters
   bool get isLoading => _authService.isLoading;
-  String? get error => _authService.error;
-  List<Map<String, dynamic>> get countries => _authService.getCountries();
+  List<Map<String, dynamic>> get countries => [
+        {'name': '대한민국', 'code': 'KR', 'dialCode': '+82'},
+        {'name': '미국', 'code': 'US', 'dialCode': '+1'},
+        {'name': '일본', 'code': 'JP', 'dialCode': '+81'},
+        {'name': '중국', 'code': 'CN', 'dialCode': '+86'},
+        {'name': '영국', 'code': 'GB', 'dialCode': '+44'},
+        {'name': '프랑스', 'code': 'FR', 'dialCode': '+33'},
+        {'name': '독일', 'code': 'DE', 'dialCode': '+49'},
+        {'name': '이탈리아', 'code': 'IT', 'dialCode': '+39'},
+        {'name': '스페인', 'code': 'ES', 'dialCode': '+34'},
+        {'name': '캐나다', 'code': 'CA', 'dialCode': '+1'},
+      ];
 
   // 자주 사용되는 국가 반환
   List<Map<String, dynamic>> getFrequentlyUsedCountries() {
@@ -109,12 +121,16 @@ class RegisterViewModel extends GetxController {
 
   // 회원가입 처리
   Future<bool> register() async {
+    debugPrint('register() 진입');
     _authService.setLoading(true);
+    error.value = '';
     _authService.setError(null);
 
     // 입력값 유효성 검사
     if (!_validateInputs()) {
+      debugPrint('입력값 유효성 검사 실패');
       _authService.setLoading(false);
+      error.value = _authService.error ?? '입력값 오류';
       return false;
     }
 
@@ -127,16 +143,21 @@ class RegisterViewModel extends GetxController {
       country: selectedCountry.value,
       userType: getUserType(),
     );
+    debugPrint('UserModel 생성 완료: [34m[1m[4m[47m${user.toJson()}[0m');
 
     try {
-      // AuthService를 통해 회원가입 시도
       final result = await _authService.register(user);
       debugPrint('회원가입 결과: $result');
-      _authService.setLoading(false);
+      // AuthService에서 이미 setLoading(false)를 호출하므로 여기서는 중복 호출하지 않음
+      if (!result) {
+        error.value = _authService.error ?? '회원가입 실패';
+      }
       return result;
-    } catch (e) {
+    } catch (e, stack) {
       debugPrint('회원가입 중 오류 발생: $e');
-      _authService.setError('회원가입 중 오류가 발생했습니다: ${e.toString()}');
+      debugPrint('스택트레이스: $stack');
+      error.value = '회원가입 중 오류가 발생했습니다: [31m${e.toString()}[0m';
+      _authService.setError(error.value);
       _authService.setLoading(false);
       return false;
     }
@@ -148,42 +169,51 @@ class RegisterViewModel extends GetxController {
     final password = passwordController.text;
     final confirmPassword = confirmPasswordController.text;
 
-    // 입력 유효성 검사
-    if (nickname.isEmpty ||
-        email.isEmpty ||
-        password.isEmpty ||
-        confirmPassword.isEmpty ||
-        selectedDate.value == null ||
-        selectedCountry.value.isEmpty) {
-      _authService.setError('모든 필드를 입력해주세요');
+    if (nickname.isEmpty) {
+      error.value = '닉네임을 입력해주세요';
+      return false;
+    }
+    if (email.isEmpty) {
+      error.value = '이메일을 입력해주세요';
+      return false;
+    }
+    if (password.isEmpty) {
+      error.value = '비밀번호를 입력해주세요';
+      return false;
+    }
+    if (confirmPassword.isEmpty) {
+      error.value = '비밀번호 확인을 입력해주세요';
+      return false;
+    }
+    if (selectedDate.value == null) {
+      error.value = '생년월일을 선택해주세요';
+      return false;
+    }
+    if (selectedCountry.value.isEmpty) {
+      error.value = '국가를 선택해주세요';
+      return false;
+    }
+    if (password != confirmPassword) {
+      error.value = '비밀번호가 일치하지 않습니다';
       return false;
     }
 
     if (nickname.length < 2) {
-      _authService.setError('닉네임은 최소 2자 이상이어야 합니다');
+      error.value = '닉네임은 최소 2자 이상이어야 합니다';
       return false;
     }
-
     if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
-      _authService.setError('유효한 이메일 주소를 입력해주세요');
+      error.value = '유효한 이메일 주소를 입력해주세요';
       return false;
     }
-
     if (password.length < 8) {
-      _authService.setError('비밀번호는 최소 8자 이상이어야 합니다');
+      error.value = '비밀번호는 최소 8자 이상이어야 합니다';
       return false;
     }
-
     if (!RegExp(r'^(?=.*?[0-9])(?=.*?[a-zA-Z]).{8,}$').hasMatch(password)) {
-      _authService.setError('비밀번호는 영문자와 숫자를 포함해야 합니다');
+      error.value = '비밀번호는 영문자와 숫자를 포함해야 합니다';
       return false;
     }
-
-    if (password != confirmPassword) {
-      _authService.setError('비밀번호가 일치하지 않습니다');
-      return false;
-    }
-
     return true;
   }
 
@@ -192,6 +222,21 @@ class RegisterViewModel extends GetxController {
     final int firstLetter = countryCode.codeUnitAt(0) - 0x41 + 0x1F1E6;
     final int secondLetter = countryCode.codeUnitAt(1) - 0x41 + 0x1F1E6;
     return String.fromCharCode(firstLetter) + String.fromCharCode(secondLetter);
+  }
+
+  void clearError() {
+    error.value = '';
+    _authService.setError(null);
+  }
+
+  void checkPasswordMatch() {
+    isPasswordMatch.value =
+        passwordController.text == confirmPasswordController.text;
+    if (isPasswordMatch.value) {
+      if (error.value == '비밀번호가 일치하지 않습니다') error.value = '';
+    } else {
+      error.value = '비밀번호가 일치하지 않습니다';
+    }
   }
 
   // 리소스 해제

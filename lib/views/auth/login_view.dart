@@ -5,15 +5,32 @@ import '../../services/auth_service.dart';
 import '../home/home_view.dart';
 import '../location_sharing/emergency_contact_location_view.dart';
 
-class LoginView extends StatelessWidget {
+class LoginView extends StatefulWidget {
   const LoginView({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // GetX 컨트롤러 초기화 - put 대신 lazyPut을 사용하고 find로 가져오기
-    Get.lazyPut(() => LoginViewModel(Get.find<AuthService>()), fenix: true);
-    final controller = Get.find<LoginViewModel>();
+  State<LoginView> createState() => _LoginViewState();
+}
 
+class _LoginViewState extends State<LoginView> {
+  late LoginViewModel controller;
+
+  @override
+  void initState() {
+    super.initState();
+    // GetX 컨트롤러 초기화 - put 대신 lazyPut 사용
+    Get.lazyPut(() => LoginViewModel(Get.find<AuthService>()), fenix: true);
+    controller = Get.find<LoginViewModel>();
+  }
+
+  @override
+  void dispose() {
+    // 이 컨트롤러를 사용하는 다른 화면으로 이동할 때는 컨트롤러를 제거하지 않습니다 (fenix: true)
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -99,8 +116,9 @@ class LoginView extends StatelessWidget {
                                           ? Icons.visibility
                                           : Icons.visibility_off,
                                     ),
-                                    onPressed: () =>
-                                        controller.togglePasswordVisibility(),
+                                    onPressed: () => setState(() {
+                                      controller.togglePasswordVisibility();
+                                    }),
                                   ),
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
@@ -165,51 +183,73 @@ class LoginView extends StatelessWidget {
                           ),
                           const SizedBox(height: 24),
 
+                          // 로그인 버튼 위에 에러 메시지 표시
+                          Obx(() {
+                            if (controller.error != null &&
+                                controller.error!.isNotEmpty) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 12.0),
+                                child: Text(
+                                  controller.error!,
+                                  style: TextStyle(
+                                      color: Colors.red, fontSize: 14),
+                                ),
+                              );
+                            } else {
+                              return const SizedBox.shrink();
+                            }
+                          }),
+
                           // 로그인 버튼
                           Obx(() => ElevatedButton(
                                 onPressed: controller.isLoading
                                     ? null
                                     : () async {
-                                        if (await controller.login()) {
-                                          Get.snackbar(
-                                            '성공',
-                                            '로그인 성공!',
-                                            snackPosition: SnackPosition.BOTTOM,
-                                          );
+                                        debugPrint('로그인 버튼 클릭됨');
+                                        final success =
+                                            await controller.login();
+                                        debugPrint('로그인 결과: $success');
 
-                                          // 로그인 정보 저장 상태 로그
-                                          debugPrint(
-                                              '✅ 로그인 성공: 로그인 정보 저장=${controller.rememberMe.value}');
+                                        // 로그인 실패 시 처리
+                                        if (!success &&
+                                            controller.error != null &&
+                                            controller.error!.isNotEmpty) {
+                                          // 이메일 인증 관련 에러인지 확인
+                                          if (controller.error!
+                                                  .contains('이메일 인증이 필요합니다') ||
+                                              controller.error!.contains(
+                                                  '이메일 인증이 완료되지 않았습니다')) {
+                                            // 이메일 인증 필요 안내는 이미 auth_service.dart에서 처리됨
+                                            debugPrint(
+                                                '이메일 인증 필요: ${controller.error}');
 
-                                          // 이전에 위치 공유 화면으로 이동을 시도했다면 해당 화면으로 이동
-                                          final String? previousRoute =
-                                              Get.parameters['returnRoute'];
-                                          if (previousRoute ==
-                                              'location-sharing') {
-                                            Get.offAll(() => const HomeView(),
-                                                binding: BindingsBuilder(() {
-                                              // 홈 뷰 바인딩
-                                            }));
-                                            // 홈 뷰 로드 후 위치 공유 화면으로 이동
-                                            Future.delayed(
-                                                const Duration(
-                                                    milliseconds: 300), () {
-                                              Get.to(() =>
-                                                  EmergencyContactLocationView());
-                                            });
+                                            // 추가적인 안내 표시 (선택적)
+                                            // Get.dialog(
+                                            //   AlertDialog(
+                                            //     title: const Text('이메일 인증 필요'),
+                                            //     content: const Text('회원가입 시 입력한 이메일 주소로 인증 메일이 발송되었습니다. 이메일을 확인하고 인증 링크를 클릭해주세요.'),
+                                            //     actions: [
+                                            //       TextButton(
+                                            //         onPressed: () => Get.back(),
+                                            //         child: const Text('확인'),
+                                            //       ),
+                                            //     ],
+                                            //   ),
+                                            // );
                                           } else {
-                                            Get.offAllNamed('/home');
+                                            // 다른 로그인 오류 처리
+                                            Get.snackbar(
+                                              '로그인 실패',
+                                              controller.error!,
+                                              snackPosition:
+                                                  SnackPosition.BOTTOM,
+                                              backgroundColor:
+                                                  Colors.red.withOpacity(0.8),
+                                              colorText: Colors.white,
+                                              duration:
+                                                  const Duration(seconds: 3),
+                                            );
                                           }
-                                        } else if (controller.error != null) {
-                                          Get.snackbar(
-                                            '오류',
-                                            controller.error!,
-                                            snackPosition: SnackPosition.BOTTOM,
-                                          );
-
-                                          // 로그인 실패 로그
-                                          debugPrint(
-                                              '❌ 로그인 실패: ${controller.error}');
                                         }
                                       },
                                 style: ElevatedButton.styleFrom(

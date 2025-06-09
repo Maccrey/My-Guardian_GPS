@@ -3,16 +3,38 @@ import 'package:intl/intl.dart';
 import 'package:get/get.dart';
 import '../../view_models/register_view_model.dart';
 import '../../services/auth_service.dart';
+import '../auth/login_view.dart';
 
-class RegisterView extends StatelessWidget {
+class RegisterView extends StatefulWidget {
   const RegisterView({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // GetX 컨트롤러 초기화 - put 대신 lazyPut 사용
-    Get.lazyPut(() => RegisterViewModel(Get.find<AuthService>()));
-    final controller = Get.find<RegisterViewModel>();
+  State<RegisterView> createState() => _RegisterViewState();
+}
 
+class _RegisterViewState extends State<RegisterView> {
+  late RegisterViewModel controller;
+
+  @override
+  void initState() {
+    super.initState();
+    Get.lazyPut(() => RegisterViewModel(Get.find<AuthService>()));
+    controller = Get.find<RegisterViewModel>();
+  }
+
+  @override
+  void dispose() {
+    controller.nicknameController.dispose();
+    controller.birthDateController.dispose();
+    controller.emailController.dispose();
+    controller.passwordController.dispose();
+    controller.confirmPasswordController.dispose();
+    // 필요시 Get.delete<RegisterViewModel>();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -46,104 +68,55 @@ class RegisterView extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 24),
-
-                    // 사용자 유형 선택 스위치
-                    Obx(() => Container(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 10, horizontal: 16),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: controller.isGuardianMode.value
-                                  ? Theme.of(context).colorScheme.primary
-                                  : Colors.grey.shade300,
-                              width: controller.isGuardianMode.value ? 2 : 1,
+                    /*
+                    // 일반 사용자 모드 카드 전체
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade300),
+                        color: Colors.white,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.grey.shade100,
                             ),
-                            color: controller.isGuardianMode.value
-                                ? Theme.of(context)
-                                    .colorScheme
-                                    .primary
-                                    .withOpacity(0.05)
-                                : Colors.transparent,
+                            child: const Icon(Icons.person_outline, color: Colors.grey, size: 24),
                           ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              // 아이콘
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: controller.isGuardianMode.value
-                                      ? Theme.of(context)
-                                          .colorScheme
-                                          .primary
-                                          .withOpacity(0.1)
-                                      : Colors.grey.shade100,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  '일반 사용자 모드',
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
                                 ),
-                                child: Icon(
-                                  controller.isGuardianMode.value
-                                      ? Icons.shield_outlined
-                                      : Icons.person_outline,
-                                  color: controller.isGuardianMode.value
-                                      ? Theme.of(context).colorScheme.primary
-                                      : Colors.grey.shade700,
-                                  size: 20,
+                                const Text(
+                                  '일반 사용자로 이용합니다',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-
-                              // 텍스트 (Expanded로 감싸서 남은 공간을 차지하도록 함)
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      controller.getUserTypeText(),
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w500,
-                                        color: controller.isGuardianMode.value
-                                            ? Theme.of(context)
-                                                .colorScheme
-                                                .primary
-                                            : Colors.black87,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    Text(
-                                      controller.isGuardianMode.value
-                                          ? '다른 사용자를 관리할 수 있습니다'
-                                          : '일반 사용자로 이용합니다',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: Colors.grey.shade600,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                      maxLines: 1,
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                              // 스위치 (공간을 확보하기 위해 왼쪽 여백 추가)
-                              const SizedBox(width: 8),
-                              Switch(
-                                value: controller.isGuardianMode.value,
-                                onChanged: (value) {
-                                  controller.toggleUserType();
-                                },
-                                activeColor:
-                                    Theme.of(context).colorScheme.primary,
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        )),
-                    const SizedBox(height: 16),
+                          Switch(
+                            value: false,
+                            onChanged: null,
+                          ),
+                        ],
+                      ),
+                    ),
+                    */
 
                     // 닉네임 필드
                     TextFormField(
                       controller: controller.nicknameController,
+                      onChanged: (_) => controller.clearError(),
                       decoration: InputDecoration(
                         labelText: '닉네임',
                         hintText: '사용하실 닉네임을 입력하세요',
@@ -221,7 +194,7 @@ class RegisterView extends StatelessWidget {
                           ),
                         )),
                     Obx(() {
-                      if (controller.error != null &&
+                      if (controller.error.value.isNotEmpty &&
                           controller.selectedCountry.value.isEmpty) {
                         return Padding(
                           padding: const EdgeInsets.only(left: 12, top: 8),
@@ -269,6 +242,7 @@ class RegisterView extends StatelessWidget {
                     // 이메일 필드
                     TextFormField(
                       controller: controller.emailController,
+                      onChanged: (_) => controller.clearError(),
                       keyboardType: TextInputType.emailAddress,
                       decoration: InputDecoration(
                         labelText: '이메일',
@@ -296,74 +270,126 @@ class RegisterView extends StatelessWidget {
                     Obx(() => TextFormField(
                           controller: controller.passwordController,
                           obscureText: !controller.isPasswordVisible.value,
+                          onChanged: (_) {
+                            controller.clearError();
+                            controller.checkPasswordMatch();
+                          },
                           decoration: InputDecoration(
                             labelText: '비밀번호',
                             hintText: '비밀번호를 입력하세요',
                             prefixIcon: const Icon(Icons.lock_outline),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide:
+                                  BorderSide(color: Colors.grey.shade300),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(
+                                color: Theme.of(context).colorScheme.primary,
+                                width: 2,
+                              ),
+                            ),
                             suffixIcon: IconButton(
                               icon: Icon(
                                 controller.isPasswordVisible.value
                                     ? Icons.visibility
                                     : Icons.visibility_off,
                               ),
-                              onPressed: () =>
-                                  controller.togglePasswordVisibility(),
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide:
-                                  BorderSide(color: Colors.grey.shade300),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: Theme.of(context).colorScheme.primary,
-                                width: 2,
-                              ),
+                              onPressed: controller.togglePasswordVisibility,
                             ),
                           ),
                         )),
                     const SizedBox(height: 16),
 
                     // 비밀번호 확인 필드
-                    Obx(() => TextFormField(
-                          controller: controller.confirmPasswordController,
-                          obscureText:
-                              !controller.isConfirmPasswordVisible.value,
-                          decoration: InputDecoration(
-                            labelText: '비밀번호 확인',
-                            hintText: '비밀번호를 다시 입력하세요',
-                            prefixIcon: const Icon(Icons.lock_outline),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                controller.isConfirmPasswordVisible.value
-                                    ? Icons.visibility
-                                    : Icons.visibility_off,
+                    Obx(() => Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            TextFormField(
+                              controller: controller.confirmPasswordController,
+                              obscureText:
+                                  !controller.isConfirmPasswordVisible.value,
+                              onChanged: (_) {
+                                controller.clearError();
+                                controller.checkPasswordMatch();
+                              },
+                              decoration: InputDecoration(
+                                labelText: '비밀번호 확인',
+                                hintText: '비밀번호를 다시 입력하세요',
+                                prefixIcon: const Icon(Icons.lock_outline),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide:
+                                      BorderSide(color: Colors.grey.shade300),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                    width: 2,
+                                  ),
+                                ),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    controller.isConfirmPasswordVisible.value
+                                        ? Icons.visibility
+                                        : Icons.visibility_off,
+                                  ),
+                                  onPressed: controller
+                                      .toggleConfirmPasswordVisibility,
+                                ),
                               ),
-                              onPressed: () =>
-                                  controller.toggleConfirmPasswordVisibility(),
                             ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide:
-                                  BorderSide(color: Colors.grey.shade300),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: Theme.of(context).colorScheme.primary,
-                                width: 2,
+                            // 비밀번호 불일치 안내 메시지
+                            if (!controller.isPasswordMatch.value &&
+                                controller
+                                    .confirmPasswordController.text.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4, left: 4),
+                                child: Text(
+                                  '비밀번호가 일치하지 않습니다',
+                                  style: TextStyle(
+                                      color: Colors.red,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500),
+                                ),
                               ),
-                            ),
-                          ),
+                          ],
                         )),
+                    // 비밀번호 일치 안내 메시지
+                    Obx(() => !controller.isPasswordMatch.value
+                        ? Padding(
+                            padding: const EdgeInsets.only(top: 4, left: 4),
+                            child: Text(
+                              '비밀번호가 일치하지 않습니다',
+                              style: TextStyle(color: Colors.red, fontSize: 12),
+                            ),
+                          )
+                        : SizedBox.shrink()),
                     const SizedBox(height: 32),
+
+                    // 회원가입 버튼 위에 에러 메시지 표시
+                    Obx(() {
+                      if (controller.error.value.isNotEmpty) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12.0),
+                          child: Text(
+                            controller.error.value,
+                            style: TextStyle(color: Colors.red, fontSize: 14),
+                          ),
+                        );
+                      } else {
+                        return const SizedBox.shrink();
+                      }
+                    }),
 
                     // 회원가입 버튼
                     Obx(() => ElevatedButton(
@@ -376,23 +402,67 @@ class RegisterView extends StatelessWidget {
 
                                   if (success) {
                                     debugPrint('회원가입 성공 - 로그인 화면으로 이동 시작');
-                                    Get.snackbar(
-                                      '성공',
-                                      '회원가입이 완료되었습니다! 로그인해주세요.',
-                                      snackPosition: SnackPosition.BOTTOM,
-                                      backgroundColor:
-                                          Colors.green.withOpacity(0.7),
-                                      colorText: Colors.white,
-                                      duration: const Duration(seconds: 3),
-                                    );
 
-                                    // 잠시 대기 후 로그인 화면으로 이동
-                                    Future.delayed(const Duration(seconds: 1),
-                                        () {
-                                      debugPrint('로그인 화면으로 이동 실행');
-                                      Get.offAllNamed(
-                                          '/'); // 모든 화면을 제거하고 로그인 화면으로 이동
-                                    });
+                                    // 에러 메시지가 있으면 (이메일 발송 실패) 해당 메시지 표시
+                                    if (controller.error.value.isNotEmpty) {
+                                      Get.snackbar(
+                                        '알림',
+                                        controller.error.value,
+                                        snackPosition: SnackPosition.BOTTOM,
+                                        backgroundColor:
+                                            Colors.orange.withOpacity(0.8),
+                                        colorText: Colors.white,
+                                        duration: const Duration(seconds: 4),
+                                      );
+                                    } else {
+                                      // 완전 성공 시 성공 메시지
+                                      Get.snackbar(
+                                        '성공',
+                                        '회원가입이 완료되었습니다! 이메일을 확인하고 로그인해주세요.',
+                                        snackPosition: SnackPosition.BOTTOM,
+                                        backgroundColor:
+                                            Colors.green.withOpacity(0.7),
+                                        colorText: Colors.white,
+                                        duration: const Duration(seconds: 3),
+                                      );
+                                    }
+
+                                    // 안전하게 로그인 화면으로 이동 시도
+                                    try {
+                                      debugPrint('로그인 화면으로 이동 시도');
+                                      // 1초 대기 후 이동 - 비동기 처리를 안전하게 변경
+                                      await Future.delayed(
+                                          const Duration(seconds: 1));
+                                      // 앱이 아직 살아있는지 확인 후 라우팅
+                                      if (mounted && context.mounted) {
+                                        debugPrint('로그인 화면으로 이동 실행');
+                                        Get.offAllNamed(
+                                            '/'); // 모든 화면을 제거하고 로그인 화면으로 이동
+                                      }
+                                    } catch (e) {
+                                      debugPrint('화면 이동 중 오류 발생: $e');
+                                      // 오류 발생 시 다시 시도
+                                      if (mounted && context.mounted) {
+                                        try {
+                                          Get.offAll(() => LoginView());
+                                        } catch (e2) {
+                                          debugPrint('대체 화면 이동도 실패: $e2');
+                                        }
+                                      }
+                                    }
+                                  } else {
+                                    // 회원가입 실패 시 에러 메시지 표시
+                                    if (controller.error.value.isNotEmpty) {
+                                      Get.snackbar(
+                                        '오류',
+                                        controller.error.value,
+                                        snackPosition: SnackPosition.BOTTOM,
+                                        backgroundColor:
+                                            Colors.red.withOpacity(0.8),
+                                        colorText: Colors.white,
+                                        duration: const Duration(seconds: 4),
+                                      );
+                                    }
                                   }
                                 },
                           style: ElevatedButton.styleFrom(
@@ -405,6 +475,17 @@ class RegisterView extends StatelessWidget {
 
                     // 개인정보 이용 약관
                     const SizedBox(height: 16),
+                    // 에러 메시지 표시
+                    Obx(() => ((controller.error.value).isNotEmpty)
+                        ? Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8.0),
+                            child: Text(
+                              controller.error.value,
+                              style: const TextStyle(
+                                  color: Colors.red, fontSize: 13),
+                            ),
+                          )
+                        : const SizedBox.shrink()),
                     Center(
                       child: Text(
                         '회원가입 시 이용약관 및 개인정보취급방침에 동의하게 됩니다.',

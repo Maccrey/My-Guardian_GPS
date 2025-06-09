@@ -391,9 +391,6 @@ class _MessageDetailViewState extends State<MessageDetailView> {
   void _handleFirebasePermissionError() {
     if (!mounted) return;
 
-    // 로컬 전용 모드로 전환
-    _messageService.enableLocalOnlyMode();
-
     // 사용자에게 안내 메시지 표시
     Get.snackbar(
       '서버 연결 제한',
