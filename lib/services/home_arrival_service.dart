@@ -320,7 +320,27 @@ class HomeArrivalService extends GetxController {
 
         // 메시지 전송
         await _sendArrivalMessage();
+
+        // 도착 메시지 설정 및 스낵바 표시
         lastEventMessage.value = '집에 도착하여 귀가알림을 전송했습니다.';
+
+        // 스낵바로 도착 알림 표시
+        try {
+          Get.snackbar(
+            '귀가 완료',
+            '집에 도착하여 귀가알림을 전송했습니다.',
+            snackPosition: SnackPosition.TOP,
+            backgroundColor: Colors.green.shade700,
+            colorText: Colors.white,
+            duration: const Duration(seconds: 5),
+            margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            borderRadius: 8,
+            icon: const Icon(Icons.home, color: Colors.white),
+          );
+        } catch (e) {
+          debugPrint('⚠️ 스낵바 표시 오류 (무시됨): $e');
+        }
+
         debugPrint('✅ 집 반경 내 진입, 메시지 전송 완료');
 
         // 추적 중지
@@ -444,7 +464,26 @@ class HomeArrivalService extends GetxController {
 
       debugPrint(
           '✅ 귀가 추적(포그라운드) 시작: 집 위치=${homeLocation.name}, 수신자=${messageRecipientIds.join(", ")}');
-      lastEventMessage.value = '귀가 추적이 시작되었습니다. 집에 도착하면 알림이 전송됩니다.';
+
+      // 메시지 설정 (Get.snackbar는 UI에서 처리)
+      lastEventMessage.value = '귀가 추적이 시작되었습니다';
+
+      // 알림 메시지 표시 (UI에서 사용)
+      try {
+        Get.snackbar(
+          '귀가 알림',
+          '귀가 추적이 시작되었습니다. 집에 도착하면 알림이 전송됩니다.',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: Colors.blue.shade700,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 3),
+          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          borderRadius: 8,
+        );
+      } catch (e) {
+        debugPrint('⚠️ 스낵바 표시 오류 (무시됨): $e');
+      }
+
       return true;
     } catch (e) {
       debugPrint('❌ 귀가 추적 시작 오류: $e');
@@ -554,21 +593,36 @@ class HomeArrivalService extends GetxController {
   // 추적 중지 (포그라운드 위치 추적 중지)
   @override
   Future<void> stopTracking() async {
+    if (!isTrackingEnabled.value) {
+      debugPrint('⚠️ 이미 귀가 추적이 중지되어 있습니다.');
+      return;
+    }
+
+    _trackingTimer?.cancel();
+    _trackingTimer = null;
+    isTrackingEnabled.value = false;
+    isArrivingHome.value = false;
+    trackingStatus.value = '추적 중지됨';
+    _hasSentArrivalMessage = false; // 메시지 전송 상태 초기화
+    await _saveSettings();
+
+    debugPrint('✅ 귀가 추적 중지됨');
+
+    // 추적 중지 알림 (UI에서 처리)
     try {
-      final wasTracking = isTrackingEnabled.value;
-      isTrackingEnabled.value = false;
-      isArrivingHome.value = false;
-      trackingStatus.value = '추적 비활성화';
-      _trackingTimer?.cancel();
-      _trackingTimer = null;
-      _hasSentArrivalMessage = false;
-      if (wasTracking) {
-        debugPrint('✅ [임시] 귀가 알림 완료 알림 (콘솔에만 표시)');
-      }
-      await _saveSettings();
-      debugPrint('✅ 귀가 추적(포그라운드) 중지');
+      Get.snackbar(
+        '귀가 알림',
+        '귀가 추적이 중지되었습니다.',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.orange.shade700,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 3),
+        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        borderRadius: 8,
+        icon: const Icon(Icons.pause_circle_filled, color: Colors.white),
+      );
     } catch (e) {
-      debugPrint('❌ 귀가 추적 중지 오류: $e');
+      debugPrint('⚠️ 스낵바 표시 오류 (무시됨): $e');
     }
   }
 
