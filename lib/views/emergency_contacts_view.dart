@@ -615,6 +615,9 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
               bool success = false;
 
               try {
+                // 먼저 다이얼로그 닫기
+                Navigator.of(context, rootNavigator: true).pop();
+
                 if (selectedUser != null) {
                   // 앱 사용자를 긴급 연락처로 추가
                   final contact = EmergencyContact.fromAppUser(
@@ -638,14 +641,6 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
                   success = await service.addContact(contact);
                 }
 
-                // 확실하게 다이얼로그 닫기 (중첩된 다이얼로그가 있을 수 있으므로)
-                Navigator.of(context).pop();
-
-                // 혹시 모든 다이얼로그가 닫히지 않았을 경우를 대비해 GetX 라우터로 모든 다이얼로그 닫기 시도
-                while (Get.isDialogOpen ?? false) {
-                  Get.back();
-                }
-
                 // 성공 여부에 따라 메시지 표시
                 if (success) {
                   Get.snackbar(
@@ -658,16 +653,7 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
                   );
                 }
               } catch (e) {
-                // 오류 발생 시 다이얼로그 닫기 확인 후 오류 메시지 표시
-                if (Navigator.of(context).canPop()) {
-                  Navigator.of(context).pop();
-                }
-
-                // 혹시 모든 다이얼로그가 닫히지 않았을 경우를 대비해 GetX 라우터로 모든 다이얼로그 닫기 시도
-                while (Get.isDialogOpen ?? false) {
-                  Get.back();
-                }
-
+                // 오류 발생 시 오류 메시지 표시
                 Get.snackbar(
                   '오류',
                   '연락처 추가 중 오류가 발생했습니다: $e',

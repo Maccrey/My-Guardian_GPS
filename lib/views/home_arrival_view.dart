@@ -371,41 +371,58 @@ class _HomeArrivalViewState extends State<HomeArrivalView>
         // 진동 피드백
         HapticFeedback.mediumImpact();
 
-        // 메시지 구성 - 위치 정보와 함께
-        final fullMessage = '🏠 귀가 알림: $message\n'
-            '📍 ${selectedHome.name} (${selectedHome.address})';
+        // 앱 사용자 긴급 연락처라면 userId로 메시지 전송
+        if (selectedContact.isAppUser && selectedContact.userId != null) {
+          debugPrint('📤 긴급 연락처 앱 사용자 ID: ${selectedContact.userId}');
 
-        // 실제로 메시지 전송 (MessageService 사용)
-        final success = await _messageService.sendMessageToEmergencyContact(
-          contactId: selectedContact.id,
-          content: fullMessage,
-          messageType: 'home_arrival',
-        );
+          // userId가 비어 있지 않은지 확인
+          if (selectedContact.userId!.isEmpty) {
+            Get.snackbar(
+              '사용자 ID 오류',
+              '연락처의 사용자 ID가 유효하지 않습니다.',
+              snackPosition: SnackPosition.BOTTOM,
+              backgroundColor: Colors.red.shade700,
+              colorText: Colors.white,
+            );
+            return;
+          }
 
-        if (success) {
-          Get.snackbar(
-            '알림 전송',
-            '${selectedContact.name}님에게 귀가 알림을 전송했습니다.',
-            snackPosition: SnackPosition.BOTTOM,
-            backgroundColor: Colors.green.shade600,
-            colorText: Colors.white,
-            duration: const Duration(seconds: 5),
+          // 메시지 서비스를 통해 직접 메시지 전송
+          final messageService = Get.find<MessageService>();
+          final success = await messageService.sendMessage(
+            receiverId: selectedContact.userId!,
+            content: message,
+            messageType: 'home_arrival',
           );
 
-          // 메시지 필드 초기화
-          _messageController.clear();
+          if (success) {
+            Get.snackbar(
+              '성공',
+              '${selectedContact.name}님에게 귀가 알림을 보냈습니다.',
+              snackPosition: SnackPosition.BOTTOM,
+              backgroundColor: Colors.green.shade600,
+              colorText: Colors.white,
+            );
+            _messageController.clear();
+          } else {
+            Get.snackbar(
+              '실패',
+              '귀가 알림 전송에 실패했습니다.',
+              snackPosition: SnackPosition.BOTTOM,
+              backgroundColor: Colors.red.shade700,
+              colorText: Colors.white,
+            );
+          }
         } else {
+          // 일반 연락처: 메시지 전송 불가 안내
           Get.snackbar(
-            '실패',
-            '귀가 알림 전송에 실패했습니다.',
+            '메시지 전송 불가',
+            '앱 사용자가 아닌 연락처에는 앱 내 메시지를 보낼 수 없습니다. (추후 SMS 지원 예정)',
             snackPosition: SnackPosition.BOTTOM,
             backgroundColor: Colors.red.shade700,
             colorText: Colors.white,
           );
         }
-
-        // 메시지 필드 초기화
-        _messageController.clear();
       } catch (e) {
         Get.snackbar(
           '오류',
@@ -506,11 +523,14 @@ class _HomeArrivalViewState extends State<HomeArrivalView>
                           children: [
                             const Icon(Icons.home, color: Colors.blue),
                             const SizedBox(width: 8),
-                            const Text(
-                              '선택된 집 위치:',
-                              style: TextStyle(fontWeight: FontWeight.bold),
+                            Expanded(
+                              child: Text(
+                                '선택된 집 위치:',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
                             ),
-                            const Spacer(),
                             if (selectedHome != null)
                               TextButton(
                                 onPressed: () {
@@ -686,10 +706,17 @@ class _HomeArrivalViewState extends State<HomeArrivalView>
                         Card(
                           margin: const EdgeInsets.only(bottom: 8),
                           child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundImage: NetworkImage(
-                                  _selectedUser.value!.profileImageUrl ?? ''),
-                            ),
+                            leading: (_selectedUser.value!.profileImageUrl !=
+                                        null &&
+                                    _selectedUser
+                                        .value!.profileImageUrl!.isNotEmpty)
+                                ? CircleAvatar(
+                                    backgroundImage: NetworkImage(
+                                        _selectedUser.value!.profileImageUrl!),
+                                  )
+                                : CircleAvatar(
+                                    child: Icon(Icons.person),
+                                  ),
                             title:
                                 Text(_selectedUser.value!.nickname ?? '이름 없음'),
                             subtitle:
@@ -758,10 +785,17 @@ class _HomeArrivalViewState extends State<HomeArrivalView>
                                       final user = _searchResults[index];
                                       return ListTile(
                                         dense: true,
-                                        leading: CircleAvatar(
-                                          backgroundImage: NetworkImage(
-                                              user.profileImageUrl ?? ''),
-                                        ),
+                                        leading: (user.profileImageUrl !=
+                                                    null &&
+                                                user.profileImageUrl!
+                                                    .isNotEmpty)
+                                            ? CircleAvatar(
+                                                backgroundImage: NetworkImage(
+                                                    user.profileImageUrl!),
+                                              )
+                                            : CircleAvatar(
+                                                child: Icon(Icons.person),
+                                              ),
                                         title: Text(user.nickname ?? '이름 없음'),
                                         subtitle: Text(user.email ?? '이메일 없음'),
                                         onTap: () {

@@ -388,9 +388,14 @@ class HomeLocationService extends GetxController {
     required HomeLocationModel homeLocation,
   }) async {
     try {
+      debugPrint('[sendHomeArrivalMessage] receiverId: $receiverId');
+      debugPrint('[sendHomeArrivalMessage] message: $message');
+      debugPrint(
+          '[sendHomeArrivalMessage] homeLocation: ${homeLocation.name}, ${homeLocation.address}, ${homeLocation.latitude}, ${homeLocation.longitude}');
       // MessageService가 없으면 실패
       if (_messageService == null) {
         errorMessage.value = '메시지 서비스가 초기화되지 않았습니다.';
+        debugPrint('[sendHomeArrivalMessage] 실패: 메시지 서비스가 초기화되지 않음');
         return false;
       }
 
@@ -398,6 +403,7 @@ class HomeLocationService extends GetxController {
       final userId = _authService.uid;
       if (userId == null) {
         errorMessage.value = '로그인 상태를 확인할 수 없습니다.';
+        debugPrint('[sendHomeArrivalMessage] 실패: 로그인 상태 없음');
         return false;
       }
 
@@ -415,12 +421,16 @@ class HomeLocationService extends GetxController {
       // 메시지 내용을 JSON으로 변환
       final String locationContent = json.encode(locationData);
 
+      debugPrint('[sendHomeArrivalMessage] 전송 데이터: $locationContent');
+
       // 메시지 전송
       final success = await _messageService!.sendMessage(
         receiverId: receiverId,
         content: locationContent,
         messageType: 'location_arrival',
       );
+
+      debugPrint('[sendHomeArrivalMessage] sendMessage 반환값: $success');
 
       if (success) {
         debugPrint('✅ 귀가 알림 메시지 전송 성공');

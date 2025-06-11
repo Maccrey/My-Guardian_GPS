@@ -64,6 +64,10 @@ class HomeArrivalService extends GetxController {
       _locationService = Get.find<LocationService>();
       _authService = Get.find<AuthService>();
       _messageService = Get.find<MessageService>();
+      // EmergencyContactService 안전하게 등록 및 초기화
+      if (!Get.isRegistered<EmergencyContactService>()) {
+        Get.put(EmergencyContactService(), permanent: true);
+      }
       _emergencyContactService = Get.find<EmergencyContactService>();
       _homeLocationService = await HomeLocationService.getInstance();
 
@@ -144,25 +148,27 @@ class HomeArrivalService extends GetxController {
   }
 
   // 설정 저장
-  Future<void> _saveSettings() async {
+  Future<bool> _saveSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      // 귀가 추적 활성화 여부
-      await prefs.setBool(PREF_TRACKING_ENABLED, isTrackingEnabled.value);
-
-      // 집 반경
-      await prefs.setInt(PREF_HOME_RADIUS, homeRadiusMeters.value);
-
-      // 도착 메시지
+      // 알림 메시지 저장
       await prefs.setString(PREF_ARRIVAL_MESSAGE, arrivalMessage.value);
 
-      // 수신자 ID 목록
+      // 메시지 수신자 저장
       await prefs.setStringList(PREF_RECIPIENT_IDS, messageRecipientIds);
 
-      debugPrint('✅ HomeArrivalService 설정 저장 완료');
+      // 집 반경 저장
+      await prefs.setInt(PREF_HOME_RADIUS, homeRadiusMeters.value);
+
+      // 추적 활성화 상태 저장
+      await prefs.setBool(PREF_TRACKING_ENABLED, isTrackingEnabled.value);
+
+      debugPrint('✅ 모든 설정이 저장되었습니다.');
+      return true;
     } catch (e) {
-      debugPrint('❌ HomeArrivalService 설정 저장 오류: $e');
+      debugPrint('❌ 설정 저장 중 오류가 발생했습니다: $e');
+      return false;
     }
   }
 
@@ -355,44 +361,104 @@ class HomeArrivalService extends GetxController {
 
   // 메시지 전송 로직
   Future<void> _sendArrivalMessage() async {
+    // 집 위치 정보 가져오기
+    final homeLocation = _homeLocationService!.getSelectedHomeLocation();
+    if (homeLocation == null) {
+      debugPrint('❌ 선택된 집 위치 정보가 없어 메시지를 보낼 수 없습니다.');
+      return;
+    }
+
+    // 수신자 ID가 없는 경우 확인
+    if (messageRecipientIds.isEmpty) {
+      debugPrint('❌ 메시지 수신자가 지정되지 않았습니다. 메시지를 보낼 수 없습니다.');
+      lastEventMessage.value = '메시지 수신자가 지정되지 않아 알림을 보낼 수 없습니다.';
+      return;
+    }
+
+    // EmergencyContactService null 체크
+    if (_emergencyContactService == null) {
+      debugPrint('❌ EmergencyContactService가 초기화되지 않았습니다.');
+      lastEventMessage.value = '긴급 연락처 서비스가 초기화되지 않았습니다.';
+      return;
+    }
+
+    debugPrint('📤 귀가 알림 메시지 전송 시작: ${messageRecipientIds.length}명의 수신자');
+    debugPrint('📤 수신자 목록: ${messageRecipientIds.join(", ")}');
+    debugPrint('📤 메시지 내용: ${arrivalMessage.value}');
+
+    bool atLeastOneSuccess = false;
+
     for (final recipientId in messageRecipientIds) {
       try {
         debugPrint('📤 귀가 알림 메시지 전송 시도: $recipientId');
 
-        // 긴급 연락처 ID인지 확인 (일반적으로 사용자 ID와 구분하기 위한 접두사 체크)
-        final isEmergencyContact = recipientId.startsWith('emergency_') ||
-            _emergencyContactService.contacts
-                .any((contact) => contact.id == recipientId);
+        if (recipientId.isEmpty) {
+          debugPrint('⚠️ 수신자 ID가 비어 있습니다. 건너뜁니다.');
+          continue;
+        }
 
-        if (isEmergencyContact) {
-          // 긴급 연락처에 메시지 전송
-          debugPrint('📱 긴급 연락처에 메시지 전송: $recipientId');
-          final success = await _messageService.sendMessageToEmergencyContact(
-            contactId: recipientId,
-            content: arrivalMessage.value,
-            messageType: 'home_arrival',
-          );
+        // 긴급 연락처 객체 찾기
+        final contact = _emergencyContactService.contacts
+            .firstWhereOrNull((c) => c.id == recipientId);
+        if (contact != null) {
+          debugPrint('🔍 수신자 타입: 긴급 연락처 - ${contact.name} (ID: ${contact.id})');
+          debugPrint(
+              '🔍 긴급 연락처 정보: 앱사용자=${contact.isAppUser}, userId=${contact.userId}');
 
-          if (success) {
-            debugPrint('✅ 긴급 연락처에 귀가 알림 메시지 전송 성공: $recipientId');
-            lastEventMessage.value = '긴급 연락처에 귀가 알림 메시지 전송 성공';
+          if (contact.isAppUser &&
+              contact.userId != null &&
+              contact.userId!.isNotEmpty) {
+            // 앱 사용자로 등록된 긴급 연락처라면 userId로 메시지 전송
+            debugPrint('📤 앱 사용자 긴급 연락처로 메시지 전송 시도: userId=${contact.userId}');
+
+            final success = await _homeLocationService!.sendHomeArrivalMessage(
+              receiverId: contact.userId!,
+              message: arrivalMessage.value,
+              homeLocation: homeLocation,
+            );
+
+            if (success) {
+              debugPrint('✅ 긴급 연락처(앱 사용자) ${contact.name}에게 귀가 알림 메시지 전송 성공');
+              lastEventMessage.value = '${contact.name}님에게 귀가 알림을 전송했습니다.';
+              atLeastOneSuccess = true;
+            } else {
+              debugPrint('❌ 긴급 연락처(앱 사용자) ${contact.name}에게 메시지 전송 실패');
+              throw Exception('긴급 연락처(앱 사용자) 메시지 전송 실패');
+            }
           } else {
-            throw Exception('긴급 연락처 메시지 전송 실패');
+            // 일반 연락처(앱 사용자가 아님) - 메시지 전송 불가
+            debugPrint(
+                '⚠️ 일반 연락처(앱 사용자가 아님)에는 메시지를 보낼 수 없습니다: ${contact.name}');
+            continue;
           }
         } else {
-          // 일반 사용자에게 메시지 전송
-          await _messageService.sendMessage(
+          // 앱 사용자(긴급 연락처가 아님)
+          debugPrint('🔍 수신자 타입: 앱 사용자 (ID: $recipientId)');
+          final success = await _homeLocationService!.sendHomeArrivalMessage(
             receiverId: recipientId,
-            content: arrivalMessage.value,
-            messageType: 'home_arrival',
+            message: arrivalMessage.value,
+            homeLocation: homeLocation,
           );
-          debugPrint('✅ 사용자에게 귀가 알림 메시지 전송 성공: $recipientId');
-          lastEventMessage.value = '귀가 알림 메시지 전송 성공';
+          if (success) {
+            debugPrint('✅ 앱 사용자에게 귀가 알림 메시지 전송 성공: $recipientId');
+            lastEventMessage.value = '앱 사용자에게 귀가 알림 메시지 전송 성공';
+            atLeastOneSuccess = true;
+          } else {
+            debugPrint('❌ 앱 사용자에게 메시지 전송 실패: $recipientId');
+            throw Exception('앱 사용자 메시지 전송 실패');
+          }
         }
       } catch (e, stack) {
         debugPrint('❌ 귀가 알림 메시지 전송 실패: $e\n$stack');
         lastEventMessage.value = '귀가 알림 메시지 전송 실패: $e';
       }
+    }
+
+    if (atLeastOneSuccess) {
+      debugPrint('✅ 적어도 하나의 메시지가 성공적으로 전송되었습니다.');
+    } else {
+      debugPrint('❌ 모든 메시지 전송이 실패했습니다.');
+      lastEventMessage.value = '모든 귀가 알림 메시지 전송이 실패했습니다.';
     }
   }
 
@@ -571,9 +637,55 @@ class HomeArrivalService extends GetxController {
 
   // 메시지 수신자 설정
   Future<void> setMessageRecipients(List<String> recipientIds) async {
-    messageRecipientIds.value = recipientIds;
-    await _saveSettings();
-    debugPrint('✅ 메시지 수신자 설정 완료: ${recipientIds.length}명');
+    if (recipientIds.isEmpty) {
+      debugPrint('⚠️ 빈 수신자 목록이 전달되었습니다.');
+      return;
+    }
+
+    // 유효하지 않은 ID 필터링
+    final validRecipientIds =
+        recipientIds.where((id) => id.isNotEmpty).toList();
+
+    if (validRecipientIds.isEmpty) {
+      debugPrint('❌ 유효한 수신자 ID가 없습니다.');
+      return;
+    }
+
+    // 기존 수신자 목록 백업
+    final previousRecipients = List<String>.from(messageRecipientIds);
+
+    // 새 수신자 목록 설정
+    messageRecipientIds.value = validRecipientIds;
+
+    // 설정 저장
+    final success = await _saveSettings();
+
+    if (success) {
+      debugPrint('✅ 메시지 수신자 설정 완료: ${validRecipientIds.length}명');
+      debugPrint('👥 수신자 목록: ${validRecipientIds.join(", ")}');
+
+      // 이전 목록과 비교
+      if (!_listEquals(previousRecipients, validRecipientIds)) {
+        debugPrint('🔄 수신자 목록이 변경되었습니다:');
+        debugPrint('   이전: ${previousRecipients.join(", ")}');
+        debugPrint('   현재: ${validRecipientIds.join(", ")}');
+      } else {
+        debugPrint('ℹ️ 수신자 목록이 변경되지 않았습니다.');
+      }
+    } else {
+      debugPrint('❌ 메시지 수신자 설정 저장 실패');
+      // 실패 시 복원
+      messageRecipientIds.value = previousRecipients;
+    }
+  }
+
+  // 두 리스트가 동일한지 확인하는 헬퍼 함수
+  bool _listEquals(List<String> list1, List<String> list2) {
+    if (list1.length != list2.length) return false;
+    for (int i = 0; i < list1.length; i++) {
+      if (list1[i] != list2[i]) return false;
+    }
+    return true;
   }
 
   // 도착 메시지 설정
