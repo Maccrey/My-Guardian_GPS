@@ -35,7 +35,14 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
+    try {
+      super.dispose();
+    } catch (e, stack) {
+      print('dispose()에서 예외 발생:');
+      print(e);
+      print(stack);
+      rethrow;
+    }
   }
 
   @override
@@ -550,12 +557,22 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
                             Checkbox(
                               value: canShareLocation,
                               onChanged: (value) {
+                                // Get.back 호출 후 데이터 저장
+                                final nameText = nameController.text;
+                                final phoneText = phoneController.text;
+                                final descText = descriptionController.text;
+
                                 Get.back();
+
+                                // 새 데이터로 다이얼로그 다시 열기
                                 _showContactAddForm(
                                   context,
-                                  nameCtrl: nameController,
-                                  phoneCtrl: phoneController,
-                                  descCtrl: descriptionController,
+                                  nameCtrl:
+                                      TextEditingController(text: nameText),
+                                  phoneCtrl:
+                                      TextEditingController(text: phoneText),
+                                  descCtrl:
+                                      TextEditingController(text: descText),
                                   searchCtrl: searchController,
                                   selected: selectedUser,
                                   isLocationSharingEnabled: value ?? false,
@@ -601,48 +618,56 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
           ),
           TextButton(
             onPressed: () async {
-              // 이름과 전화번호 필수
-              if (nameController.text.isEmpty || phoneController.text.isEmpty) {
+              // 이름과 전화번호가 비어있는지 확인
+              if (nameController.text.trim().isEmpty ||
+                  phoneController.text.trim().isEmpty) {
                 Get.snackbar(
-                  '오류',
-                  '이름과 전화번호는 필수입니다.',
+                  '입력 오류',
+                  '이름과 전화번호는 필수 입력 사항입니다.',
                   snackPosition: SnackPosition.BOTTOM,
+                  backgroundColor: Colors.red.shade100,
+                  colorText: Colors.black87,
                 );
                 return;
               }
 
-              final service = Get.find<EmergencyContactService>();
-              bool success = false;
+              // 작업 전에 필요한 데이터 저장
+              final String name = nameController.text.trim();
+              final String phone = phoneController.text.trim();
+              final String description = descriptionController.text.trim();
+              final UserModel? user = selectedUser;
+              final bool shareLocation = canShareLocation;
+
+              // 모든 다이얼로그 강제로 닫기
+              Get.back();
 
               try {
-                // 먼저 다이얼로그 닫기
-                Navigator.of(context, rootNavigator: true).pop();
-
-                if (selectedUser != null) {
+                bool success = false;
+                if (user != null) {
                   // 앱 사용자를 긴급 연락처로 추가
                   final contact = EmergencyContact.fromAppUser(
-                    userId: selectedUser.uid,
-                    name: nameController.text.trim(),
-                    email: selectedUser.email,
-                    phoneNumber: phoneController.text.trim(),
-                    relationship: canShareLocation
-                        ? '앱 사용자 (위치 공유 가능)'
-                        : descriptionController.text.trim(),
+                    userId: user.uid,
+                    name: name,
+                    email: user.email,
+                    phoneNumber: phone,
+                    relationship:
+                        shareLocation ? '앱 사용자 (위치 공유 가능)' : description,
                   );
-                  success = await service.addContact(contact);
+                  success = await emergencyContactService.addContact(contact);
                 } else {
                   // 일반 연락처 추가
                   final contact = EmergencyContact(
                     id: const Uuid().v4(),
-                    name: nameController.text.trim(),
-                    phoneNumber: phoneController.text.trim(),
-                    description: descriptionController.text.trim(),
+                    name: name,
+                    phoneNumber: phone,
+                    description: description,
                   );
-                  success = await service.addContact(contact);
+                  success = await emergencyContactService.addContact(contact);
                 }
 
                 // 성공 여부에 따라 메시지 표시
                 if (success) {
+                  Get.back();
                   Get.snackbar(
                     '성공',
                     '연락처가 추가되었습니다.',
@@ -653,7 +678,6 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
                   );
                 }
               } catch (e) {
-                // 오류 발생 시 오류 메시지 표시
                 Get.snackbar(
                   '오류',
                   '연락처 추가 중 오류가 발생했습니다: $e',
@@ -1144,10 +1168,8 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
                                   Checkbox(
                                     value: canShareLocation.value,
                                     onChanged: (value) {
-                                      // 상태 업데이트
+                                      // 상태 업데이트만 하고 context 사용 없음
                                       canShareLocation.value = value ?? false;
-                                      print(
-                                          '체크박스 상태 변경: ${canShareLocation.value}');
                                     },
                                   ),
                                   Expanded(
@@ -1203,88 +1225,62 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
         actions: [
           TextButton(
             onPressed: () {
-              print('취소 버튼 클릭 - 모든 다이얼로그 닫기 시도');
-
-              // 현재 다이얼로그 닫기
-              if (Navigator.of(context).canPop()) {
-                Navigator.of(context).pop();
-              }
-
-              // 모든 GetX 다이얼로그 닫기
-              while (Get.isDialogOpen ?? false) {
-                Get.back();
-              }
-
-              // 추가 안전 장치: 2초 후 다시 확인
-              Future.delayed(const Duration(seconds: 2), () {
-                if (Get.isDialogOpen ?? false) {
-                  print('취소 후 2초 경과 - 열린 다이얼로그 추가 닫기');
-                  Get.back(closeOverlays: true);
-                }
-              });
+              // 모든 다이얼로그 닫기 (context 사용 없이)
+              Get.back();
             },
             child: const Text('취소'),
           ),
           TextButton(
             onPressed: () async {
-              // 이름과 전화번호 필수
-              if (nameController.text.isEmpty || phoneController.text.isEmpty) {
+              // 이름과 전화번호가 비어있는지 확인
+              if (nameController.text.trim().isEmpty ||
+                  phoneController.text.trim().isEmpty) {
                 Get.snackbar(
-                  '오류',
-                  '이름과 전화번호는 필수입니다.',
+                  '입력 오류',
+                  '이름과 전화번호는 필수 입력 사항입니다.',
                   snackPosition: SnackPosition.BOTTOM,
+                  backgroundColor: Colors.red.shade100,
+                  colorText: Colors.black87,
                 );
                 return;
               }
 
-              try {
-                // 디버그 메시지 추가
-                print(
-                    '연락처 업데이트 시작 - 앱 사용자: ${contact.isAppUser}, 위치 공유: ${canShareLocation.value}');
+              // 작업 전에 필요한 데이터 저장
+              final String name = nameController.text.trim();
+              final String phone = phoneController.text.trim();
+              final String description = descController.text.trim();
+              final bool isLocationEnabled = canShareLocation.value;
 
+              // 다이얼로그 닫기 (context 사용 없이)
+              Get.back();
+
+              try {
                 // 연락처 업데이트
                 EmergencyContact updatedContact;
 
                 if (contact.isAppUser) {
-                  String newRelationship;
-                  if (canShareLocation.value) {
-                    newRelationship = '앱 사용자 (위치 공유 가능)';
-                  } else {
-                    newRelationship = '앱 사용자';
-                  }
+                  String newRelationship =
+                      isLocationEnabled ? '앱 사용자 (위치 공유 가능)' : '앱 사용자';
 
                   updatedContact = contact.copyWith(
-                    name: nameController.text.trim(),
-                    phoneNumber: phoneController.text.trim(),
+                    name: name,
+                    phoneNumber: phone,
                     relationship: newRelationship,
                   );
                 } else {
                   updatedContact = contact.copyWith(
-                    name: nameController.text.trim(),
-                    phoneNumber: phoneController.text.trim(),
-                    description: descController.text.trim(),
+                    name: name,
+                    phoneNumber: phone,
+                    description: description,
                   );
                 }
 
-                // 디버그 메시지 추가
-                print(
-                    '업데이트된 연락처 - 이름: ${updatedContact.name}, 관계: ${updatedContact.relationship}, 설명: ${updatedContact.description}');
-
-                final service = Get.find<EmergencyContactService>();
-                bool success = await service.updateContact(updatedContact);
+                // 연락처 업데이트 수행
+                bool success =
+                    await emergencyContactService.updateContact(updatedContact);
 
                 // 서비스의 연락처 리스트 갱신
-                await service.loadContacts();
-
-                // 확실하게 다이얼로그 닫기
-                if (Navigator.of(context).canPop()) {
-                  Navigator.of(context).pop();
-                }
-
-                // 혹시 모든 다이얼로그가 닫히지 않았을 경우를 대비
-                while (Get.isDialogOpen ?? false) {
-                  Get.back();
-                }
+                await emergencyContactService.loadContacts();
 
                 // 성공 여부에 따라 메시지 표시
                 if (success) {
@@ -1298,18 +1294,6 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
                   );
                 }
               } catch (e) {
-                print('연락처 수정 오류: $e');
-
-                // 오류 발생 시 다이얼로그 닫기 확인 후 오류 메시지 표시
-                if (Navigator.of(context).canPop()) {
-                  Navigator.of(context).pop();
-                }
-
-                // 혹시 모든 다이얼로그가 닫히지 않았을 경우를 대비
-                while (Get.isDialogOpen ?? false) {
-                  Get.back();
-                }
-
                 Get.snackbar(
                   '오류',
                   '연락처 수정 중 오류가 발생했습니다: $e',
@@ -1336,13 +1320,13 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
         content: Text('정말로 ${contact.name}을(를) 삭제하시겠습니까?'),
         actions: [
           TextButton(
-            onPressed: () => Get.back(),
+            onPressed: () => Get.back(closeOverlays: true),
             child: const Text('취소'),
           ),
           TextButton(
             onPressed: () async {
-              final service = Get.find<EmergencyContactService>();
-              bool success = await service.deleteContact(contact.id);
+              bool success =
+                  await emergencyContactService.deleteContact(contact.id);
               Get.back();
 
               // 성공 여부에 따라 메시지 표시
@@ -1391,108 +1375,110 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
       }
     }
 
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
+    // Get.bottomSheet 사용 (showModalBottomSheet 대신)
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 연락처 프로필 헤더
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: CircleAvatar(
+                backgroundColor: Get.theme.colorScheme.primary.withOpacity(0.2),
+                child: Icon(
+                  contact.isAppUser ? Icons.person : Icons.phone,
+                  color: Get.theme.colorScheme.primary,
+                ),
+              ),
+              title: Text(
+                contact.name,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
+              subtitle: Text(
+                contact.relationship ?? (contact.description ?? ''),
+                style: TextStyle(
+                  color: Colors.grey[600],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 구분선
+            Divider(color: Colors.grey[300]),
+
+            // 연락처 정보
+            ListTile(
+              leading: const Icon(Icons.phone),
+              title: const Text('전화번호'),
+              subtitle: Text(contact.phoneNumber),
+              trailing: IconButton(
+                icon: const Icon(Icons.call),
+                onPressed: () => _callPhone(contact.phoneNumber),
+              ),
+            ),
+
+            // 추가 정보 (있는 경우)
+            if (contact.description != null && contact.description!.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text('설명'),
+                subtitle: Text(contact.description!),
+              ),
+
+            // 위치 공유 버튼 (앱 사용자인 경우)
+            locationSharingButton,
+
+            const SizedBox(height: 16),
+
+            // 연락처 관리 버튼
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                // 수정 버튼
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Get.back(); // 바텀시트 닫기
+                    _showEditContactDialog(context, contact);
+                  },
+                  icon: const Icon(Icons.edit),
+                  label: const Text('수정'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Get.theme.colorScheme.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+
+                // 삭제 버튼
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Get.back(); // 바텀시트 닫기
+                    _showDeleteContactDialog(context, contact);
+                  },
+                  icon: const Icon(Icons.delete),
+                  label: const Text('삭제'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 연락처 프로필 헤더
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  backgroundColor:
-                      Theme.of(context).colorScheme.primary.withOpacity(0.2),
-                  child: Icon(
-                    contact.isAppUser ? Icons.person : Icons.phone,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-                title: Text(
-                  contact.name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
-                ),
-                subtitle: Text(
-                  contact.relationship ?? (contact.description ?? ''),
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // 구분선
-              Divider(color: Colors.grey[300]),
-
-              // 연락처 정보
-              ListTile(
-                leading: const Icon(Icons.phone),
-                title: const Text('전화번호'),
-                subtitle: Text(contact.phoneNumber),
-                trailing: IconButton(
-                  icon: const Icon(Icons.call),
-                  onPressed: () => _callPhone(contact.phoneNumber),
-                ),
-              ),
-
-              // 추가 정보 (있는 경우)
-              if (contact.description != null &&
-                  contact.description!.isNotEmpty)
-                ListTile(
-                  leading: const Icon(Icons.info_outline),
-                  title: const Text('설명'),
-                  subtitle: Text(contact.description!),
-                ),
-
-              // 위치 공유 버튼 (앱 사용자인 경우)
-              locationSharingButton,
-
-              const SizedBox(height: 16),
-
-              // 연락처 관리 버튼
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  // 수정 버튼
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _showEditContactDialog(context, contact);
-                    },
-                    icon: const Icon(Icons.edit),
-                    label: const Text('수정'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-
-                  // 삭제 버튼
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _showDeleteContactDialog(context, contact);
-                    },
-                    icon: const Icon(Icons.delete),
-                    label: const Text('삭제'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 

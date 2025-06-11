@@ -13,7 +13,12 @@ buildscript {
     }
 }
 
+// JDK 17 호환성 설정
 allprojects {
+    tasks.withType(JavaCompile).configureEach {
+        options.compilerArgs << '-Xlint:unchecked' << '-Xlint:deprecation'
+    }
+    
     repositories {
         google()
         mavenCentral()
@@ -22,6 +27,12 @@ allprojects {
     plugins.withId('com.android.library') {
         android {
             namespace = "io.flutter.app"  // 기본 네임스페이스 설정
+            
+            // Android 라이브러리에 Java 호환성 설정 추가
+            compileOptions {
+                sourceCompatibility JavaVersion.VERSION_1_8
+                targetCompatibility JavaVersion.VERSION_1_8
+            }
         }
     }
 }

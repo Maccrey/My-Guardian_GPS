@@ -1,17 +1,17 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'dart:async';
-import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'services/auth_service.dart';
 import 'services/message_service.dart';
-import 'services/image_cache_service.dart';
 import 'services/home_arrival_service.dart';
+import 'services/geofence_service.dart';
 import 'views/login_view.dart';
 import 'views/register_view.dart';
 import 'views/forgot_password_view.dart';
@@ -24,7 +24,6 @@ import 'views/app_info_view.dart';
 import 'views/sos_view.dart';
 import 'services/emergency_contact_service.dart';
 import 'services/location_service.dart';
-import 'services/notification_service.dart';
 import 'views/map_view.dart';
 import 'views/settings/settings_view.dart';
 import 'services/settings_service.dart';
@@ -50,6 +49,12 @@ SharedPreferences? prefsInstance;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 화면 방향을 세로(Portrait)로 고정
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp, // 위쪽 세로
+    DeviceOrientation.portraitDown, // 아래쪽 세로 (원하면 뺄 수도 있음)
+  ]);
 
   // Firebase 초기화
   try {
@@ -140,20 +145,27 @@ void main() async {
   // SettingsService 초기화
   await SettingsService.getInstance();
 
-  // 백그라운드에서 도착 시 알림을 위한 HomeArrivalService 초기화
+  // 위치 공유 서비스 및 컨트롤러 초기화
+  Get.put(LocationSharingService());
+  Get.put(LocationSharingController());
+
+  // 필요한 서비스들을 모두 먼저 등록 (HomeArrivalService가 의존하는 서비스들)
+  Get.put(LocationService(), permanent: true);
+  Get.put(AuthService(), permanent: true);
+  Get.put(MessageService(), permanent: true);
+  Get.put(EmergencyContactService(), permanent: true);
+
+  // GeofenceService도 명시적으로 먼저 등록
+  Get.put(GeofenceService(), permanent: true);
+  debugPrint('✅ 필수 서비스 초기화 완료');
+
+  // HomeArrivalService 초기화 (모든 의존성이 등록된 후)
   try {
     await HomeArrivalService.getInstance();
     debugPrint('✅ HomeArrivalService 초기화 성공');
   } catch (e) {
     debugPrint('❌ HomeArrivalService 초기화 오류: $e');
   }
-
-  // 위치 공유 서비스 및 컨트롤러 초기화
-  Get.put(LocationSharingService());
-  Get.put(LocationSharingController());
-
-  // 즉시 생성 및 등록
-  Get.put(LocationService());
 
   // 앱 시작 시 저장된 알림 확인
   try {

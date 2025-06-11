@@ -31,10 +31,11 @@ android {
         applicationId = "com.maccrey.watch_over"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 23
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        multiDexEnabled true
         
         // .env 파일에서 환경 변수 값 읽기
         def envFile = new File(project.rootProject.projectDir.parentFile, '.env')
@@ -74,4 +75,5 @@ dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22"
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.github.yalantis:ucrop:2.2.8'
+    implementation 'androidx.multidex:multidex:2.0.1'
 }

@@ -267,6 +267,84 @@ Watch Over는 학부모와 같은 보호자가 자녀의 위치를 실시간으�
 2. 앱의 라이프사이클 상태 변화를 감지하여 서비스를 적절히 관리합니다.
 3. 배터리 최적화를 위한 위치 업데이트 간격 조정 기능이 있습니다.
 
+### 백그라운드 위치 추적 기능
+
+1. **백그라운드 서비스 구조**:
+
+   - `BackgroundLocationService`: 포그라운드 서비스를 이용한 지속적인 위치 추적
+   - `BackgroundTaskService`: Workmanager를 이용한 주기적 위치 확인
+   - `NotificationService`: 알림 표시 및 관리
+
+2. **포그라운드 서비스**:
+
+   - Android: `AndroidServiceForegroundType.location` 타입으로 실행
+   - iOS: 백그라운드 위치 권한을 이용한 위치 추적
+   - 지속적인 위치 업데이트 (10m 이동 시 또는 최대 30초마다)
+
+3. **주기적 백그라운드 작업**:
+
+   - Workmanager 패키지를 이용한 주기적 위치 확인 (최소 15분 간격)
+   - 집 근처 도착 시 알림 트리거
+
+4. **귀가 알림 기능**:
+
+   - 앱이 백그라운드 상태에서도 집 도착 감지
+   - 위치 추적 상태에서 설정된 집 반경 내 진입 시 알림
+   - 중복 알림 방지 (10분 간격)
+
+5. **백그라운드 모드 설정**:
+   - 사용자가 백그라운드 위치 추적 활성화/비활성화 선택 가능
+   - 배터리 사용량과 위치 추적 정확도 간 균형
+
+### 구현 세부 사항
+
+1. **서비스 초기화**:
+
+   ```dart
+   _backgroundLocationService = BackgroundLocationService.instance;
+   await _backgroundLocationService.init();
+   ```
+
+2. **백그라운드 서비스 시작**:
+
+   ```dart
+   final bgServiceStarted = await _backgroundLocationService.startService();
+   ```
+
+3. **주기적 작업 등록**:
+
+   ```dart
+   await _backgroundTaskService.registerPeriodicLocationCheck(
+     frequency: const Duration(minutes: 15),
+   );
+   ```
+
+4. **백그라운드 서비스 중지**:
+
+   ```dart
+   await _backgroundLocationService.stopService();
+   await _backgroundTaskService.cancelAllTasks();
+   ```
+
+5. **권한 관리**:
+   ```dart
+   // 위치 권한 확인 (LocationPermission.always 필요)
+   final permission = await _checkLocationPermission();
+   ```
+
+### 추적 시작/종료 프로세스
+
+1. **추적 시작**:
+
+   - 위치 권한 및 집 위치 확인
+   - 포그라운드 위치 추적 타이머 시작
+   - 백그라운드 모드 활성화 시 포그라운드 서비스 및 주기적 작업 등록
+
+2. **추적 종료**:
+   - 포그라운드 위치 추적 타이머 중지
+   - 백그라운드 서비스 및 주기적 작업 중지
+   - 추적 상태 초기화
+
 ## 메시지 기능 구현 가이드
 
 ### 기본 아키텍처

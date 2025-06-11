@@ -532,6 +532,28 @@ class EmergencyContactService extends GetxController
     final formattedContact =
         contact.copyWith(phoneNumber: formatPhoneNumber(contact.phoneNumber));
 
+    try {
+      // 현재 사용자 ID 확인
+      final userId = _auth.currentUser?.uid;
+      if (userId != null) {
+        // 사용자의 emergency_contacts 하위 컬렉션에 추가
+        await _firestore
+            .collection('users')
+            .doc(userId)
+            .collection('emergency_contacts')
+            .doc(formattedContact.id)
+            .set(formattedContact.toJson());
+
+        debugPrint('✅ Firestore에 긴급 연락처 저장 성공: ${formattedContact.name}');
+      } else {
+        debugPrint('⚠️ 로그인된 사용자가 없어 Firestore 저장 건너뜀');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Firestore 저장 실패 (로컬에만 저장): $e');
+      // Firestore 저장 실패는 무시하고 로컬에만 저장 계속 진행
+    }
+
+    // 로컬 저장소 및 메모리에 저장
     final newList = [...contacts, formattedContact];
     bool result = await saveContacts(newList);
     return result;
@@ -543,6 +565,28 @@ class EmergencyContactService extends GetxController
     final formattedContact = updatedContact.copyWith(
         phoneNumber: formatPhoneNumber(updatedContact.phoneNumber));
 
+    try {
+      // 현재 사용자 ID 확인
+      final userId = _auth.currentUser?.uid;
+      if (userId != null && !formattedContact.isDefault) {
+        // 사용자의 emergency_contacts 하위 컬렉션 업데이트
+        await _firestore
+            .collection('users')
+            .doc(userId)
+            .collection('emergency_contacts')
+            .doc(formattedContact.id)
+            .update(formattedContact.toJson());
+
+        debugPrint('✅ Firestore에서 긴급 연락처 업데이트 성공: ${formattedContact.name}');
+      } else {
+        debugPrint('⚠️ 기본 연락처이거나 로그인된 사용자가 없어 Firestore 업데이트 건너뜀');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Firestore 업데이트 실패 (로컬에만 적용): $e');
+      // Firestore 업데이트 실패는 무시하고 로컬에만 저장 계속 진행
+    }
+
+    // 로컬 저장소 및 메모리에 저장
     final newList = contacts.map((contact) {
       return contact.id == formattedContact.id ? formattedContact : contact;
     }).toList();
@@ -567,6 +611,29 @@ class EmergencyContactService extends GetxController
         return false;
       }
 
+      // Firestore에서도 삭제
+      try {
+        // 현재 사용자 ID 확인
+        final userId = _auth.currentUser?.uid;
+        if (userId != null) {
+          // 사용자의 emergency_contacts 하위 컬렉션에서 삭제
+          await _firestore
+              .collection('users')
+              .doc(userId)
+              .collection('emergency_contacts')
+              .doc(id)
+              .delete();
+
+          debugPrint('✅ Firestore에서 긴급 연락처 삭제 성공: $id');
+        } else {
+          debugPrint('⚠️ 로그인된 사용자가 없어 Firestore 삭제 건너뜀');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Firestore 삭제 실패 (로컬에만 적용): $e');
+        // Firestore 삭제 실패는 무시하고 로컬에만 저장 계속 진행
+      }
+
+      // 로컬 저장소 및 메모리에서 삭제
       final newList = contacts.where((contact) => contact.id != id).toList();
       bool result = await saveContacts(newList);
       return result;
@@ -646,28 +713,36 @@ class EmergencyContactService extends GetxController
   Future<void> _loadUserContacts() async {
     try {
       final userId = _auth.currentUser?.uid;
-      if (userId == null) return;
+      if (userId == null) {
+        debugPrint('⚠️ 로그인된 사용자가 없어 Firestore 로드 건너뜀');
+        return;
+      }
 
       // 로컬 저장소에서 먼저 로드 (오프라인 지원)
       await _loadContactsFromLocal();
 
-      // Firestore에서 로드
-      final snapshot = await _firestore
-          .collection('users')
-          .doc(userId)
-          .collection('emergency_contacts')
-          .get();
+      try {
+        // Firestore에서 사용자의 하위 컬렉션에서 연락처 로드
+        final snapshot = await _firestore
+            .collection('users')
+            .doc(userId)
+            .collection('emergency_contacts')
+            .get();
 
-      final List<EmergencyContact> contacts = snapshot.docs
-          .map((doc) => EmergencyContact.fromFirestore(doc))
-          .toList();
+        final List<EmergencyContact> loadedContacts = snapshot.docs
+            .map((doc) => EmergencyContact.fromFirestore(doc))
+            .toList();
 
-      userContacts.value = contacts;
+        userContacts.value = loadedContacts;
+        debugPrint('✅ Firestore에서 사용자 연락처 ${loadedContacts.length}개 로드 성공');
 
-      // 로컬 저장소에 저장
-      _saveContactsToLocal();
+        // 로컬 저장소에 저장
+        _saveContactsToLocal();
+      } catch (e) {
+        debugPrint('⚠️ Firestore 로드 실패 (로컬 데이터 유지): $e');
+      }
     } catch (e) {
-      print('연락처 로드 오류: $e');
+      debugPrint('❌ 연락처 로드 오류: $e');
     }
   }
 

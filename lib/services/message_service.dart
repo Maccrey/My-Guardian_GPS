@@ -1385,12 +1385,18 @@ class MessageService extends GetxController {
         }
 
         // 알림 표시
-        await _notificationService!.showMessageNotification(
-          senderName: senderName,
-          messageContent: messageContent,
-          senderId: latestMessage.senderId,
-          id: latestMessage.hashCode,
-        );
+        try {
+          // 알림 설정
+          final notificationService = await NotificationService.getInstance();
+          await notificationService.showMessageNotification(
+            id: 0,
+            senderName: senderName,
+            message: messageContent,
+            senderId: latestMessage.senderId,
+          );
+        } catch (e) {
+          debugPrint('⚠️ 알림 표시 오류: $e');
+        }
 
         // 알림을 표시한 메시지 ID 저장
         _lastNotifiedMessageId = latestMessage.id;

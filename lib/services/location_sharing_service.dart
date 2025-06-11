@@ -1076,18 +1076,13 @@ class LocationSharingService extends GetxController {
 
         // 로컬 알림 보내기 (백그라운드 서비스용)
         try {
-          // 로컬 알림 사용을 위한 NotificationService 인스턴스 가져오기
-          final notificationService = await Get.putAsync(
-              () async => await NotificationService.getInstance(),
-              permanent: true);
-
-          // 위치 공유 알림 표시
+          // 알림 표시
+          final notificationService = await NotificationService.getInstance();
           await notificationService.showLocationSharingNotification(
-            senderName: senderName,
-            message: message,
-            senderId: currentUserId,
-            isStarting: isStarting,
-            locationId: locationId,
+            id: 0,
+            title: '$senderName 님이 위치 공유를 시작했습니다',
+            body: '위치 추적을 시작합니다.',
+            userId: currentUserId,
           );
 
           print('🔔 [서비스] 위치 공유 알림 전송 완료 (FCM 대체)');
@@ -1103,21 +1098,16 @@ class LocationSharingService extends GetxController {
 
       // 로컬 알림 보내기
       try {
-        // 로컬 알림 사용을 위한 NotificationService 인스턴스 가져오기
-        final notificationService = await Get.putAsync(
-            () async => await NotificationService.getInstance(),
-            permanent: true);
-
-        // 위치 공유 알림 표시
+        // 알림 표시
+        final notificationService = await NotificationService.getInstance();
         await notificationService.showLocationSharingNotification(
-          senderName: senderName,
-          message: message,
-          senderId: currentUserId,
-          isStarting: isStarting,
-          locationId: locationId,
+          id: 0,
+          title: '$senderName 님이 위치 공유를 시작했습니다',
+          body: '위치 추적을 시작합니다.',
+          userId: currentUserId,
         );
 
-        print('🔔 [서비스] 위치 공유 알림 전송 완료');
+        print('�� [서비스] 위치 공유 알림 전송 완료');
       } catch (e) {
         print('⚠️ [서비스] 위치 공유 알림 전송 오류: $e');
       }

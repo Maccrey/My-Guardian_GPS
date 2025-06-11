@@ -1045,6 +1045,177 @@ class _HomeArrivalViewState extends State<HomeArrivalView>
                         ),
                       ),
                     ),
+
+                    // 테스트 버튼 추가
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12.0),
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          // 테스트 목적으로 집 도착 이벤트 트리거
+                          final result =
+                              await _homeArrivalService.testHomeArrival();
+                          if (result) {
+                            Get.snackbar(
+                              '테스트 성공',
+                              '집 도착 이벤트가 트리거되었습니다.',
+                              snackPosition: SnackPosition.BOTTOM,
+                              backgroundColor: Colors.green.shade600,
+                              colorText: Colors.white,
+                            );
+                          } else {
+                            Get.snackbar(
+                              '테스트 실패',
+                              '집 도착 이벤트를 트리거할 수 없습니다. 집 위치와 수신자를 확인하세요.',
+                              snackPosition: SnackPosition.BOTTOM,
+                              backgroundColor: Colors.red.shade700,
+                              colorText: Colors.white,
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.science),
+                        label: const Text('집 도착 알림 테스트'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
+
+                    // 위치 디버그 정보 표시
+                    Padding(
+                      padding: const EdgeInsets.only(top: 20.0),
+                      child: Card(
+                        color: Colors.grey.shade100,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.location_on,
+                                      color: Colors.blue.shade700),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    '위치 정보',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+
+                              // 현재 위치 정보
+                              Obx(() {
+                                final currentLocation =
+                                    _locationService.currentLocation.value;
+                                return Row(
+                                  children: [
+                                    const Text('현재 위치: ',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold)),
+                                    Expanded(
+                                      child: Text(
+                                        currentLocation != null
+                                            ? '${currentLocation.latitude.toStringAsFixed(6)}, ${currentLocation.longitude.toStringAsFixed(6)}'
+                                            : '위치 정보 없음',
+                                        style: TextStyle(
+                                          color: currentLocation != null
+                                              ? Colors.black
+                                              : Colors.red,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }),
+
+                              const SizedBox(height: 8),
+
+                              // 집 위치 정보
+                              Obx(() {
+                                final homeLocation = _homeLocationService
+                                    .getSelectedHomeLocation();
+                                return Row(
+                                  children: [
+                                    const Text('집 위치: ',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold)),
+                                    Expanded(
+                                      child: Text(
+                                        homeLocation != null
+                                            ? '${homeLocation.name} (${homeLocation.latitude.toStringAsFixed(6)}, ${homeLocation.longitude.toStringAsFixed(6)})'
+                                            : '등록된 집 위치 없음',
+                                        style: TextStyle(
+                                          color: homeLocation != null
+                                              ? Colors.black
+                                              : Colors.red,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }),
+
+                              const SizedBox(height: 8),
+
+                              // 집까지 거리 및 반경 정보
+                              Row(
+                                children: [
+                                  const Text('설정된 반경: ',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold)),
+                                  Obx(() => Text(
+                                      '${_homeArrivalService.homeRadiusMeters.value}m')),
+                                ],
+                              ),
+
+                              const SizedBox(height: 12),
+
+                              // 진행 상태 표시
+                              Obx(() {
+                                final status =
+                                    _homeArrivalService.trackingStatus.value;
+                                final message =
+                                    _homeArrivalService.lastEventMessage.value;
+
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '현재 상태: $status',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                    if (message.isNotEmpty &&
+                                        message.startsWith('집과의 거리:'))
+                                      Padding(
+                                        padding:
+                                            const EdgeInsets.only(top: 8.0),
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.directions_walk,
+                                                size: 18),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              message,
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.bold),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              }),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
                     // 안내 메시지 표시
                     Obx(() {
                       final msg = _homeArrivalService.lastEventMessage.value;
@@ -1325,5 +1496,20 @@ class _HomeArrivalViewState extends State<HomeArrivalView>
         ],
       ),
     );
+  }
+}
+
+// HomeLocationService의 확장 메서드
+extension HomeLocationServiceExtension on HomeLocationService {
+  // 선택된 홈 위치를 안전하게 가져오는 메서드
+  HomeLocationModel? getSelectedHomeLocation() {
+    try {
+      if (selectedHomeLocationId.value.isEmpty) return null;
+      return homeLocations
+          .firstWhereOrNull((loc) => loc.id == selectedHomeLocationId.value);
+    } catch (e) {
+      debugPrint('❌ 선택된 홈 위치 가져오기 오류: $e');
+      return null;
+    }
   }
 }
