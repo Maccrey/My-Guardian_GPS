@@ -152,6 +152,9 @@ void main() async {
   Get.put(LocationSharingService());
   Get.put(LocationSharingController());
 
+  // 즉시 생성 및 등록
+  Get.put(LocationService());
+
   // 앱 시작 시 저장된 알림 확인
   try {
     // 앱이 재시작될 때 발송되지 못한 귀가 알림이 있는지 확인

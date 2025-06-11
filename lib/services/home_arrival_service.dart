@@ -10,6 +10,7 @@ import 'package:watch_over/services/auth_service.dart';
 import 'package:watch_over/services/message_service.dart';
 import 'package:watch_over/services/emergency_contact_service.dart';
 import 'package:watch_over/services/home_location_service.dart';
+import 'package:watch_over/services/geofence_service.dart';
 
 /// 귀가 알림 및 안전 도착 서비스
 class HomeArrivalService extends GetxController {
@@ -51,10 +52,9 @@ class HomeArrivalService extends GetxController {
   late AuthService _authService;
   late EmergencyContactService _emergencyContactService;
   HomeLocationService? _homeLocationService;
+  late GeofenceService _geofenceService;
 
-  // 위치 추적 타이머 및 상태
-  Timer? _trackingTimer;
-  static const int _trackingIntervalSeconds = 10; // 위치 확인 주기(초)
+  // 추적 상태 변수
   bool _hasSentArrivalMessage = false;
 
   // 초기화
@@ -70,6 +70,9 @@ class HomeArrivalService extends GetxController {
       }
       _emergencyContactService = Get.find<EmergencyContactService>();
       _homeLocationService = await HomeLocationService.getInstance();
+      _geofenceService = Get.put(GeofenceService());
+      // 지오펜스 이벤트 핸들러 등록
+      _geofenceService.setEventHandler(_onGeofenceEvent);
 
       // 알림 초기화 (임시로 주석 처리)
       // await _initNotifications();
@@ -254,83 +257,27 @@ class HomeArrivalService extends GetxController {
     }
   }
 
-  // 집 위치와 현재 위치의 거리 계산 및 메시지 전송
-  Future<void> _checkProximityAndNotify() async {
-    try {
-      // HomeLocationService 초기화 확인 및 재시도
-      if (_homeLocationService == null) {
-        debugPrint(
-            '🔄 _checkProximityAndNotify: HomeLocationService 초기화 시도 중...');
-        try {
-          _homeLocationService = await HomeLocationService.getInstance();
-          debugPrint('✅ HomeLocationService 초기화 성공');
-        } catch (e) {
-          debugPrint('❌ HomeLocationService 초기화 실패: $e');
-          lastEventMessage.value = '집 위치 서비스 초기화 실패: $e';
-          await stopTracking();
-          return;
-        }
-      }
+  // 집 위치 등록 시 지오펜스 등록
+  Future<void> registerHomeGeofence() async {
+    final homeLocation = _homeLocationService?.getSelectedHomeLocation();
+    if (homeLocation == null) return;
+    await _geofenceService.registerGeofence(
+      id: 'home',
+      latitude: homeLocation.latitude,
+      longitude: homeLocation.longitude,
+      radius: homeRadiusMeters.value.toDouble(),
+    );
+    debugPrint('🏠 집 위치 지오펜스 등록 완료');
+  }
 
-      // 집 위치 확인
-      final homeLocation = _homeLocationService!.getSelectedHomeLocation();
-      if (homeLocation == null) {
-        debugPrint('❌ 선택된 집 위치 정보가 없습니다.');
-        lastEventMessage.value = '집 위치 정보가 없습니다. 추적을 중지합니다.';
-        await stopTracking();
-        return;
-      }
-
-      final double homeLat = homeLocation.latitude;
-      final double homeLng = homeLocation.longitude;
-
-      // 현재 위치 획득
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        lastEventMessage.value = '위치 서비스가 꺼져 있습니다. 추적을 중지합니다.';
-        await stopTracking();
-        return;
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        lastEventMessage.value = '위치 권한이 없습니다. 추적을 중지합니다.';
-        await stopTracking();
-        return;
-      }
-
-      // 현재 위치 가져오기
-      final Position position = await Geolocator.getCurrentPosition();
-
-      // 거리 계산
-      final double distance = Geolocator.distanceBetween(
-        homeLat,
-        homeLng,
-        position.latitude,
-        position.longitude,
-      );
-
-      debugPrint(
-          '📏 집과의 거리: ${distance.toStringAsFixed(2)}m (목표 거리: ${homeRadiusMeters.value}m)');
-      lastEventMessage.value = '집과의 거리: ${distance.toStringAsFixed(0)}m';
-
-      // 추적 상태에 거리 정보 추가
-      trackingStatus.value =
-          '집 근처 감지 중... (${distance.toStringAsFixed(0)}m 남음)';
-
-      // 집 반경 내에 들어왔는지 확인 (기본값: 30m)
-      if (distance <= homeRadiusMeters.value && !_hasSentArrivalMessage) {
+  // 지오펜스 이벤트 핸들러
+  void _onGeofenceEvent(GeofenceEvent event) async {
+    if (event.id == 'home' && event.eventType == GeofenceEventType.enter) {
+      debugPrint('🏠 집 반경 진입 지오펜스 이벤트 감지, 메시지 전송 트리거');
+      if (!_hasSentArrivalMessage) {
         _hasSentArrivalMessage = true;
-        debugPrint('🏠 집 반경(${homeRadiusMeters.value}m) 내 진입 감지');
-
-        // 메시지 전송
         await _sendArrivalMessage();
-
-        // 도착 메시지 설정 및 스낵바 표시
         lastEventMessage.value = '집에 도착하여 귀가알림을 전송했습니다.';
-
-        // 스낵바로 도착 알림 표시
         try {
           Get.snackbar(
             '귀가 완료',
@@ -346,16 +293,7 @@ class HomeArrivalService extends GetxController {
         } catch (e) {
           debugPrint('⚠️ 스낵바 표시 오류 (무시됨): $e');
         }
-
-        debugPrint('✅ 집 반경 내 진입, 메시지 전송 완료');
-
-        // 추적 중지
-        await stopTracking();
       }
-    } catch (e, stack) {
-      debugPrint('❌ 거리 계산/메시지 전송 오류: $e\n$stack');
-      lastEventMessage.value = '귀가알림 오류: $e';
-      await stopTracking();
     }
   }
 
@@ -522,11 +460,7 @@ class HomeArrivalService extends GetxController {
       _hasSentArrivalMessage = false;
 
       // 위치 추적 타이머 시작
-      _trackingTimer?.cancel();
-      _trackingTimer = Timer.periodic(
-        const Duration(seconds: _trackingIntervalSeconds),
-        (_) => _checkProximityAndNotify(),
-      );
+      await registerHomeGeofence();
 
       debugPrint(
           '✅ 귀가 추적(포그라운드) 시작: 집 위치=${homeLocation.name}, 수신자=${messageRecipientIds.join(", ")}');
@@ -710,8 +644,6 @@ class HomeArrivalService extends GetxController {
       return;
     }
 
-    _trackingTimer?.cancel();
-    _trackingTimer = null;
     isTrackingEnabled.value = false;
     isArrivingHome.value = false;
     trackingStatus.value = '추적 중지됨';

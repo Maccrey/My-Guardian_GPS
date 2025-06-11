@@ -525,3 +525,44 @@ AI 개발자가 코드를 수정할 때 고려해야 할 사항:
 2. **데이터 크기 최소화**: 전송되는 데이터의 크기 최소화
 3. **캐싱 강화**: 캐싱 기간 연장 및 캐시 우선 사용
 4. **배터리 효율성**: 위치 서비스 정확도 조정으로 배터리 효율성 향상
+
+## MSA 기반 서비스 구조
+
+본 프로젝트는 MSA(Microservice Architecture) 원칙에 따라 각 기능별 서비스를 독립적으로 설계 및 관리합니다.
+
+- **HomeArrivalService**: 귀가알림 상태 관리, 지오펜싱 이벤트 처리, 메시지 전송 트리거
+- **GeofenceService**: 집 위치(원형 영역) 등록 및 진입/이탈 이벤트 감지 (Flutter geofencing 패키지 활용)
+- **LocationService**: 위치 권한, 위치 정보 획득, 지도 연동
+- **MessageService**: 메시지 생성/저장/전송, Firestore 연동
+- **NotificationService**: 로컬/푸시 알림 전송
+- **EmergencyContactService**: 연락처 관리 및 메시지 전송 대상 관리
+
+## 지오펜싱 기반 귀가알림 자동화 흐름
+
+1. 사용자가 집 위치(위도/경도/주소/이름)를 등록
+2. GeofenceService가 해당 위치에 반경(예: 30m) 지오펜스 등록
+3. 앱이 포그라운드/백그라운드/종료 상태에서도 진입 이벤트 감지
+4. HomeArrivalService가 진입 이벤트 수신 시, 메시지 데이터 생성 및 MessageService로 전송
+5. 메시지 데이터는 Firestore에 아래와 같은 구조로 저장됨:
+
+```json
+{
+  "chatRoomId": "anXLAyPzXVgcGzCRP81VnmQ1R4f2_maccrey",
+  "content": "{\"type\":\"arrival_notification\",\"latitude\":37.5367665,\"longitude\":127.0519462,\"address\":\"성수동2가 473-2\",\"name\":\"우리 집\",\"message\":\"집에 안전하게 도착했습니다.\",\"timestamp\":1748960328812}",
+  "id": "...UUID...",
+  "isRead": false,
+  "messageType": "location_arrival",
+  "receiverId": "real-maccrey",
+  "senderId": "anXLAyPzXVgcGzCRP81VnmQ1R4f2",
+  "timestamp": "2025년 6월 3일 오후 11시 18분 49초 UTC+9"
+}
+```
+
+- content 필드는 JSON 문자열로, 위치/주소/메시지/타입/타임스탬프 등 포함
+- messageType은 "location_arrival"로 고정
+
+## 아키텍처 다이어그램
+
+- [HomeArrivalService] ←(지오펜싱 이벤트)← [GeofenceService]
+- [HomeArrivalService] →(메시지 생성)→ [MessageService] →(Firestore 저장)
+- [HomeArrivalService] →(알림)→ [NotificationService]

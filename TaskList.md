@@ -148,20 +148,22 @@
 
 ### 1. 서비스 설계 및 분리 (MSA)
 
-- [ ] HomeArrivalService: 귀가알림 상태 관리 및 포그라운드 서비스 제어
-- [ ] LocationService: 실시간 위치 추적 및 거리 계산
-- [ ] NotificationService: 로컬/푸시 알림 전송
-- [ ] MessageService: 메시지 전송 및 기록
+- [x] HomeArrivalService: 귀가알림 상태 관리 및 지오펜싱 이벤트 처리
+- [x] GeofenceService: 집 위치(원형 영역) 등록 및 진입/이탈 이벤트 감지 (Flutter geofencing 패키지 활용)
+- [x] LocationService: 위치 권한 및 위치 정보 획득
+- [x] MessageService: 메시지 전송 및 Firestore 기록
+- [x] NotificationService: 로컬/푸시 알림 전송
+- [x] EmergencyContactService: 연락처 관리 및 메시지 전송 대상 관리
 
 ### 2. 기능 구현 단계별 상세 절차
 
-- [ ] (1) 포그라운드 서비스 시작/중지 기능 구현 (HomeArrivalService)
-- [ ] (2) 위치 업데이트 리스너 등록 및 주기적 위치 확인 (LocationService)
-- [ ] (3) 등록된 집 위치와 현재 위치의 거리 계산 (LocationService)
-- [ ] (4) 30m 이내 진입 시 메시지 전송 트리거 (HomeArrivalService → MessageService)
-- [ ] (5) 메시지 전송 대상(공유 사용자/긴급 연락처) 관리 (MessageService)
-- [ ] (6) 알림 전송 (NotificationService)
-- [ ] (7) 포그라운드 서비스 종료 및 상태 리셋 (HomeArrivalService)
+- [x] (1) 지오펜스(집 위치) 등록 및 관리 (GeofenceService)
+- [x] (2) 지오펜스 진입 이벤트 감지 및 콜백 등록 (GeofenceService)
+- [x] (3) 진입 이벤트 발생 시 HomeArrivalService에서 메시지 데이터 생성 및 전송 트리거
+- [x] (4) 메시지 데이터 구조 Firestore 저장 (첨부 이미지 구조 반영)
+- [x] (5) 메시지 전송 대상(공유 사용자/긴급 연락처) 관리 (EmergencyContactService)
+- [x] (6) 알림 전송 (NotificationService)
+- [x] (7) 상태 리셋 및 UI 반영 (HomeArrivalService)
 
 ### 3. 테스트 및 검증 (TDD)
 
