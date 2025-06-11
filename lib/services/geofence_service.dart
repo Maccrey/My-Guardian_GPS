@@ -1,6 +1,6 @@
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:flutter_geofence/geofence.dart';
 // 실제 배포 시 flutter_geofence 또는 background_geolocation 등으로 교체 필요
 // import 'package:flutter_geofence/flutter_geofence.dart';
 
@@ -52,6 +52,16 @@ class GeofenceService extends GetxController {
   // 이벤트 콜백(진입/이탈 시 호출)
   void Function(GeofenceEvent event)? onEvent;
 
+  @override
+  void onInit() {
+    super.onInit();
+    Geofence.initialize();
+    Geofence.startListening(
+        GeolocationEvent.entry, _onGeofenceEvent as GeofenceCallback);
+    Geofence.startListening(
+        GeolocationEvent.exit, _onGeofenceEvent as GeofenceCallback);
+  }
+
   /// 지오펜스 등록
   Future<void> registerGeofence({
     required String id,
@@ -59,7 +69,6 @@ class GeofenceService extends GetxController {
     required double longitude,
     required double radius,
   }) async {
-    // 실제 패키지 연동 필요 (예: flutter_geofence.registerGeofence)
     final region = GeofenceRegion(
       id: id,
       latitude: latitude,
@@ -67,22 +76,49 @@ class GeofenceService extends GetxController {
       radius: radius,
     );
     _regions.add(region);
+    await Geofence.addGeolocation(
+      Geolocation(
+        latitude: latitude,
+        longitude: longitude,
+        radius: radius,
+        id: id,
+      ),
+      GeolocationEvent.entry,
+    );
+    await Geofence.addGeolocation(
+      Geolocation(
+        latitude: latitude,
+        longitude: longitude,
+        radius: radius,
+        id: id,
+      ),
+      GeolocationEvent.exit,
+    );
     debugPrint('✅ 지오펜스 등록: $id ($latitude, $longitude, $radius m)');
-    // TODO: 실제 플랫폼 지오펜스 등록 코드 추가
   }
 
   /// 지오펜스 해제
   Future<void> unregisterGeofence(String id) async {
-    _regions.removeWhere((r) => r.id == id);
-    debugPrint('✅ 지오펜스 해제: $id');
-    // TODO: 실제 플랫폼 지오펜스 해제 코드 추가
+    final region = _regions.firstWhereOrNull((r) => r.id == id);
+    if (region != null) {
+      final geolocation = Geolocation(
+        latitude: region.latitude,
+        longitude: region.longitude,
+        radius: region.radius,
+        id: region.id,
+      );
+      await Geofence.removeGeolocation(geolocation, GeolocationEvent.entry);
+      await Geofence.removeGeolocation(geolocation, GeolocationEvent.exit);
+      _regions.remove(region);
+      debugPrint('✅ 지오펜스 해제: $id');
+    }
   }
 
   /// 모든 지오펜스 해제
   Future<void> clearAllGeofences() async {
     _regions.clear();
+    await Geofence.removeAllGeolocations();
     debugPrint('✅ 모든 지오펜스 해제');
-    // TODO: 실제 플랫폼 지오펜스 전체 해제 코드 추가
   }
 
   /// 이벤트 콜백 등록
@@ -90,25 +126,24 @@ class GeofenceService extends GetxController {
     onEvent = handler;
   }
 
-  /// (예시) 플랫폼에서 이벤트 발생 시 호출 (실제 연동 시 플랫폼 채널/플러그인에서 호출)
-  void handleGeofenceEvent({
-    required String id,
-    required double latitude,
-    required double longitude,
-    required double radius,
-    required GeofenceEventType eventType,
-  }) {
-    final event = GeofenceEvent(
-      id: id,
-      latitude: latitude,
-      longitude: longitude,
-      radius: radius,
+  Future<dynamic> _onGeofenceEvent(Map<String, dynamic> event) async {
+    final eventType = event['event'] == GeolocationEvent.entry.toString()
+        ? GeofenceEventType.enter
+        : GeofenceEventType.exit;
+    final region = _regions.firstWhereOrNull((r) => r.id == event['id']);
+    if (region == null) return;
+    final geofenceEvent = GeofenceEvent(
+      id: event['id'],
+      latitude: region.latitude,
+      longitude: region.longitude,
+      radius: region.radius,
       eventType: eventType,
       timestamp: DateTime.now(),
     );
-    debugPrint('📡 지오펜스 이벤트: $id, $eventType');
+    debugPrint('📡 지오펜스 이벤트: ${event['id']}, $eventType');
     if (onEvent != null) {
-      onEvent!(event);
+      onEvent!(geofenceEvent);
     }
+    return Future.value();
   }
 }
