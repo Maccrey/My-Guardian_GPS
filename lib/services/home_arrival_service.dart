@@ -476,6 +476,8 @@ class HomeArrivalService extends GetxController {
             debugPrint('📤 앱 사용자 긴급 연락처로 메시지 전송 시도: userId=${contact.userId}');
 
             // 위치 정보를 포함한 JSON 메시지 생성
+            // ⚠️ 주의: 이 메시지 형식은 채팅방 호환성을 위해 변경하지 마세요.
+            // 메시지 형식을 변경하면 귀가 알림 자동 추적과 수동 전송 간 채팅방이 분리될 수 있습니다.
             final locationContent = jsonEncode({
               'type': 'arrival_notification',
               'latitude': homeLocation.latitude,
@@ -512,6 +514,8 @@ class HomeArrivalService extends GetxController {
           debugPrint('🔍 수신자 타입: 앱 사용자 (ID: $recipientId)');
 
           // 위치 정보를 포함한 JSON 메시지 생성
+          // ⚠️ 주의: 이 메시지 형식은 채팅방 호환성을 위해 변경하지 마세요.
+          // 메시지 형식을 변경하면 귀가 알림 자동 추적과 수동 전송 간 채팅방이 분리될 수 있습니다.
           final locationContent = jsonEncode({
             'type': 'arrival_notification',
             'latitude': homeLocation.latitude,
@@ -588,6 +592,8 @@ class HomeArrivalService extends GetxController {
       for (final recipientId in messageRecipientIds) {
         try {
           // 집 위치 정보에서 메시지 데이터 구성
+          // ⚠️ 주의: 이 메시지 형식은 채팅방 호환성을 위해 변경하지 마세요.
+          // 메시지 형식을 변경하면 귀가 알림 자동 추적과 수동 전송 간 채팅방이 분리될 수 있습니다.
           final locationContent = jsonEncode({
             'type': 'arrival_notification',
             'latitude': homeLocation.latitude,

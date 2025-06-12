@@ -311,6 +311,8 @@ class _HomeArrivalViewState extends State<HomeArrivalView>
         final messageService = Get.find<MessageService>();
 
         // 메시지 데이터 준비 - 위치 정보 포함
+        // ⚠️ 주의: 이 메시지 형식은 채팅방 호환성을 위해 변경하지 마세요.
+        // 메시지 형식을 변경하면 귀가 알림 자동 추적과 수동 전송 간 채팅방이 분리될 수 있습니다.
         final locationData = {
           'type': 'arrival_notification',
           'latitude': selectedHome.latitude,
@@ -414,6 +416,8 @@ class _HomeArrivalViewState extends State<HomeArrivalView>
           final homeLocation = selectedHome;
 
           // 메시지 데이터 준비 - 위치 정보 포함
+          // ⚠️ 주의: 이 메시지 형식은 채팅방 호환성을 위해 변경하지 마세요.
+          // 메시지 형식을 변경하면 귀가 알림 자동 추적과 수동 전송 간 채팅방이 분리될 수 있습니다.
           final locationData = {
             'type': 'arrival_notification',
             'latitude': homeLocation.latitude,
