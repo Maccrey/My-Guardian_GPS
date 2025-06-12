@@ -307,11 +307,30 @@ class _HomeArrivalViewState extends State<HomeArrivalView>
         // 진동 피드백
         HapticFeedback.mediumImpact();
 
-        // 메시지 전송
-        final success = await _homeLocationService.sendHomeArrivalMessage(
+        // 메시지 서비스를 통해 직접 메시지 전송
+        final messageService = Get.find<MessageService>();
+
+        // 메시지 데이터 준비 - 위치 정보 포함
+        final locationData = {
+          'type': 'arrival_notification',
+          'latitude': selectedHome.latitude,
+          'longitude': selectedHome.longitude,
+          'address': selectedHome.address,
+          'name': selectedHome.name,
+          'message': message,
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+        };
+
+        // 메시지 내용을 JSON으로 변환
+        final String locationContent = json.encode(locationData);
+
+        debugPrint('📤 사용자에게 전송할 데이터: $locationContent');
+
+        // JSON 형식 메시지 전송
+        final success = await messageService.sendMessage(
           receiverId: selectedUser.uid ?? '',
-          message: message,
-          homeLocation: selectedHome,
+          content: locationContent,
+          messageType: 'location_arrival',
         );
 
         if (success) {
@@ -1028,11 +1047,23 @@ class _HomeArrivalViewState extends State<HomeArrivalView>
                             } else if (_selectedNotificationMethod.value ==
                                     'emergency' &&
                                 _selectedEmergencyContact.value != null) {
-                              // 긴급 연락처 ID 전달
-                              debugPrint(
-                                  '🔍 긴급 연락처 ID 설정: ${_selectedEmergencyContact.value!.id}');
-                              await _homeArrivalService.setMessageRecipients(
-                                  [_selectedEmergencyContact.value!.id]);
+                              // 긴급 연락처 userId 전달 (앱 사용자 ID)
+                              if (_selectedEmergencyContact.value!.isAppUser &&
+                                  _selectedEmergencyContact.value!.userId !=
+                                      null &&
+                                  _selectedEmergencyContact
+                                      .value!.userId!.isNotEmpty) {
+                                debugPrint(
+                                    '🔍 긴급 연락처 userId 설정: ${_selectedEmergencyContact.value!.userId}');
+                                await _homeArrivalService.setMessageRecipients(
+                                    [_selectedEmergencyContact.value!.userId!]);
+                              } else {
+                                // 앱 사용자가 아니거나 userId가 없는 경우
+                                debugPrint(
+                                    '🔍 긴급 연락처 ID 설정: ${_selectedEmergencyContact.value!.id}');
+                                await _homeArrivalService.setMessageRecipients(
+                                    [_selectedEmergencyContact.value!.id]);
+                              }
                             } else {
                               Get.snackbar('수신자 없음', '알림을 받을 사용자를 선택해주세요.',
                                   snackPosition: SnackPosition.BOTTOM,
