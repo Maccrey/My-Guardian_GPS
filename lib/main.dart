@@ -60,10 +60,27 @@ void main() async {
     DeviceOrientation.portraitDown, // 아래쪽 세로 (원하면 뺄 수도 있음)
   ]);
 
+  // .env 파일 로드 (API 키 등 환경변수)
+  try {
+    await dotenv.load(fileName: ".env");
+    debugPrint('✅ .env 파일 로드 성공');
+  } catch (e) {
+    debugPrint('⚠️ .env 파일 로드 실패: $e');
+    // 기본 .env 파일이 없으면 빈 환경으로 초기화
+    await dotenv.load(fileName: "nonexistent.env").catchError((_) {
+      // 빈 환경 초기화
+      dotenv.env['GOOGLE_MAPS_API_KEY'] = 'dummy_key_for_development';
+      debugPrint('⚠️ 더미 API 키로 초기화됨');
+    });
+  }
+
   // Firebase 초기화
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // LocationSharingService 직접 등록 (최우선)
+  Get.put(LocationSharingService(), permanent: true);
 
   // 필요한 서비스 초기화
   await initServices();
@@ -78,9 +95,12 @@ Future<void> initServices() async {
     // Workmanager 초기화 (백그라운드 작업용)
     await Workmanager().initialize(callbackDispatcher);
 
-    // 필수 서비스 등록
+    // 필수 서비스 등록 (의존성 순서대로)
+    debugPrint('🔄 기본 서비스 초기화 시작...');
     Get.put(AuthService(), permanent: true);
     Get.put(LocationService(), permanent: true);
+    Get.put(EmergencyContactService(), permanent: true);
+    Get.put(MessageService(), permanent: true);
 
     // NotificationService 초기화 (싱글톤)
     await NotificationService.getInstance();
@@ -115,6 +135,18 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+
+    // LocationSharingService 확인 및 강제 등록
+    if (!Get.isRegistered<LocationSharingService>()) {
+      debugPrint('⚠️ MyApp: LocationSharingService 재등록 시도');
+      Get.put(LocationSharingService(), permanent: true);
+    }
+
+    // LocationSharingController 확인 및 강제 등록
+    if (!Get.isRegistered<LocationSharingController>()) {
+      debugPrint('⚠️ MyApp: LocationSharingController 등록 시도');
+      Get.put(LocationSharingController(), permanent: true);
+    }
 
     // URL 핸들러 초기화
     if (!kIsWeb) {

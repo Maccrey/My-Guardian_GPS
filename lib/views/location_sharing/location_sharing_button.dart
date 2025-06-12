@@ -6,17 +6,12 @@ import '../../services/auth_service.dart';
 import 'location_sharing_list_view.dart';
 
 /// 위치 공유 버튼 위젯
-class LocationSharingButton extends StatelessWidget {
+class LocationSharingButton extends StatefulWidget {
   final String contactId;
   final String contactName;
   final bool isAppUser;
 
-  // 서비스 인스턴스
-  final LocationSharingService _locationService =
-      Get.find<LocationSharingService>();
-  final MessageService _messageService = Get.find<MessageService>();
-
-  LocationSharingButton({
+  const LocationSharingButton({
     Key? key,
     required this.contactId,
     required this.contactName,
@@ -24,24 +19,76 @@ class LocationSharingButton extends StatelessWidget {
   }) : super(key: key);
 
   @override
+  State<LocationSharingButton> createState() => _LocationSharingButtonState();
+}
+
+class _LocationSharingButtonState extends State<LocationSharingButton> {
+  // 서비스 인스턴스
+  late LocationSharingService _locationService;
+  late MessageService _messageService;
+  final AuthService _authService = Get.find<AuthService>();
+
+  // 초기화 상태
+  final RxBool _isInitialized = false.obs;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeServices();
+  }
+
+  Future<void> _initializeServices() async {
+    try {
+      // 서비스 초기화 - 싱글톤 대신 직접 Get.find 사용
+      _locationService = Get.find<LocationSharingService>();
+      _messageService = Get.find<MessageService>();
+
+      _isInitialized.value = true;
+      debugPrint('✅ LocationSharingButton 서비스 초기화 성공');
+    } catch (e) {
+      debugPrint('❌ LocationSharingButton 서비스 초기화 오류: $e');
+      // 오류 발생 시 강제로 서비스 등록 시도
+      if (!Get.isRegistered<LocationSharingService>()) {
+        Get.put(LocationSharingService(), permanent: true);
+        _locationService = Get.find<LocationSharingService>();
+      }
+      _isInitialized.value = true;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     // 앱 사용자가 아닌 경우 위치 공유 불가
-    if (!isAppUser) {
+    if (!widget.isAppUser) {
       return const SizedBox.shrink();
+    }
+
+    // 초기화 중이면 로딩 표시
+    if (!_isInitialized.value) {
+      return const SizedBox(
+        height: 40,
+        width: 40,
+        child: Center(
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+          ),
+        ),
+      );
     }
 
     return Obx(() {
       // 위치 공유 상태 확인 (개선된 로직)
-      final isSharing = _locationService.isShareLocationActive(contactId);
+      final isSharing =
+          _locationService.isShareLocationActive(widget.contactId);
 
       // MessageService를 통한 추가 확인
       final isActiveSharingFromMessage =
-          _messageService.isLocationSharingActive(contactId);
+          _messageService.isLocationSharingActive(widget.contactId);
 
       // 두 서비스에서 모두 확인 (논리적 OR)
       final isSharingActive = isSharing || isActiveSharingFromMessage;
 
-      print(
+      debugPrint(
           '🔄 [버튼] 위치 공유 상태: isSharing=$isSharing, fromMessage=$isActiveSharingFromMessage, 최종=$isSharingActive');
 
       // 위치 공유 중일 때는 버튼 세트를 보여줌
@@ -54,7 +101,8 @@ class LocationSharingButton extends StatelessWidget {
                 Expanded(
                   flex: 1,
                   child: ElevatedButton.icon(
-                    onPressed: () => _navigateToLocationMap(context, contactId),
+                    onPressed: () =>
+                        _navigateToLocationMap(context, widget.contactId),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue.shade700,
                       foregroundColor: Colors.white,
@@ -110,10 +158,9 @@ class LocationSharingButton extends StatelessWidget {
                   // 위치 공유 목록 페이지로 이동
                   try {
                     // 인증 상태 확인
-                    final authService = Get.find<AuthService>();
-                    if (authService.isAuthenticated) {
+                    if (_authService.isAuthenticated) {
                       // 인증된 경우에만 위치 공유 목록 화면으로 이동
-                      Get.to(() => LocationSharingListView());
+                      Get.to(() => const LocationSharingListView());
                     } else {
                       // 인증되지 않은 경우 안내 메시지 표시
                       Get.dialog(
@@ -137,7 +184,7 @@ class LocationSharingButton extends StatelessWidget {
                       );
                     }
                   } catch (e) {
-                    print('⚠️ 위치 공유 목록 화면으로 이동 중 오류: $e');
+                    debugPrint('⚠️ 위치 공유 목록 화면으로 이동 중 오류: $e');
                     Get.snackbar(
                       '오류',
                       '위치 공유 목록 화면을 열 수 없습니다',
@@ -160,7 +207,7 @@ class LocationSharingButton extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 4.0),
               child: Text(
-                '${contactName}님과 위치 공유 중',
+                '${widget.contactName}님과 위치 공유 중',
                 style: TextStyle(
                   color: Colors.green.shade700,
                   fontSize: 12,
@@ -184,11 +231,11 @@ class LocationSharingButton extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            icon: Icon(
+            icon: const Icon(
               Icons.location_on,
               size: 20,
             ),
-            label: Text(
+            label: const Text(
               '위치 공유 시작',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
@@ -220,12 +267,13 @@ class LocationSharingButton extends StatelessWidget {
       locationId = _locationService.getLocationId(userId);
     }
 
-    print('🗺️ [버튼] 위치 지도 화면으로 이동: userId=$userId, locationId=$locationId');
+    debugPrint(
+        '🗺️ [버튼] 위치 지도 화면으로 이동: userId=$userId, locationId=$locationId');
 
     // 위치 추적 화면으로 이동
     Get.toNamed('/location-tracking', arguments: {
       'userId': userId,
-      'contactName': contactName,
+      'contactName': widget.contactName,
       'locationId': locationId,
     });
   }
@@ -237,7 +285,7 @@ class LocationSharingButton extends StatelessWidget {
       builder: (context) => AlertDialog(
         title: const Text('위치 공유 시작'),
         content: Text(
-            '$contactName님에게 실시간 위치를 공유하시겠습니까?\n\n상대방에게는 위치 공유가 시작되었다는 알림이 전송됩니다.'),
+            '${widget.contactName}님에게 실시간 위치를 공유하시겠습니까?\n\n상대방에게는 위치 공유가 시작되었다는 알림이 전송됩니다.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -247,12 +295,12 @@ class LocationSharingButton extends StatelessWidget {
             onPressed: () async {
               Navigator.of(context).pop();
               final result =
-                  await _locationService.startLocationSharing(contactId);
+                  await _locationService.startLocationSharing(widget.contactId);
 
               if (result) {
                 Get.snackbar(
                   '위치 공유 시작',
-                  '$contactName님에게 위치 공유가 시작되었습니다.',
+                  '${widget.contactName}님에게 위치 공유가 시작되었습니다.',
                   snackPosition: SnackPosition.BOTTOM,
                   duration: const Duration(seconds: 2),
                   backgroundColor: Colors.green.withOpacity(0.7),
@@ -282,7 +330,7 @@ class LocationSharingButton extends StatelessWidget {
       builder: (context) => AlertDialog(
         title: const Text('위치 공유 중지'),
         content: Text(
-            '$contactName님과의 위치 공유를 중지하시겠습니까?\n\n위치 공유 데이터가 삭제되고 상대방에게는 위치 공유가 중지되었다는 알림이 전송됩니다.'),
+            '${widget.contactName}님과의 위치 공유를 중지하시겠습니까?\n\n위치 공유 데이터가 삭제되고 상대방에게는 위치 공유가 중지되었다는 알림이 전송됩니다.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -292,12 +340,12 @@ class LocationSharingButton extends StatelessWidget {
             onPressed: () async {
               Navigator.of(context).pop();
               final result =
-                  await _locationService.stopLocationSharing(contactId);
+                  await _locationService.stopLocationSharing(widget.contactId);
 
               if (result) {
                 Get.snackbar(
                   '위치 공유 중지',
-                  '$contactName님과의 위치 공유가 중지되고 데이터가 삭제되었습니다.',
+                  '${widget.contactName}님과의 위치 공유가 중지되고 데이터가 삭제되었습니다.',
                   snackPosition: SnackPosition.BOTTOM,
                   duration: const Duration(seconds: 2),
                   backgroundColor: Colors.blue.withOpacity(0.7),

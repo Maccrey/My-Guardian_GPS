@@ -13,6 +13,44 @@ import 'notification_service.dart';
 import 'message_service.dart'; // MessageService 추가
 
 class LocationSharingService extends GetxController {
+  // 싱글톤 인스턴스
+  static LocationSharingService? _instance;
+
+  // 기본 생성자
+  LocationSharingService() {
+    debugPrint('🚀 LocationSharingService 생성자 호출됨');
+    _instance = this;
+  }
+
+  // 싱글톤 접근 메소드
+  static Future<LocationSharingService> getInstance() async {
+    try {
+      if (_instance == null) {
+        // 이미 GetX에 등록되어 있는지 확인
+        if (Get.isRegistered<LocationSharingService>()) {
+          _instance = Get.find<LocationSharingService>();
+          debugPrint('✅ LocationSharingService GetX에서 찾음');
+        } else {
+          _instance = LocationSharingService();
+          Get.put(_instance!, permanent: true);
+          debugPrint('✅ LocationSharingService GetX에 등록됨');
+        }
+      }
+
+      return _instance!;
+    } catch (e) {
+      debugPrint('❌ LocationSharingService 싱글톤 인스턴스 생성 오류: $e');
+      if (_instance == null) {
+        // 오류 발생 시에도 인스턴스 생성하여 반환 (최소 기능)
+        _instance = LocationSharingService();
+        if (!Get.isRegistered<LocationSharingService>()) {
+          Get.put(_instance!, permanent: true);
+        }
+      }
+      return _instance!;
+    }
+  }
+
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -45,22 +83,58 @@ class LocationSharingService extends GetxController {
   // 데이터 절약 모드 상태
   final RxBool isDataSavingEnabled = false.obs;
 
-  // 서비스 초기화
+  // 인스턴스 초기화 플래그
+  bool _isInitialized = false;
+
+  // 서비스 초기화 - GetX 생명주기 메소드
   @override
   void onInit() {
     super.onInit();
+    debugPrint('🔄 LocationSharingService onInit 호출됨');
+  }
 
-    // 서비스 초기화 시 지연 시간을 두고 위치 정보 로드
-    Future.delayed(const Duration(seconds: 3), () async {
+  // GetX 컨트롤러 준비 완료 후 호출 (비동기 초기화에 적합)
+  @override
+  void onReady() {
+    super.onReady();
+    debugPrint('🔄 LocationSharingService onReady 호출됨');
+
+    // 비동기 초기화 시작
+    _initializeAsync();
+  }
+
+  // 비동기 초기화
+  Future<void> _initializeAsync() async {
+    try {
+      if (!_isInitialized) {
+        await _initializeInstance();
+        _isInitialized = true;
+        debugPrint('✅ LocationSharingService 비동기 초기화 완료');
+      }
+    } catch (e) {
+      debugPrint('⚠️ LocationSharingService 비동기 초기화 오류: $e');
+    }
+  }
+
+  // 인스턴스 초기화 메소드 (getInstance에서 호출)
+  Future<void> _initializeInstance() async {
+    try {
+      // 위치 공유 상태 로드
       await _loadActiveSharing();
-      // 백그라운드에서 마지막 위치 가져오기 시도
-      _getLastKnownPosition();
-    });
 
-    // 데이터 절약 모드 설정 로드
-    _loadDataSavingMode();
+      // 마지막 위치 가져오기
+      await _getLastKnownPosition();
 
-    _setupConnectivityListener();
+      // 데이터 절약 모드 설정 로드
+      await _loadDataSavingMode();
+
+      _setupConnectivityListener();
+
+      debugPrint('✅ LocationSharingService 인스턴스 초기화 성공');
+    } catch (e) {
+      debugPrint('⚠️ LocationSharingService 인스턴스 초기화 중 오류: $e');
+      // 오류가 발생해도 최소한의 기능을 사용할 수 있도록 설정
+    }
   }
 
   // 마지막 알려진 위치 가져오기
@@ -1107,7 +1181,7 @@ class LocationSharingService extends GetxController {
           userId: currentUserId,
         );
 
-        print('�� [서비스] 위치 공유 알림 전송 완료');
+        print('✅ [서비스] 위치 공유 알림 전송 완료');
       } catch (e) {
         print('⚠️ [서비스] 위치 공유 알림 전송 오류: $e');
       }
@@ -1458,16 +1532,18 @@ class LocationSharingService extends GetxController {
     }
   }
 
-  // 데이터 절약 모드 설정 로드하는 메서드 추가
+  // 데이터 절약 모드 설정 로드
   Future<void> _loadDataSavingMode() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      isDataSavingEnabled.value = prefs.getBool('isDataSavingEnabled') ?? false;
-      print(
-          '✅ [서비스] 데이터 절약 모드 설정 로드됨: ${isDataSavingEnabled.value ? "활성화" : "비활성화"}');
+      final isDataSavingEnabled =
+          prefs.getBool('location_data_saving_mode') ?? false;
+      this.isDataSavingEnabled.value = isDataSavingEnabled;
+      debugPrint('✅ 데이터 절약 모드 설정 로드 완료: $isDataSavingEnabled');
     } catch (e) {
-      print('⚠️ [서비스] 데이터 절약 모드 설정 로드 오류: $e');
-      isDataSavingEnabled.value = false; // 기본값은 비활성화
+      debugPrint('⚠️ 데이터 절약 모드 설정 로드 오류: $e');
+      // 기본값 사용
+      isDataSavingEnabled.value = false;
     }
   }
 

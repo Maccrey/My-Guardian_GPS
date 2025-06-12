@@ -6,29 +6,66 @@ import '../../models/shared_location_model.dart';
 import '../../services/auth_service.dart';
 import '../../services/location_sharing_service.dart';
 
-class LocationSharingListView extends StatelessWidget {
-  final LocationSharingController controller =
-      Get.find<LocationSharingController>();
-  final AuthService _authService = Get.find<AuthService>();
-  final LocationSharingService _locationService =
-      Get.find<LocationSharingService>();
+class LocationSharingListView extends StatefulWidget {
+  const LocationSharingListView({Key? key}) : super(key: key);
 
-  LocationSharingListView({Key? key}) : super(key: key) {
-    // 인증 상태 확인
-    if (!_authService.isAuthenticated) {
-      // 인증되지 않은 경우 스낵바 표시
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Get.snackbar(
-          '로그인 필요',
-          '위치 공유 기능을 사용하려면 로그인이 필요합니다',
-          backgroundColor: Colors.red.withOpacity(0.8),
-          colorText: Colors.white,
-          snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 3),
-        );
-        // 로그인 페이지로 이동
-        Get.offAllNamed('/');
-      });
+  @override
+  State<LocationSharingListView> createState() =>
+      _LocationSharingListViewState();
+}
+
+class _LocationSharingListViewState extends State<LocationSharingListView> {
+  late final LocationSharingController controller;
+  final AuthService _authService = Get.find<AuthService>();
+  late final LocationSharingService _locationService;
+
+  final RxBool _isInitialized = false.obs;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeServices();
+  }
+
+  Future<void> _initializeServices() async {
+    try {
+      // 서비스 초기화 - 직접 Get.find 사용
+      _locationService = Get.find<LocationSharingService>();
+      controller = Get.find<LocationSharingController>();
+
+      _isInitialized.value = true;
+      debugPrint('✅ LocationSharingListView 서비스 초기화 성공');
+
+      // 인증 상태 확인
+      if (!_authService.isAuthenticated) {
+        // 인증되지 않은 경우 스낵바 표시
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Get.snackbar(
+            '로그인 필요',
+            '위치 공유 기능을 사용하려면 로그인이 필요합니다',
+            backgroundColor: Colors.red.withOpacity(0.8),
+            colorText: Colors.white,
+            snackPosition: SnackPosition.BOTTOM,
+            duration: const Duration(seconds: 3),
+          );
+          // 로그인 페이지로 이동
+          Get.offAllNamed('/');
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ LocationSharingListView 서비스 초기화 오류: $e');
+      // 오류 발생 시 강제로 서비스 등록 시도
+      if (!Get.isRegistered<LocationSharingService>()) {
+        Get.put(LocationSharingService(), permanent: true);
+        _locationService = Get.find<LocationSharingService>();
+      }
+
+      if (!Get.isRegistered<LocationSharingController>()) {
+        Get.put(LocationSharingController(), permanent: true);
+        controller = Get.find<LocationSharingController>();
+      }
+
+      _isInitialized.value = true;
     }
   }
 
@@ -39,6 +76,15 @@ class LocationSharingListView extends StatelessWidget {
       return const Scaffold(
         body: Center(
           child: Text('로그인이 필요합니다...'),
+        ),
+      );
+    }
+
+    // 초기화 되지 않은 경우 로딩 표시
+    if (!_isInitialized.value) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
         ),
       );
     }
