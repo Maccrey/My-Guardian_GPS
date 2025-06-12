@@ -8,6 +8,7 @@ import '../services/emergency_contact_service.dart';
 import '../services/location_service.dart';
 import 'package:geocoding/geocoding.dart';
 import '../services/message_service.dart';
+import 'package:volume_controller/volume_controller.dart';
 
 class SOSController extends GetxController {
   // Rx 변수를 일반 변수로 변경하고 getter/setter 사용
@@ -15,6 +16,7 @@ class SOSController extends GetxController {
   final _countdown = 30.obs;
   final _isAudioPlaying = false.obs;
   final _currentVolume = 1.0.obs;
+  double? _originalSystemVolume;
 
   // 안전한 getter - 값을 직접 복사
   bool get isSOSActive => _isSOSActive.value;
@@ -76,6 +78,8 @@ class SOSController extends GetxController {
   bool _isDisposed = false;
   Timer? _volumeKeeper;
 
+  final VolumeController _volumeController = VolumeController.instance;
+
   // 안전하게 Rx 값을 설정하는 헬퍼 함수들
   void safeSetBool(RxBool rx, bool value) {
     if (_isDisposed) return;
@@ -134,16 +138,37 @@ class SOSController extends GetxController {
     }
   }
 
+  // 시스템 볼륨 최대로
+  Future<void> _setMaxSystemVolume() async {
+    try {
+      _originalSystemVolume = await _volumeController.getVolume();
+      await _volumeController.setVolume(1.0); // 1.0이 최대
+      debugPrint('✅ 시스템 볼륨 최대로 설정됨');
+    } catch (e) {
+      debugPrint('⚠️ 시스템 볼륨 최대로 설정 실패: $e');
+    }
+  }
+
+  // 시스템 볼륨 복원
+  Future<void> _restoreSystemVolume() async {
+    try {
+      if (_originalSystemVolume != null) {
+        await _volumeController.setVolume(_originalSystemVolume!);
+        debugPrint('✅ 시스템 볼륨 복원됨');
+      }
+    } catch (e) {
+      debugPrint('⚠️ 시스템 볼륨 복원 실패: $e');
+    }
+  }
+
   // 사이렌 소리 재생 (just_audio로만 처리)
   Future<void> _playSiren() async {
-    // 이미 해제된 상태면 실행하지 않음
     if (_isDisposed) {
       debugPrint('⚠️ 컨트롤러가 이미 해제됨 - 사이렌 재생 중단');
       return;
     }
-
     debugPrint('🔊 사이렌 재생 시작...');
-
+    await _setMaxSystemVolume(); // 시스템 볼륨 최대로
     try {
       // 이미 재생 중인 경우 중지
       if (_audioPlayer != null) {
@@ -432,6 +457,8 @@ class SOSController extends GetxController {
       debugPrint('⚠️ 볼륨 유지 타이머 취소 실패: $e');
     }
 
+    // 볼륨 복원
+    _restoreSystemVolume();
     debugPrint('✅ cancelSOS 완료됨');
   }
 
@@ -520,8 +547,9 @@ class SOSController extends GetxController {
           debugPrint('✅ 오디오 정지됨 (onSOSConfirmed)');
           setIsAudioPlaying(false);
         }
+        await _restoreSystemVolume(); // 볼륨 복원
       } catch (e) {
-        debugPrint('⚠️ 오디오 정지 오류: $e');
+        debugPrint('⚠️ 오디오 정지/볼륨 복원 오류: $e');
       }
 
       // 3단계: 긴급 전화 연결
@@ -779,6 +807,9 @@ class SOSController extends GetxController {
 
     // 리소스 정리 호출 (타이머, 오디오 해제)
     _cleanupResources();
+
+    // 볼륨 복원
+    _restoreSystemVolume();
 
     // 마지막으로 부모 onClose 호출
     debugPrint('✅ SOSController onClose 종료 및 super.onClose() 호출');
