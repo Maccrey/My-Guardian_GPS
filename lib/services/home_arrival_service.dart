@@ -15,6 +15,7 @@ import 'package:watch_over/services/location_service.dart';
 import 'package:watch_over/services/auth_service.dart';
 import 'package:watch_over/services/emergency_contact_service.dart';
 import 'package:watch_over/services/geofence_service.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 /// 귀가 알림 및 안전 도착 서비스
 class HomeArrivalService extends GetxController {
@@ -289,6 +290,9 @@ class HomeArrivalService extends GetxController {
         // 메시지 발송
         final AuthService authService = Get.find<AuthService>();
         final MessageService messageService = Get.find<MessageService>();
+        int successCount = 0;
+
+        debugPrint('📤 귀가 알림 메시지 전송 시도 (수신자: ${recipients.length}명)');
 
         for (final recipientId in recipients) {
           try {
@@ -297,16 +301,38 @@ class HomeArrivalService extends GetxController {
               content: message,
               messageType: 'home_arrival',
             );
+            successCount++;
             debugPrint('✅ 귀가 알림 메시지 전송 성공: $recipientId');
           } catch (e) {
             debugPrint('❌ 귀가 알림 메시지 전송 실패: $e');
+            // 실패해도 계속 진행
           }
         }
 
         // 보류 중 플래그 해제
         await prefs.setBool('arrival_notification_pending', false);
 
-        debugPrint('✅ 보류 중인 귀가 알림 처리 완료');
+        // 사용자에게 알림 표시
+        if (successCount > 0) {
+          Get.snackbar(
+            '귀가 알림 전송 완료',
+            '집 도착 알림이 전송되었습니다.',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.green.shade600,
+            colorText: Colors.white,
+          );
+        } else {
+          Get.snackbar(
+            '귀가 알림 전송 실패',
+            '메시지 전송에 실패했습니다. 네트워크 상태를 확인하세요.',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red.shade700,
+            colorText: Colors.white,
+          );
+        }
+
+        debugPrint(
+            '✅ 보류 중인 귀가 알림 처리 완료 (성공: $successCount/${recipients.length})');
       }
     } catch (e) {
       debugPrint('❌ 보류 중인 귀가 알림 처리 오류: $e');
@@ -491,6 +517,7 @@ class HomeArrivalService extends GetxController {
   @override
   Future<bool> startTracking() async {
     try {
+      // 이미 추적 중인 경우
       if (isTrackingEnabled.value) {
         debugPrint('⚠️ 이미 귀가 추적 중입니다.');
         return true;
@@ -543,6 +570,14 @@ class HomeArrivalService extends GetxController {
         return false;
       }
 
+      // 위치 서비스 강제 재시작 - 위치 업데이트 문제 해결
+      debugPrint('🔄 [HomeArrivalService] 위치 서비스 재시작 시도');
+      final locationService = Get.find<LocationService>();
+      locationService.stopTracking(); // 먼저 중지
+      await Future.delayed(const Duration(milliseconds: 500)); // 잠시 대기
+      locationService.startTracking(); // 다시 시작
+      debugPrint('✅ [HomeArrivalService] 위치 서비스 재시작 완료');
+
       // 수신자 확인
       if (messageRecipientIds.isEmpty) {
         debugPrint('⚠️ 메시지 수신자가 없습니다. 긴급 연락처에서 첫 번째 연락처를 사용합니다.');
@@ -561,6 +596,20 @@ class HomeArrivalService extends GetxController {
       isTrackingEnabled.value = true;
       isArrivingHome.value = true;
       trackingStatus.value = '집 근처 감지 중...';
+
+      // 홈 위치 정보 직접 저장 (백그라운드 서비스를 위한 백업)
+      if (homeLocation != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setDouble('home_latitude', homeLocation.latitude);
+        await prefs.setDouble('home_longitude', homeLocation.longitude);
+        await prefs.setStringList(
+            'home_arrival_recipient_ids', messageRecipientIds);
+        debugPrint(
+            '✅ 백그라운드 서비스를 위한 홈 위치 정보 저장: (${homeLocation.latitude}, ${homeLocation.longitude})');
+        debugPrint(
+            '✅ 백그라운드 서비스를 위한 수신자 정보 저장: ${messageRecipientIds.join(", ")}');
+      }
+
       await _saveSettings();
       _hasSentArrivalMessage = false;
 
@@ -655,7 +704,34 @@ class HomeArrivalService extends GetxController {
       }
 
       // 현재 위치 가져오기
-      final currentLocation = _locationService.currentLocation.value;
+      final locationService = Get.find<LocationService>();
+      LatLng? currentLocation = locationService.currentLocation.value;
+
+      // 현재 위치가 null이면 직접 위치 가져오기 시도
+      if (currentLocation == null) {
+        debugPrint('⚠️ 현재 위치가 null입니다. 직접 위치 가져오기 시도...');
+
+        try {
+          // Geolocator로 직접 위치 가져오기
+          final position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high,
+            timeLimit: const Duration(seconds: 5),
+          );
+
+          // 가져온 위치로 업데이트
+          currentLocation = LatLng(position.latitude, position.longitude);
+
+          // LocationService에도 업데이트
+          locationService.currentLocation.value = currentLocation;
+
+          debugPrint(
+              '✅ 직접 위치 가져오기 성공: ${position.latitude}, ${position.longitude}');
+        } catch (e) {
+          debugPrint('❌ 직접 위치 가져오기 실패: $e');
+          return;
+        }
+      }
+
       if (currentLocation == null) {
         debugPrint('⚠️ 현재 위치를 가져올 수 없어 위치 확인을 건너뜁니다.');
         return;
@@ -671,17 +747,19 @@ class HomeArrivalService extends GetxController {
       _distanceToHome.value = distance;
 
       debugPrint(
-          '📍 현재 위치: ${currentLocation.latitude}, ${currentLocation.longitude}');
+          '📍 [HomeArrivalService] _checkCurrentLocation() 현재 위치: latitude=${currentLocation.latitude}, longitude=${currentLocation.longitude}');
       debugPrint(
-          '🏠 집 위치: ${homeLocation.latitude}, ${homeLocation.longitude}');
-      debugPrint('📏 집과의 거리: ${distance.toStringAsFixed(2)}m');
+          '🏠 [HomeArrivalService] _checkCurrentLocation() 집 위치: latitude=${homeLocation.latitude}, longitude=${homeLocation.longitude}');
+      debugPrint(
+          '📏 [HomeArrivalService] _checkCurrentLocation() 집과의 거리: ${distance.toStringAsFixed(2)}m (반경: ${homeRadiusMeters.value}m)');
 
       // 거리 정보 UI에 표시
       lastEventMessage.value = '집과의 거리: ${distance.toStringAsFixed(0)}m';
 
       // 집 반경 내에 들어왔는지 확인 (귀가 알림 트리거)
       if (distance <= homeRadiusMeters.value && !_hasSentArrivalMessage) {
-        debugPrint('🏠 집 반경(${homeRadiusMeters.value}m) 내 진입 감지');
+        debugPrint(
+            '🏠 [HomeArrivalService] 집 반경(${homeRadiusMeters.value}m) 내 진입 감지, 알림 트리거');
         await _triggerHomeArrival();
       }
     } catch (e) {

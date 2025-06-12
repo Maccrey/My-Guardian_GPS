@@ -255,6 +255,8 @@ class LocationService extends GetxController {
       );
 
       LatLng location = LatLng(position.latitude, position.longitude);
+      debugPrint(
+          '📍 [LocationService] getCurrentLocation() 위치 업데이트: latitude=${position.latitude}, longitude=${position.longitude}');
       currentLocation.value = location;
 
       // 현재 위치를 기록에 추가
@@ -301,11 +303,16 @@ class LocationService extends GetxController {
     isTracking.value = true;
     locationHistory.clear();
 
-    if (currentLocation.value != null) {
+    // 현재 위치가 없으면 먼저 가져오기
+    if (currentLocation.value == null) {
+      debugPrint('🔄 [LocationService] 현재 위치가 없어 먼저 가져옵니다.');
+      getCurrentLocation();
+    } else {
       locationHistory.add(currentLocation.value!);
     }
 
     // 위치 변경 이벤트 구독 - 데이터 절약 모드에 따라 설정 조정
+    debugPrint('📡 [LocationService] 위치 스트림 구독 시작');
     _positionStream = Geolocator.getPositionStream(
       locationSettings: LocationSettings(
         accuracy: currentLocationAccuracy,
@@ -315,18 +322,37 @@ class LocationService extends GetxController {
             seconds:
                 isDataSavingEnabled.value ? 120 : 60), // 데이터 절약 모드에서는 타임아웃 120초
       ),
-    ).listen((Position position) {
-      // 새로운 위치 업데이트
-      LatLng newLocation = LatLng(position.latitude, position.longitude);
-      currentLocation.value = newLocation;
-      locationHistory.add(newLocation);
+    ).listen(
+      (Position position) {
+        // 새로운 위치 업데이트
+        debugPrint(
+            '📍 [LocationService] startTracking() 위치 스트림 업데이트: latitude=${position.latitude}, longitude=${position.longitude}');
+        LatLng newLocation = LatLng(position.latitude, position.longitude);
+        currentLocation.value = newLocation;
+        locationHistory.add(newLocation);
 
-      // 현재 위치 마커 업데이트
-      _updateCurrentLocationMarker();
+        // 현재 위치 마커 업데이트
+        _updateCurrentLocationMarker();
 
-      // 이동 경로 폴리라인 업데이트
-      _updateRoutePolyline();
-    });
+        // 이동 경로 폴리라인 업데이트
+        _updateRoutePolyline();
+      },
+      onError: (Object error) {
+        debugPrint('❌ [LocationService] 위치 스트림 오류: $error');
+        // 오류 발생 시 재시도
+        Future.delayed(Duration(seconds: 5), () {
+          debugPrint('🔄 [LocationService] 위치 스트림 재시도');
+          stopTracking();
+          startTracking();
+        });
+      },
+      onDone: () {
+        debugPrint('⚠️ [LocationService] 위치 스트림 종료됨');
+      },
+      cancelOnError: false,
+    );
+
+    debugPrint('✅ [LocationService] 위치 추적 시작됨');
   }
 
   // 위치 추적 중지

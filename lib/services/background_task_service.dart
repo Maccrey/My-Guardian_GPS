@@ -229,10 +229,38 @@ Future<void> _handleLocationCheckTask() async {
     // 홈 위치 정보 로드 (홈 위치 서비스 없이 직접 구현)
     final homeLocationsJson = prefs.getString('home_locations') ?? '[]';
 
-    // TODO: JSON 파싱으로 homeLat, homeLng 설정
-    // 여기서는 간단히 더미 데이터로 구현
+    // 홈 위치 정보 가져오기 (직접 저장된 값 및 JSON 파싱)
     double? homeLat;
     double? homeLng;
+
+    // 1. 직접 저장된 값 확인 (가장 신뢰할 수 있는 소스)
+    homeLat = prefs.getDouble('home_latitude');
+    homeLng = prefs.getDouble('home_longitude');
+
+    if (homeLat != null && homeLng != null) {
+      debugPrint('🏠 직접 저장된 홈 위치 발견: lat=$homeLat, lng=$homeLng');
+    } else {
+      // 2. JSON 파싱으로 시도
+      try {
+        if (homeLocationsJson.isNotEmpty && homeLocationsJson != '[]') {
+          final regExp = RegExp(
+              r'"id":"([^"]+)".*?"latitude":([0-9.]+),"longitude":([0-9.]+)');
+          final matches = regExp.allMatches(homeLocationsJson);
+
+          for (final match in matches) {
+            final id = match.group(1);
+            if (id == selectedHomeLocationId) {
+              homeLat = double.parse(match.group(2)!);
+              homeLng = double.parse(match.group(3)!);
+              debugPrint('🏠 JSON 파싱으로 홈 위치 찾음: lat=$homeLat, lng=$homeLng');
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('❌ 홈 위치 JSON 파싱 오류: $e');
+      }
+    }
 
     // 홈 위치 정보가 없으면 종료
     if (homeLat == null || homeLng == null) {
@@ -258,65 +286,68 @@ Future<void> _handleLocationCheckTask() async {
     debugPrint(
         '📏 집과의 거리: ${distance.toStringAsFixed(2)}m (설정 반경: ${homeRadius}m)');
 
-    // 이미 알림을 보냈는지 확인
-    final hasSentArrivalNotification =
+    // 알림을 이미 보냈는지 확인
+    final alreadySentNotification =
         prefs.getBool('arrival_notification_sent') ?? false;
+    final lastNotificationTimeStr =
+        prefs.getString('last_arrival_notification_time');
+    DateTime? lastNotificationTime;
 
-    // 집 반경 내에 있고, 아직 알림을 보내지 않았으면 알림 전송
-    if (distance <= homeRadius && !hasSentArrivalNotification) {
-      // 마지막 알림 전송 시간 확인
-      final lastNotificationTimeStr =
-          prefs.getString('last_arrival_notification_time');
-      final now = DateTime.now();
-
-      bool shouldSendNotification = true;
-
-      // 마지막 알림이 있으면 시간 차이 확인 (10분 이내면 중복 방지)
-      if (lastNotificationTimeStr != null) {
-        final lastNotificationTime = DateTime.parse(lastNotificationTimeStr);
-        final timeDiff = now.difference(lastNotificationTime).inMinutes;
-
-        if (timeDiff < 10) {
-          debugPrint('⚠️ 마지막 알림 후 10분이 지나지 않았습니다. (경과: ${timeDiff}분)');
-          shouldSendNotification = false;
-        }
+    if (lastNotificationTimeStr != null) {
+      try {
+        lastNotificationTime = DateTime.parse(lastNotificationTimeStr);
+      } catch (e) {
+        debugPrint('⚠️ 마지막 알림 시간 파싱 오류: $e');
       }
+    }
 
-      if (shouldSendNotification) {
-        debugPrint('🏠 집 도착 감지! 알림 전송 중...');
+    // 집 반경 내에 있고 최근에 알림을 보내지 않았는지 확인
+    final bool shouldSendNotification = distance <= homeRadius &&
+        (!alreadySentNotification ||
+            (lastNotificationTime != null &&
+                DateTime.now().difference(lastNotificationTime).inMinutes >=
+                    10));
 
-        // 알림 서비스 초기화 및 알림 표시
-        final notificationService = await NotificationService.getInstance();
-        await notificationService.setupLocalNotifications();
-        await notificationService.showNotification(
-          id: 999,
-          title: '🏠 귀가 알림',
-          body: arrivalMessage,
-          payload: 'home_arrival',
-        );
+    if (shouldSendNotification) {
+      debugPrint('🏠 집 도착 감지! 알림 전송 중...');
 
-        // 알림 상태 저장
-        await prefs.setBool('arrival_notification_sent', true);
-        await prefs.setString(
-            'last_arrival_notification_time', now.toIso8601String());
-        await prefs.setBool('arrival_notification_pending', true);
-        await prefs.setString('arrival_notification_message', arrivalMessage);
-        await prefs.setStringList(
-            'arrival_notification_recipients', recipientIds);
+      // 알림 서비스 초기화 및 알림 표시
+      final notificationService = await NotificationService.getInstance();
+      await notificationService.setupLocalNotifications();
+      await notificationService.showNotification(
+        id: 999,
+        title: '🏠 귀가 알림',
+        body: arrivalMessage,
+        payload: 'home_arrival',
+      );
 
-        // 추적 자동 중지를 위한 설정 변경
-        await prefs.setBool('home_arrival_tracking_enabled', false);
+      // 알림 상태 저장
+      await prefs.setBool('arrival_notification_sent', true);
+      await prefs.setString(
+          'last_arrival_notification_time', DateTime.now().toIso8601String());
+      await prefs.setBool('arrival_notification_pending', true);
+      await prefs.setString('arrival_notification_message', arrivalMessage);
+      await prefs.setStringList(
+          'arrival_notification_recipients', recipientIds);
 
-        // 추적 종료 알림 표시
-        await notificationService.showNotification(
-          id: 1000,
-          title: '귀가 추적 완료',
-          body: '집에 도착하여 추적이 자동으로 중지되었습니다.',
-          payload: 'home_arrival_stopped',
-        );
+      // 메시지 전송 상태를 pending으로 설정하고 앱이 다시 실행될 때 메시지를 보내도록 함
+      debugPrint('✅ 귀가 알림 전송 요청 저장 완료');
 
-        debugPrint('✅ 귀가 알림 전송 및 추적 자동 중지 완료');
-      }
+      // 메시지 전송을 시도 (Firebase 클라이언트 라이브러리를 직접 사용하는 방식은 워크매니저에서 제한됨)
+      // 대신 앱이 다시 실행될 때 처리할 수 있도록 상태 저장
+
+      // 추적 자동 중지를 위한 설정 변경
+      await prefs.setBool('home_arrival_tracking_enabled', false);
+
+      // 추적 종료 알림 표시
+      await notificationService.showNotification(
+        id: 1000,
+        title: '귀가 추적 완료',
+        body: '집에 도착하여 추적이 자동으로 중지되었습니다.',
+        payload: 'home_arrival_stopped',
+      );
+
+      debugPrint('✅ 귀가 알림 전송 및 추적 자동 중지 완료');
     } else if (distance > homeRadius) {
       // 집 반경을 벗어나면 알림 상태 초기화
       await prefs.setBool('arrival_notification_sent', false);

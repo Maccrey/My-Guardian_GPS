@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'dart:async';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:workmanager/workmanager.dart';
 
 import 'services/auth_service.dart';
 import 'services/message_service.dart';
@@ -39,6 +40,9 @@ import 'views/location_sharing/user_search_location_view.dart';
 import 'views/user_search_contact_view.dart';
 import 'services/biometric_service.dart';
 import 'views/app_lock_screen.dart';
+import 'services/notification_service.dart';
+import 'services/background_location_service.dart';
+import 'services/background_task_service.dart';
 
 import 'firebase_options.dart';
 
@@ -57,139 +61,47 @@ void main() async {
   ]);
 
   // Firebase 초기화
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    debugPrint('✅ Firebase 초기화 성공');
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
-    // Firebase 인스턴스 확인 (테스트용)
-    final firebaseApp = Firebase.app();
-    debugPrint('✅ Firebase 앱 이름: ${firebaseApp.name}');
-    debugPrint('✅ Firebase 프로젝트 ID: ${firebaseApp.options.projectId}');
+  // 필요한 서비스 초기화
+  await initServices();
 
-    // Firestore와 Auth 연결 테스트
-    debugPrint('📡 Firebase 서비스 연결 테스트 중...');
-  } catch (e) {
-    debugPrint('❌ Firebase 초기화 오류: $e');
-    debugPrint('❌ Firebase 오류 스택: ${StackTrace.current}');
-
-    // 오류 상세 정보 출력
-    FlutterError.dumpErrorToConsole(
-      FlutterErrorDetails(
-        exception: e,
-        stack: StackTrace.current,
-        library: 'main.dart',
-        context: ErrorDescription('Firebase 초기화 중 오류'),
-      ),
-    );
-
-    debugPrint('⚠️ Firebase가 초기화되지 않았습니다. 일부 기능이 제한될 수 있습니다.');
-  }
-  // Firebase 초기화 코드 제거 - 테스트를 위해
-
-  // .env 파일 로드
-  try {
-    await dotenv.load(fileName: '.env');
-    debugPrint('✅ .env 파일 로드 성공');
-  } catch (e) {
-    debugPrint('❌ .env 파일 로드 실패: $e');
-    // 오류 상세 정보 출력
-    FlutterError.dumpErrorToConsole(
-      FlutterErrorDetails(
-        exception: e,
-        stack: StackTrace.current,
-        library: 'main.dart',
-        context: ErrorDescription('.env 파일 로드 중 오류'),
-      ),
-    );
-  }
-
-  // Google Maps API 키 설정 - 플랫폼별 처리
-  try {
-    // 플랫폼에 맞게 API 키 설정
-    final result = await MapApiService.setGoogleMapsApiKeyForPlatform();
-    if (result) {
-      debugPrint('✅ Google Maps API 키 설정 완료');
-    } else {
-      debugPrint('⚠️ Google Maps API 키 설정 실패');
-    }
-  } catch (e) {
-    debugPrint('❌ Google Maps API 키 설정 중 오류: $e');
-  }
-
-  try {
-    // SharedPreferences 초기화 시도
-    prefsInstance = await SharedPreferences.getInstance();
-    isSharedPreferencesAvailable = true;
-    debugPrint(
-        '✅ 앱 시작 시 SharedPreferences 초기화됨: 키 목록=${prefsInstance?.getKeys()}, 인스턴스 정보=${prefsInstance.toString()}');
-  } catch (e) {
-    isSharedPreferencesAvailable = false;
-    debugPrint('❌ SharedPreferences 초기화 오류: $e');
-    debugPrint('❌ 오류 상세 정보: ${e.toString()}');
-
-    // Flutter 에러 정보 출력
-    FlutterError.dumpErrorToConsole(
-      FlutterErrorDetails(
-        exception: e,
-        stack: StackTrace.current,
-        library: 'main.dart',
-        context: ErrorDescription('SharedPreferences 초기화 중 오류'),
-      ),
-    );
-
-    debugPrint('⚠️ 메모리 모드로 작동됩니다. 앱을 다시 시작하면 문제가 해결될 수 있습니다.');
-  }
-
-  // SettingsService 초기화
-  await SettingsService.getInstance();
-
-  // 위치 공유 서비스 및 컨트롤러 초기화
-  Get.put(LocationSharingService());
-  Get.put(LocationSharingController());
-
-  // 필요한 서비스들을 모두 먼저 등록 (HomeArrivalService가 의존하는 서비스들)
-  Get.put(LocationService(), permanent: true);
-  Get.put(AuthService(), permanent: true);
-  Get.put(MessageService(), permanent: true);
-  Get.put(EmergencyContactService(), permanent: true);
-
-  // GeofenceService도 명시적으로 먼저 등록
-  Get.put(GeofenceService(), permanent: true);
-  debugPrint('✅ 필수 서비스 초기화 완료');
-
-  // HomeArrivalService 초기화 (모든 의존성이 등록된 후)
-  try {
-    await HomeArrivalService.getInstance();
-    debugPrint('✅ HomeArrivalService 초기화 성공');
-  } catch (e) {
-    debugPrint('❌ HomeArrivalService 초기화 오류: $e');
-  }
-
-  // 앱 시작 시 저장된 알림 확인
-  try {
-    // 앱이 재시작될 때 발송되지 못한 귀가 알림이 있는지 확인
-    HomeArrivalService.getInstance().then((service) {
-      service.checkPendingArrivalNotification();
-    });
-    debugPrint('✅ 귀가 알림 확인 시작됨');
-  } catch (e) {
-    debugPrint('⚠️ 귀가 알림 확인 오류: $e');
-  }
-
-  // 생체인증 서비스 초기화 및 설정 서비스와 동기화
-  try {
-    if (Get.isRegistered<BiometricService>()) {
-      final biometricService = Get.find<BiometricService>();
-      biometricService.initializeOnAppStart();
-      debugPrint('✅ 앱 시작 시 생체인증 서비스 초기화 완료');
-    }
-  } catch (e) {
-    debugPrint('⚠️ 생체인증 서비스 초기화 오류: $e');
-  }
-
+  // 앱 실행
   runApp(const MyApp());
+}
+
+/// 앱에 필요한 서비스 초기화
+Future<void> initServices() async {
+  try {
+    // Workmanager 초기화 (백그라운드 작업용)
+    await Workmanager().initialize(callbackDispatcher);
+
+    // 필수 서비스 등록
+    Get.put(AuthService(), permanent: true);
+    Get.put(LocationService(), permanent: true);
+
+    // NotificationService 초기화 (싱글톤)
+    await NotificationService.getInstance();
+
+    // 백그라운드 서비스 초기화
+    final backgroundLocationService = BackgroundLocationService.instance;
+    await backgroundLocationService.init();
+
+    // HomeArrivalService 초기화 및 보류 중인 알림 확인
+    final homeArrivalService = await HomeArrivalService.getInstance();
+
+    // 보류 중인 귀가 알림 확인 및 처리
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // 프레임 렌더링 후 실행하여 GetX가 완전히 초기화된 후 실행되도록 함
+      await homeArrivalService.checkPendingArrivalNotification();
+    });
+
+    debugPrint('✅ 서비스 초기화 완료');
+  } catch (e) {
+    debugPrint('❌ 서비스 초기화 중 오류 발생: $e');
+  }
 }
 
 class MyApp extends StatefulWidget {

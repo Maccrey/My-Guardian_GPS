@@ -255,7 +255,41 @@ void _onStart(ServiceInstance service) async {
   double? homeLat;
   double? homeLng;
 
-  // TODO: JSON 파싱으로 homeLat, homeLng 설정
+  // JSON 파싱으로 homeLat, homeLng 설정
+  try {
+    // 1. 홈 위치 목록 파싱
+    final jsonData = homeLocationsJson;
+    if (jsonData.isNotEmpty && jsonData != '[]') {
+      debugPrint('🏠 홈 위치 데이터 파싱 시도: $jsonData');
+
+      // JSON 파싱 결과 (간소화된 직접 파싱)
+      final regExp = RegExp(
+          r'"id":"([^"]+)".*?"latitude":([0-9.]+),"longitude":([0-9.]+)');
+      final matches = regExp.allMatches(jsonData);
+
+      for (final match in matches) {
+        final id = match.group(1);
+        if (id == selectedHomeLocationId) {
+          homeLat = double.parse(match.group(2)!);
+          homeLng = double.parse(match.group(3)!);
+          debugPrint('🏠 홈 위치 찾음: lat=$homeLat, lng=$homeLng');
+          break;
+        }
+      }
+    }
+
+    // 백업 방법: 선택된 ID의 좌표값을 직접 가져오기
+    if (homeLat == null || homeLng == null) {
+      homeLat = prefs.getDouble('home_latitude');
+      homeLng = prefs.getDouble('home_longitude');
+
+      if (homeLat != null && homeLng != null) {
+        debugPrint('🏠 백업 방법으로 홈 위치 찾음: lat=$homeLat, lng=$homeLng');
+      }
+    }
+  } catch (e) {
+    debugPrint('❌ 홈 위치 파싱 오류: $e');
+  }
 
   // 위치 스트림 구독
   final positionStream =
@@ -266,6 +300,8 @@ void _onStart(ServiceInstance service) async {
   bool hasSentArrivalNotification = false;
 
   positionStream.listen((Position position) async {
+    debugPrint(
+        '📍 [BackgroundLocationService] 위치 업데이트: latitude=${position.latitude}, longitude=${position.longitude}');
     // 최신 위치 정보 업데이트
     debugPrint('📍 현재 위치: ${position.latitude}, ${position.longitude}');
 
@@ -299,10 +335,12 @@ void _onStart(ServiceInstance service) async {
     );
 
     debugPrint(
-        '📏 집과의 거리: ${distance.toStringAsFixed(2)}m (설정 반경: ${homeRadius}m)');
+        '📏 [BackgroundLocationService] 집과의 거리: ${distance.toStringAsFixed(2)}m (설정 반경: ${homeRadius}m)');
 
     // 알림 전송 조건 확인 (집 반경 내 진입 + 중복 알림 방지)
     if (distance <= homeRadius && !hasSentArrivalNotification) {
+      debugPrint(
+          '🏠 [BackgroundLocationService] 집 반경(${homeRadius}m) 내 진입 감지, 알림 트리거');
       // 마지막 알림과 10분 이상 차이가 나는지 확인
       final now = DateTime.now();
       if (lastNotificationTime == null ||
