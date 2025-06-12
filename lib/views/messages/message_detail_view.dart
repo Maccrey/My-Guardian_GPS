@@ -935,7 +935,7 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                   Text(
                     _getRecipientName(widget.userId),
                     style: const TextStyle(
-                      fontSize: 16,
+                      fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
                     overflow: TextOverflow.ellipsis,
@@ -954,7 +954,7 @@ class _MessageDetailViewState extends State<MessageDetailView> {
                           Text(
                             _recipientStatusText.value,
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 8,
                               color: _recipientStatusColor.value,
                               fontWeight: FontWeight.w400,
                             ),

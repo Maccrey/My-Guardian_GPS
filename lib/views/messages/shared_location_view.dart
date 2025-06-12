@@ -871,15 +871,6 @@ class _SharedLocationViewState extends State<SharedLocationView> {
         foregroundColor: Colors.blue.shade700,
         title: Row(
           children: [
-            CircleAvatar(
-              backgroundColor: Colors.teal.shade100,
-              radius: 16,
-              child: Icon(
-                Icons.location_on,
-                color: Colors.teal.shade700,
-                size: 18,
-              ),
-            ),
             const SizedBox(width: 10),
             const Text(
               '공유된 위치',
