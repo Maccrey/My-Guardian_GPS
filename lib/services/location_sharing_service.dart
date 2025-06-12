@@ -1004,9 +1004,9 @@ class LocationSharingService extends GetxController {
           ? '$message\n$locationInfo'
           : message;
 
-      // 채팅방 ID 생성 (senderId_receiverId 형식으로 고정)
-      String chatRoomId = "${currentUserAuth.uid}_$actualReceiverId";
-      print('🏠 [서비스] 채팅방 ID 생성 (senderId_receiverId 형식): $chatRoomId');
+      // 채팅방 ID 생성 (senderId+receiverId 형식으로 명확히 지정)
+      String chatRoomId = "${currentUserAuth.uid}$actualReceiverId";
+      print('🏠 [서비스] 채팅방 ID 생성 (senderId+receiverId 형식): $chatRoomId');
 
       // Firestore에서 일치하는 채팅방 검색
       try {

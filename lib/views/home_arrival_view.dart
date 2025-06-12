@@ -12,6 +12,7 @@ import '../services/auth_service.dart';
 import '../services/message_service.dart';
 import '../services/emergency_contact_service.dart';
 import '../services/home_arrival_service.dart';
+import 'dart:convert';
 
 class HomeArrivalView extends StatefulWidget {
   const HomeArrivalView({Key? key}) : super(key: key);
@@ -300,7 +301,7 @@ class _HomeArrivalViewState extends State<HomeArrivalView>
         // 기본 메시지 설정
         String message = _messageController.text.trim();
         if (message.isEmpty) {
-          message = '집에 도착했습니다.';
+          message = '집에 안전하게 도착했습니다.';
         }
 
         // 진동 피드백
@@ -389,10 +390,31 @@ class _HomeArrivalViewState extends State<HomeArrivalView>
 
           // 메시지 서비스를 통해 직접 메시지 전송
           final messageService = Get.find<MessageService>();
+
+          // 선택된 집 위치 정보 가져오기
+          final homeLocation = selectedHome;
+
+          // 메시지 데이터 준비 - 위치 정보 포함
+          final locationData = {
+            'type': 'arrival_notification',
+            'latitude': homeLocation.latitude,
+            'longitude': homeLocation.longitude,
+            'address': homeLocation.address,
+            'name': homeLocation.name,
+            'message': message,
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+          };
+
+          // 메시지 내용을 JSON으로 변환
+          final String locationContent = json.encode(locationData);
+
+          debugPrint('📤 긴급 연락처에 전송할 데이터: $locationContent');
+
+          // JSON 형식 메시지 전송
           final success = await messageService.sendMessage(
             receiverId: selectedContact.userId!,
-            content: message,
-            messageType: 'home_arrival',
+            content: locationContent,
+            messageType: 'location_arrival',
           );
 
           if (success) {

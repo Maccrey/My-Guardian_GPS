@@ -1,4 +1,3 @@
-import 'package:flutter_geofence/Geolocation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_over/services/geofence_service.dart';
 

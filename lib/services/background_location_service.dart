@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_background_service_android/flutter_background_service_android.dart';
@@ -10,6 +11,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:watch_over/services/home_location_service.dart';
 import 'package:watch_over/services/notification_service.dart';
 import 'package:watch_over/services/home_arrival_service.dart';
+import 'package:watch_over/models/home_location_model.dart';
+import 'package:watch_over/services/message_service.dart';
 
 /// 백그라운드 위치 추적 서비스
 /// 앱이 백그라운드에 있을 때도 위치 추적 및 귀가 알림 기능을 제공합니다.
@@ -52,6 +55,7 @@ class BackgroundLocationService {
         notificationChannelId: _channelId,
         initialNotificationTitle: '귀가 알림',
         initialNotificationContent: '위치 추적 중...',
+        foregroundServiceNotificationId: _notificationId,
       ),
       iosConfiguration: IosConfiguration(
         autoStart: false,
@@ -101,9 +105,19 @@ class BackgroundLocationService {
     // 서비스 시작
     await _service.startService();
 
+    // 서비스가 실행될 때까지 짧게 대기
+    await Future.delayed(const Duration(milliseconds: 500));
+
     // 상태 확인
     isRunning.value = await _service.isRunning();
     debugPrint('✅ 백그라운드 위치 추적 서비스 시작: ${isRunning.value}');
+
+    // 서비스 상태 전송
+    if (isRunning.value) {
+      await sendMessage('update_settings', {
+        'update_interval': 15, // 15초마다 위치 확인
+      });
+    }
 
     return isRunning.value;
   }
@@ -118,6 +132,9 @@ class BackgroundLocationService {
 
     // 서비스 중지
     _service.invoke('stopService');
+
+    // 서비스가 중지될 때까지 짧게 대기
+    await Future.delayed(const Duration(milliseconds: 500));
 
     // 상태 확인
     isRunning.value = await _service.isRunning();
@@ -224,86 +241,100 @@ void _onStart(ServiceInstance service) async {
   // 디버그 로그
   debugPrint('🚀 백그라운드 위치 추적 서비스 시작');
 
-  // 포그라운드 서비스로 설정
+  // 포그라운드 서비스로 설정 (안드로이드)
   if (service is AndroidServiceInstance) {
     service.setAsForegroundService();
+    service.setAutoStartOnBootMode(true);
+
+    // 포그라운드 서비스 알림 설정
+    service.setForegroundNotificationInfo(
+      title: '귀가 알림 서비스',
+      content: '집 근처 감지 중...',
+    );
   }
 
   // 위치 추적 설정
   final locationSettings = LocationSettings(
     accuracy: LocationAccuracy.high,
     distanceFilter: 10, // 10미터 이상 이동 시 업데이트
-    timeLimit: const Duration(seconds: 30), // 최대 30초마다 업데이트
+    timeLimit: const Duration(seconds: 10), // 10초마다 업데이트 (더 빠르게 변경)
   );
 
   // SharedPreferences 인스턴스 생성
   final prefs = await SharedPreferences.getInstance();
 
   // 중요 설정값 로드
-  int homeRadius = prefs.getInt('home_arrival_radius') ?? 50;
+  int homeRadius = prefs.getInt('home_arrival_radius') ?? 30; // 기본값 30m로 변경
   String arrivalMessage =
       prefs.getString('home_arrival_message') ?? '집에 안전하게 도착했습니다.';
   List<String> recipientIds =
       prefs.getStringList('home_arrival_recipient_ids') ?? [];
+
+  debugPrint('📊 설정 로드 완료: 반경=${homeRadius}m, 수신자=${recipientIds.length}명');
+
+  // 홈 위치 정보 가져오기
+  double? homeLat = prefs.getDouble('home_latitude');
+  double? homeLng = prefs.getDouble('home_longitude');
   String selectedHomeLocationId =
       prefs.getString('selected_home_location_id') ?? '';
   String homeLocationsJson = prefs.getString('home_locations') ?? '[]';
 
-  debugPrint('📊 설정 로드 완료: 반경=${homeRadius}m, 수신자=${recipientIds.length}명');
-
-  // 홈 위치 정보 가져오기 (필요한 코드 추가)
-  double? homeLat;
-  double? homeLng;
-
   // JSON 파싱으로 homeLat, homeLng 설정
   try {
-    // 1. 홈 위치 목록 파싱
-    final jsonData = homeLocationsJson;
-    if (jsonData.isNotEmpty && jsonData != '[]') {
-      debugPrint('🏠 홈 위치 데이터 파싱 시도: $jsonData');
+    // 백업 방법이 실패한 경우에만 JSON 파싱 시도
+    if (homeLat == null || homeLng == null) {
+      debugPrint(
+          '🏠 SharedPreferences에서 홈 위치를 찾지 못해 JSON 파싱 시도: $homeLocationsJson');
 
-      // JSON 파싱 결과 (간소화된 직접 파싱)
-      final regExp = RegExp(
-          r'"id":"([^"]+)".*?"latitude":([0-9.]+),"longitude":([0-9.]+)');
-      final matches = regExp.allMatches(jsonData);
+      try {
+        // 완전한 JSON 파싱 시도
+        final List<dynamic> locations = jsonDecode(homeLocationsJson);
+        for (final location in locations) {
+          if (location['id'] == selectedHomeLocationId) {
+            homeLat = location['latitude'];
+            homeLng = location['longitude'];
+            debugPrint('🏠 JSON 파싱으로 홈 위치 찾음: lat=$homeLat, lng=$homeLng');
+            break;
+          }
+        }
+      } catch (jsonError) {
+        // JSON 파싱 실패 시 정규식으로 시도
+        debugPrint('⚠️ JSON 파싱 실패, 정규식으로 시도: $jsonError');
+        final regExp = RegExp(
+            r'"id":"([^"]+)".*?"latitude":([0-9.]+),"longitude":([0-9.]+)');
+        final matches = regExp.allMatches(homeLocationsJson);
 
-      for (final match in matches) {
-        final id = match.group(1);
-        if (id == selectedHomeLocationId) {
-          homeLat = double.parse(match.group(2)!);
-          homeLng = double.parse(match.group(3)!);
-          debugPrint('🏠 홈 위치 찾음: lat=$homeLat, lng=$homeLng');
-          break;
+        for (final match in matches) {
+          final id = match.group(1);
+          if (id == selectedHomeLocationId) {
+            homeLat = double.parse(match.group(2)!);
+            homeLng = double.parse(match.group(3)!);
+            debugPrint('🏠 정규식으로 홈 위치 찾음: lat=$homeLat, lng=$homeLng');
+            break;
+          }
         }
       }
-    }
-
-    // 백업 방법: 선택된 ID의 좌표값을 직접 가져오기
-    if (homeLat == null || homeLng == null) {
-      homeLat = prefs.getDouble('home_latitude');
-      homeLng = prefs.getDouble('home_longitude');
-
-      if (homeLat != null && homeLng != null) {
-        debugPrint('🏠 백업 방법으로 홈 위치 찾음: lat=$homeLat, lng=$homeLng');
-      }
+    } else {
+      debugPrint('🏠 SharedPreferences에서 홈 위치 찾음: lat=$homeLat, lng=$homeLng');
     }
   } catch (e) {
     debugPrint('❌ 홈 위치 파싱 오류: $e');
   }
 
-  // 위치 스트림 구독
-  final positionStream =
-      Geolocator.getPositionStream(locationSettings: locationSettings);
-
-  // 마지막으로 알림을 보낸 시간 (중복 알림 방지)
-  DateTime? lastNotificationTime;
+  // 위치 스트림 설정값
+  int updateIntervalSeconds = 15; // 기본 15초
   bool hasSentArrivalNotification = false;
+  DateTime? lastNotificationTime;
+  int retryCount = 0;
+  bool isMonitoring = true;
+  bool wasOutsideHome = true; // 이전에 집 밖에 있었는지 추적하는 변수 추가
 
-  positionStream.listen((Position position) async {
+  // 위치 업데이트 처리 함수
+  void processLocationUpdate(Position position) async {
+    if (!isMonitoring) return;
+
     debugPrint(
         '📍 [BackgroundLocationService] 위치 업데이트: latitude=${position.latitude}, longitude=${position.longitude}');
-    // 최신 위치 정보 업데이트
-    debugPrint('📍 현재 위치: ${position.latitude}, ${position.longitude}');
 
     // 서비스 상태 업데이트
     service.invoke('location_update', {
@@ -312,7 +343,7 @@ void _onStart(ServiceInstance service) async {
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
 
-    // 위치 추적 활성화 상태 확인
+    // 위치 추적 활성화 상태 확인 (매번 최신 상태 확인)
     final isTrackingEnabled =
         prefs.getBool('home_arrival_tracking_enabled') ?? false;
     if (!isTrackingEnabled) {
@@ -337,18 +368,25 @@ void _onStart(ServiceInstance service) async {
     debugPrint(
         '📏 [BackgroundLocationService] 집과의 거리: ${distance.toStringAsFixed(2)}m (설정 반경: ${homeRadius}m)');
 
-    // 알림 전송 조건 확인 (집 반경 내 진입 + 중복 알림 방지)
-    if (distance <= homeRadius && !hasSentArrivalNotification) {
+    // 현재 집 반경 내에 있는지 확인
+    bool isInsideHome = distance <= homeRadius;
+
+    // 알림 전송 조건 확인
+    // 1. 집 반경 내에 있고
+    // 2. 아직 알림을 보내지 않았거나 이전에 집 밖에 있었던 경우
+    if (isInsideHome && (!hasSentArrivalNotification || wasOutsideHome)) {
       debugPrint(
           '🏠 [BackgroundLocationService] 집 반경(${homeRadius}m) 내 진입 감지, 알림 트리거');
-      // 마지막 알림과 10분 이상 차이가 나는지 확인
+
+      // 마지막 알림과 5분 이상 차이가 나는지 확인
       final now = DateTime.now();
       if (lastNotificationTime == null ||
-          now.difference(lastNotificationTime!).inMinutes >= 10) {
+          now.difference(lastNotificationTime!).inMinutes >= 5) {
         debugPrint('🏠 집 도착 감지! 알림 전송 중...');
 
         // 알림 상태 업데이트
         hasSentArrivalNotification = true;
+        wasOutsideHome = false; // 이제 집 안에 있음을 표시
         lastNotificationTime = now;
 
         // 귀가 알림 이벤트 발생
@@ -363,6 +401,39 @@ void _onStart(ServiceInstance service) async {
         await prefs.setString('arrival_notification_message', arrivalMessage);
         await prefs.setStringList(
             'arrival_notification_recipients', recipientIds);
+
+        // 알림 메시지 전송 직접 시도
+        try {
+          final messageService = MessageService();
+
+          // 집 위치 및 주소 정보 로드
+          String address = prefs.getString('home_address') ?? '등록된 집 주소';
+          String homeName = prefs.getString('home_name') ?? '우리 집';
+
+          // 메시지 내용 JSON 형식으로 생성
+          final String locationContent = jsonEncode({
+            'type': 'arrival_notification',
+            'latitude': homeLat,
+            'longitude': homeLng,
+            'address': address,
+            'name': homeName,
+            'message': arrivalMessage,
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+          });
+
+          for (final recipientId in recipientIds) {
+            if (recipientId.isNotEmpty) {
+              await messageService.sendMessage(
+                receiverId: recipientId,
+                content: locationContent,
+                messageType: 'location_arrival',
+              );
+              debugPrint('✅ 메시지 서비스를 통해 귀가 알림 전송 성공: $recipientId');
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ 직접 메시지 전송 실패: $e');
+        }
 
         // 알림 표시 (포그라운드 서비스)
         if (service is AndroidServiceInstance) {
@@ -388,20 +459,107 @@ void _onStart(ServiceInstance service) async {
           );
         }
 
-        // 3초 후 서비스 중지 (필요한 처리가 완료될 수 있도록)
-        await Future.delayed(const Duration(seconds: 3));
-        service.stopSelf(); // 서비스 종료
-        debugPrint('✅ 귀가 알림 전송 후 백그라운드 서비스 자동 종료');
+        // 서비스 계속 유지 (메시지 전송이 완료될 때까지)
+        await Future.delayed(const Duration(seconds: 10));
+        isMonitoring = false;
+        debugPrint('✅ 귀가 알림 전송 후 위치 추적 중지');
       }
     } else if (distance > homeRadius) {
-      // 집 반경을 벗어나면 알림 상태 초기화
+      // 집 반경을 벗어나면 상태 업데이트
+      wasOutsideHome = true; // 집 밖에 있음을 표시
       hasSentArrivalNotification = false;
+    }
+  }
+
+  // 위치 스트림 구독 시작
+  StreamSubscription<Position>? positionStream;
+
+  void startPositionTracking() {
+    // 이전 구독 취소
+    positionStream?.cancel();
+
+    // 새로운 구독 시작
+    positionStream =
+        Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+      processLocationUpdate,
+      onError: (e) {
+        debugPrint('❌ 위치 스트림 오류: $e');
+
+        // 오류 발생 시 재시도 (최대 5회)
+        if (retryCount < 5) {
+          retryCount++;
+          debugPrint('🔄 위치 스트림 재시작 시도 (${retryCount}/5)...');
+          Future.delayed(Duration(seconds: 5), startPositionTracking);
+        }
+      },
+      onDone: () {
+        debugPrint('⚠️ 위치 스트림 종료됨');
+
+        // 종료 시 재시작 (최대 5회)
+        if (retryCount < 5 && isMonitoring) {
+          retryCount++;
+          debugPrint('🔄 위치 스트림 재시작 시도 (${retryCount}/5)...');
+          Future.delayed(Duration(seconds: 5), startPositionTracking);
+        }
+      },
+      cancelOnError: false,
+    );
+  }
+
+  // 위치 스트림 시작
+  startPositionTracking();
+
+  // 서비스 시작 시 즉시 현재 위치 확인
+  try {
+    debugPrint('🔍 서비스 시작 시 즉시 위치 확인 중...');
+    final initialPosition = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+    processLocationUpdate(initialPosition);
+  } catch (e) {
+    debugPrint('⚠️ 초기 위치 확인 실패: $e');
+  }
+
+  // 위치 주기적으로 다시 확인 (백업 메커니즘)
+  Timer.periodic(Duration(seconds: 30), (timer) async {
+    if (!isMonitoring) {
+      timer.cancel();
+      return;
+    }
+
+    // 위치 추적 활성화 상태 확인
+    final isTrackingEnabled =
+        prefs.getBool('home_arrival_tracking_enabled') ?? false;
+    if (!isTrackingEnabled) {
+      debugPrint('⚠️ 위치 추적이 비활성화되어 있어 주기적 확인을 중지합니다.');
+      timer.cancel();
+      return;
+    }
+
+    try {
+      debugPrint('🔄 주기적 위치 확인 중...');
+      final currentPosition = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      processLocationUpdate(currentPosition);
+    } catch (e) {
+      debugPrint('⚠️ 주기적 위치 확인 실패: $e');
+    }
+  });
+
+  // 설정 업데이트 메시지 처리
+  service.on('update_settings').listen((event) {
+    if (event != null && event['update_interval'] != null) {
+      updateIntervalSeconds = event['update_interval'];
+      debugPrint('⚙️ 위치 업데이트 간격 변경: ${updateIntervalSeconds}초');
     }
   });
 
   // 서비스 중지 메시지 처리
   service.on('stopService').listen((event) async {
     debugPrint('🛑 백그라운드 서비스 중지 요청');
+    isMonitoring = false;
+    positionStream?.cancel();
     service.stopSelf();
   });
 }

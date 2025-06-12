@@ -330,16 +330,6 @@ class MessageService extends GetxController {
     } catch (e) {
       debugPrint('⚠️ Firestore 구독 설정 오류: $e');
       debugPrint('⚠️ 오류 스택: ${StackTrace.current}');
-
-      // 오류 상태 설정
-      hasError.value = true;
-      errorMessage.value = 'Firestore 실시간 구독 설정 중 오류가 발생했습니다.';
-
-      // 오류 발생 시 10초 후 재연결 시도
-      Future.delayed(const Duration(seconds: 10), () {
-        debugPrint('🔄 오류 후 Firestore 구독 재설정 시도...');
-        _subscribeToFirestoreMessages();
-      });
     }
   }
 
@@ -411,15 +401,10 @@ class MessageService extends GetxController {
       final messageId = const Uuid().v4();
       debugPrint('📤 메시지 전송 시작: $messageId (수신자: $receiverId)');
 
-      // 정규화된 사용자 ID 생성 (채팅방 ID 일관성을 위해)
-      final normalizedSenderId = _normalizeUserId(currentUserId);
-      final normalizedReceiverId = _normalizeUserId(receiverId);
-
-      // 채팅방 ID 생성 - 두 사용자 ID를 정렬하여 일관된 ID 생성
-      List<String> participants = [normalizedSenderId, normalizedReceiverId];
-      participants.sort(); // 알파벳 순서로 정렬하여 일관성 보장
-      final String chatRoomId = participants.join('_');
-      debugPrint('🏠 일관된 채팅방 ID 생성: $chatRoomId (정규화된 ID 사용)');
+      // 채팅방 ID 생성 - 항상 같은 채팅방이 생성되도록 두 ID를 정렬 후 조합
+      List<String> sortedIds = [currentUserId, receiverId]..sort();
+      final String chatRoomId = sortedIds.join("_");
+      debugPrint('🏠 채팅방 ID 생성: $chatRoomId (정렬된 ID 조합)');
 
       // 채팅방이 없으면 생성
       try {
@@ -430,7 +415,6 @@ class MessageService extends GetxController {
           debugPrint('➕ 새 채팅방 생성: $chatRoomId');
           await _firestore.collection('chat_rooms').doc(chatRoomId).set({
             'participants': [currentUserId, receiverId], // 원래 ID 보존
-            'normalizedParticipants': participants, // 정규화된 ID 추가
             'createdAt': FieldValue.serverTimestamp(),
             'lastMessageAt': FieldValue.serverTimestamp(),
           });
@@ -808,28 +792,30 @@ class MessageService extends GetxController {
           // chatRoomId에서 상대방 ID 추출 시도
           final String chatRoomId = message.chatRoomId!;
 
-          // chatRoomId가 ID 조합 형식인지 확인 (user1_user2 형식)
-          if (chatRoomId.contains('_')) {
-            final parts = chatRoomId.split('_');
-            if (parts.length == 2) {
-              // ID 파트 중 현재 사용자가 아닌 것이 상대방 ID
-              String potentialOtherId = '';
+          // 채팅방 ID에서 상대방 ID 추출
+          // senderId+receiverId 형식이므로 currentUserId로 시작하면 receiverId 추출
+          // 그렇지 않으면 senderId가 상대방
+          String potentialOtherId = '';
 
-              if (parts[0] != normalizedCurrentUserId &&
-                  parts[0] != currentUserId) {
-                potentialOtherId = parts[0];
-              } else if (parts[1] != normalizedCurrentUserId &&
-                  parts[1] != currentUserId) {
-                potentialOtherId = parts[1];
-              }
-
-              // 유효한 ID면 기존 ID 대신 사용
-              if (potentialOtherId.isNotEmpty) {
-                debugPrint(
-                    '🔍 채팅방 ID에서 상대방 ID 추출: $potentialOtherId (원래: $otherUserId)');
-                otherUserId = potentialOtherId;
-              }
+          if (chatRoomId.startsWith(currentUserId)) {
+            // currentUserId가 앞에 있는 경우 (내가 보낸 메시지)
+            potentialOtherId = chatRoomId.substring(currentUserId.length);
+            debugPrint('🔍 채팅방 ID에서 수신자 ID 추출: $potentialOtherId');
+          } else {
+            // currentUserId로 시작하지 않는 경우 (내가 받은 메시지)
+            // 상대방 ID는 chatRoomId에서 currentUserId를 제외한 부분
+            if (chatRoomId.endsWith(currentUserId)) {
+              potentialOtherId = chatRoomId.substring(
+                  0, chatRoomId.length - currentUserId.length);
+              debugPrint('🔍 채팅방 ID에서 발신자 ID 추출: $potentialOtherId');
             }
+          }
+
+          // 유효한 ID면 기존 ID 대신 사용
+          if (potentialOtherId.isNotEmpty) {
+            debugPrint(
+                '🔍 채팅방 ID에서 상대방 ID 추출: $potentialOtherId (원래: $otherUserId)');
+            otherUserId = potentialOtherId;
           }
         }
 
@@ -1250,7 +1236,7 @@ class MessageService extends GetxController {
       return sendMessage(
         receiverId: receiverId,
         content: arrivalData,
-        messageType: 'arrival_notification',
+        messageType: 'location_arrival', // 메시지 타입을 location_arrival로 변경
       );
     } catch (e) {
       debugPrint('⚠️ 귀가 알림 메시지 전송 오류: $e');
@@ -1379,7 +1365,7 @@ class MessageService extends GetxController {
             messageContent = '위치 공유';
           } else if (latestMessage.messageType == 'location_request') {
             messageContent = '위치 공유 요청';
-          } else if (latestMessage.messageType == 'arrival_notification') {
+          } else if (latestMessage.messageType == 'location_arrival') {
             messageContent = '귀가 알림';
           }
         }
