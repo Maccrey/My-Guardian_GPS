@@ -233,13 +233,20 @@ class BackgroundLocationService {
     }
   }
 
-  /// iOS: 위치 서비스 꺼짐 안내
+  /// 위치 서비스 꺼짐 안내 (Android/iOS 공통)
   void _showLocationServiceDisabledDialog() {
     Get.dialog(
       AlertDialog(
         title: const Text('위치 서비스 꺼짐'),
-        content: const Text('위치 서비스가 꺼져 있습니다.\n설정에서 위치 서비스를 켜주세요.'),
+        content: const Text('위치 서비스(GPS)가 꺼져 있습니다.\n설정에서 위치 서비스를 켜주세요.'),
         actions: [
+          TextButton(
+            onPressed: () {
+              Geolocator.openLocationSettings(); // 위치 설정 화면으로 이동
+              Get.back();
+            },
+            child: const Text('설정으로 이동'),
+          ),
           TextButton(
             onPressed: () => Get.back(),
             child: const Text('확인'),
@@ -249,13 +256,20 @@ class BackgroundLocationService {
     );
   }
 
-  /// iOS: 위치 권한 거부 안내
+  /// 위치 권한 거부 안내 (Android/iOS 공통)
   void _showLocationPermissionDeniedDialog() {
     Get.dialog(
       AlertDialog(
         title: const Text('위치 권한 필요'),
         content: const Text('정확한 귀가 알림을 위해 위치 권한이 필요합니다.\n설정에서 권한을 허용해주세요.'),
         actions: [
+          TextButton(
+            onPressed: () {
+              Geolocator.openAppSettings(); // 앱 권한 설정 화면으로 이동
+              Get.back();
+            },
+            child: const Text('설정으로 이동'),
+          ),
           TextButton(
             onPressed: () => Get.back(),
             child: const Text('확인'),
