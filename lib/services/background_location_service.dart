@@ -95,6 +95,29 @@ class BackgroundLocationService {
       return true;
     }
 
+    // iOS: 앱 완전 종료 시 동작 한계 안내 (최초 1회)
+    if (Theme.of(Get.context!).platform == TargetPlatform.iOS) {
+      final prefs = await SharedPreferences.getInstance();
+      final hasShownIosLimitNotice =
+          prefs.getBool('ios_limit_notice_shown') ?? false;
+      if (!hasShownIosLimitNotice) {
+        Get.dialog(
+          AlertDialog(
+            title: const Text('iOS 동작 한계 안내'),
+            content: const Text(
+                'iOS에서는 앱을 완전히 종료(스와이프 종료)하면\n백그라운드 위치 추적이 불가합니다.\n앱을 완전히 종료하지 말고 백그라운드로만 전환해주세요.'),
+            actions: [
+              TextButton(
+                onPressed: () => Get.back(),
+                child: const Text('확인'),
+              ),
+            ],
+          ),
+        );
+        await prefs.setBool('ios_limit_notice_shown', true);
+      }
+    }
+
     // 위치 권한 확인
     final permission = await _checkLocationPermission();
     if (!permission) {
@@ -161,6 +184,10 @@ class BackgroundLocationService {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         debugPrint('❌ 위치 서비스가 비활성화되어 있습니다.');
+        // iOS: 위치 서비스 꺼짐 안내
+        if (Theme.of(Get.context!).platform == TargetPlatform.iOS) {
+          _showLocationServiceDisabledDialog();
+        }
         return false;
       }
 
@@ -171,18 +198,30 @@ class BackgroundLocationService {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
           debugPrint('❌ 위치 권한이 거부되었습니다.');
+          // iOS: 권한 거부 안내
+          if (Theme.of(Get.context!).platform == TargetPlatform.iOS) {
+            _showLocationPermissionDeniedDialog();
+          }
           return false;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
         debugPrint('❌ 위치 권한이 영구적으로 거부되었습니다.');
+        // iOS: 영구 거부 안내
+        if (Theme.of(Get.context!).platform == TargetPlatform.iOS) {
+          _showLocationPermissionDeniedForeverDialog();
+        }
         return false;
       }
 
-      // 백그라운드 위치 권한 확인 (Android 10 이상)
+      // 백그라운드 위치 권한 확인 (Android 10 이상, iOS는 별도 안내)
       if (permission == LocationPermission.whileInUse) {
         debugPrint('⚠️ 앱 사용 중에만 위치 권한이 있습니다. 백그라운드 권한 요청...');
+        // iOS: 백그라운드 권한 안내
+        if (Theme.of(Get.context!).platform == TargetPlatform.iOS) {
+          _showLocationAlwaysPermissionDialog();
+        }
         permission = await Geolocator.requestPermission();
       }
 
@@ -192,6 +231,72 @@ class BackgroundLocationService {
       debugPrint('❌ 위치 권한 확인 오류: $e');
       return false;
     }
+  }
+
+  /// iOS: 위치 서비스 꺼짐 안내
+  void _showLocationServiceDisabledDialog() {
+    Get.dialog(
+      AlertDialog(
+        title: const Text('위치 서비스 꺼짐'),
+        content: const Text('위치 서비스가 꺼져 있습니다.\n설정에서 위치 서비스를 켜주세요.'),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('확인'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// iOS: 위치 권한 거부 안내
+  void _showLocationPermissionDeniedDialog() {
+    Get.dialog(
+      AlertDialog(
+        title: const Text('위치 권한 필요'),
+        content: const Text('정확한 귀가 알림을 위해 위치 권한이 필요합니다.\n설정에서 권한을 허용해주세요.'),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('확인'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// iOS: 위치 권한 영구 거부 안내
+  void _showLocationPermissionDeniedForeverDialog() {
+    Get.dialog(
+      AlertDialog(
+        title: const Text('위치 권한 영구 거부'),
+        content: const Text(
+            '위치 권한이 영구적으로 거부되었습니다.\n설정 > 개인정보보호 > 위치서비스에서 권한을 허용해주세요.'),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('확인'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// iOS: 항상 허용 권한 안내
+  void _showLocationAlwaysPermissionDialog() {
+    Get.dialog(
+      AlertDialog(
+        title: const Text('항상 위치 허용 필요'),
+        content: const Text(
+            '정확한 귀가 알림을 위해 \"항상 허용\" 위치 권한이 필요합니다.\n설정 > 개인정보보호 > 위치서비스에서 \"항상 허용\"으로 변경해주세요.'),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('확인'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 귀가 알림 표시
@@ -473,6 +578,7 @@ void _onStart(ServiceInstance service) async {
 
   // 위치 스트림 구독 시작
   StreamSubscription<Position>? positionStream;
+  final int maxRetry = 5; // 최대 재시도 횟수
 
   void startPositionTracking() {
     // 이전 구독 취소
@@ -484,22 +590,37 @@ void _onStart(ServiceInstance service) async {
       processLocationUpdate,
       onError: (e) {
         debugPrint('❌ 위치 스트림 오류: $e');
-
         // 오류 발생 시 재시도 (최대 5회)
-        if (retryCount < 5) {
+        if (retryCount < maxRetry) {
           retryCount++;
-          debugPrint('🔄 위치 스트림 재시작 시도 (${retryCount}/5)...');
+          debugPrint('🔄 위치 스트림 재시작 시도 (${retryCount}/$maxRetry)...');
           Future.delayed(Duration(seconds: 5), startPositionTracking);
+        } else {
+          // 5회 실패 시 사용자에게 안내
+          Get.snackbar(
+            '위치 오류',
+            '위치 정보를 가져올 수 없습니다.\n위치 권한/서비스를 확인해주세요.',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red.shade700,
+            colorText: Colors.white,
+          );
         }
       },
       onDone: () {
         debugPrint('⚠️ 위치 스트림 종료됨');
-
         // 종료 시 재시작 (최대 5회)
-        if (retryCount < 5 && isMonitoring) {
+        if (retryCount < maxRetry && isMonitoring) {
           retryCount++;
-          debugPrint('🔄 위치 스트림 재시작 시도 (${retryCount}/5)...');
+          debugPrint('🔄 위치 스트림 재시작 시도 (${retryCount}/$maxRetry)...');
           Future.delayed(Duration(seconds: 5), startPositionTracking);
+        } else {
+          Get.snackbar(
+            '위치 오류',
+            '위치 정보를 가져올 수 없습니다.\n위치 권한/서비스를 확인해주세요.',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red.shade700,
+            colorText: Colors.white,
+          );
         }
       },
       cancelOnError: false,

@@ -670,7 +670,7 @@ class _HomeArrivalViewState extends State<HomeArrivalView>
                                           materialTapTargetSize:
                                               MaterialTapTargetSize.shrinkWrap,
                                         ),
-                                        const SizedBox(width: 4),
+                                        const SizedBox(width: 2),
                                         const Text('앱 사용자'),
                                       ],
                                     ),
@@ -719,7 +719,7 @@ class _HomeArrivalViewState extends State<HomeArrivalView>
                                           materialTapTargetSize:
                                               MaterialTapTargetSize.shrinkWrap,
                                         ),
-                                        const SizedBox(width: 4),
+                                        const SizedBox(width: 2),
                                         const Text('긴급 연락처'),
                                       ],
                                     ),

@@ -542,105 +542,31 @@ class _HomeArrivalViewState extends State<HomeArrivalView> {
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 10),
-                      Obx(() => Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      // 알림 방법 선택 UI - 오버플로우 방지
+                      Obx(() => Wrap(
+                            spacing: 12,
+                            runSpacing: 8,
                             children: [
-                              Flexible(
-                                child: GestureDetector(
-                                  onTap: () {
-                                    _selectedNotificationMethod.value = 'user';
-                                    _selectedEmergencyContact.value = null;
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 8, horizontal: 12),
-                                    decoration: BoxDecoration(
-                                      color:
-                                          _selectedNotificationMethod.value ==
-                                                  'user'
-                                              ? Colors.blue.shade50
-                                              : Colors.grey.shade100,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color:
-                                            _selectedNotificationMethod.value ==
-                                                    'user'
-                                                ? Colors.blue
-                                                : Colors.grey.shade300,
-                                        width: 1.5,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Radio<String>(
-                                          value: 'user',
-                                          groupValue:
-                                              _selectedNotificationMethod.value,
-                                          onChanged: (value) {
-                                            _selectedNotificationMethod.value =
-                                                value!;
-                                            _selectedEmergencyContact.value =
-                                                null;
-                                          },
-                                          materialTapTargetSize:
-                                              MaterialTapTargetSize.shrinkWrap,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        const Text('앱 사용자'),
-                                      ],
-                                    ),
-                                  ),
-                                ),
+                              _buildNotificationMethodButton(
+                                label: '앱 사용자',
+                                value: 'user',
+                                selected:
+                                    _selectedNotificationMethod.value == 'user',
+                                onTap: () {
+                                  _selectedNotificationMethod.value = 'user';
+                                  _selectedEmergencyContact.value = null;
+                                },
                               ),
-                              const SizedBox(width: 12),
-                              Flexible(
-                                child: GestureDetector(
-                                  onTap: () {
-                                    _selectedNotificationMethod.value =
-                                        'emergency';
-                                    _selectedUser.value = null;
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 8, horizontal: 12),
-                                    decoration: BoxDecoration(
-                                      color:
-                                          _selectedNotificationMethod.value ==
-                                                  'emergency'
-                                              ? Colors.blue.shade50
-                                              : Colors.grey.shade100,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color:
-                                            _selectedNotificationMethod.value ==
-                                                    'emergency'
-                                                ? Colors.blue
-                                                : Colors.grey.shade300,
-                                        width: 1.5,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Radio<String>(
-                                          value: 'emergency',
-                                          groupValue:
-                                              _selectedNotificationMethod.value,
-                                          onChanged: (value) {
-                                            _selectedNotificationMethod.value =
-                                                value!;
-                                            _selectedUser.value = null;
-                                          },
-                                          materialTapTargetSize:
-                                              MaterialTapTargetSize.shrinkWrap,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        const Text('긴급 연락처'),
-                                      ],
-                                    ),
-                                  ),
-                                ),
+                              _buildNotificationMethodButton(
+                                label: '긴급 연락처',
+                                value: 'emergency',
+                                selected: _selectedNotificationMethod.value ==
+                                    'emergency',
+                                onTap: () {
+                                  _selectedNotificationMethod.value =
+                                      'emergency';
+                                  _selectedUser.value = null;
+                                },
                               ),
                             ],
                           )),
@@ -1145,6 +1071,51 @@ class _HomeArrivalViewState extends State<HomeArrivalView> {
             }),
           ),
         ],
+      ),
+    );
+  }
+
+  // 알림 방법 선택 버튼 위젯 분리
+  Widget _buildNotificationMethodButton({
+    required String label,
+    required String value,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        constraints: const BoxConstraints(
+          minWidth: 100,
+          maxWidth: 140, // 최대 너비 제한
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+        decoration: BoxDecoration(
+          color: selected ? Colors.blue.shade50 : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? Colors.blue : Colors.grey.shade300,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Radio<String>(
+              value: value,
+              groupValue: _selectedNotificationMethod.value,
+              onChanged: (_) => onTap(),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
