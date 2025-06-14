@@ -1,14 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uuid/uuid.dart';
 // import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:watch_over/services/background_location_service.dart';
 import 'package:watch_over/services/background_task_service.dart';
 import 'package:watch_over/services/home_location_service.dart';
@@ -19,9 +16,6 @@ import 'package:watch_over/services/auth_service.dart';
 import 'package:watch_over/services/emergency_contact_service.dart';
 import 'package:watch_over/services/geofence_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-
-import 'package:watch_over/models/home_location_model.dart';
-import 'package:watch_over/models/user_model.dart';
 
 /// 귀가 알림 및 안전 도착 서비스
 class HomeArrivalService extends GetxController {
@@ -58,9 +52,7 @@ class HomeArrivalService extends GetxController {
   //     FlutterLocalNotificationsPlugin();
 
   // 서비스 의존성
-  late LocationService _locationService;
   late MessageService _messageService;
-  late AuthService _authService;
   late EmergencyContactService _emergencyContactService;
   HomeLocationService? _homeLocationService;
   late GeofenceService _geofenceService;
@@ -75,8 +67,8 @@ class HomeArrivalService extends GetxController {
   final RxBool isBackgroundEnabled = true.obs;
 
   // 위치 추적 설정
-  final int _defaultRadiusMeters = 30; // 기본 반경 30m
-  final int _defaultTrackingIntervalSeconds = 10; // 10초마다 위치 확인으로 변경
+// 기본 반경 30m
+// 10초마다 위치 확인으로 변경
   int _trackingIntervalSeconds = 10; // 기본값 10초로 변경
 
   Timer? _locationTrackingTimer;
@@ -121,8 +113,6 @@ class HomeArrivalService extends GetxController {
       }
 
       // 2. 서비스 찾기
-      _locationService = Get.find<LocationService>();
-      _authService = Get.find<AuthService>();
       _messageService = Get.find<MessageService>();
 
       // 3. EmergencyContactService 안전하게 등록
@@ -149,11 +139,7 @@ class HomeArrivalService extends GetxController {
       await _backgroundTaskService.init();
 
       // 8. 이벤트 핸들러 등록 (GeofenceService가 확실히 초기화된 후)
-      if (_geofenceService != null) {
-        _geofenceService.setEventHandler(_onGeofenceEvent);
-      } else {
-        debugPrint('⚠️ _geofenceService가 null입니다. 이벤트 핸들러를 등록할 수 없습니다.');
-      }
+      _geofenceService.setEventHandler(_onGeofenceEvent);
 
       // 9. 설정 로드
       await _loadSettings();
@@ -297,7 +283,7 @@ class HomeArrivalService extends GetxController {
         }
 
         // 메시지 발송
-        final AuthService authService = Get.find<AuthService>();
+        Get.find<AuthService>();
         final MessageService messageService = Get.find<MessageService>();
         int successCount = 0;
 
@@ -436,13 +422,6 @@ class HomeArrivalService extends GetxController {
     if (messageRecipientIds.isEmpty) {
       debugPrint('❌ 메시지 수신자가 지정되지 않았습니다. 메시지를 보낼 수 없습니다.');
       lastEventMessage.value = '메시지 수신자가 지정되지 않아 알림을 보낼 수 없습니다.';
-      return;
-    }
-
-    // EmergencyContactService null 체크
-    if (_emergencyContactService == null) {
-      debugPrint('❌ EmergencyContactService가 초기화되지 않았습니다.');
-      lastEventMessage.value = '긴급 연락처 서비스가 초기화되지 않았습니다.';
       return;
     }
 
@@ -886,23 +865,21 @@ class HomeArrivalService extends GetxController {
       trackingStatus.value = '집 근처 감지 중...';
 
       // 홈 위치 정보 직접 저장 (백그라운드 서비스를 위한 백업)
-      if (homeLocation != null) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setDouble('home_latitude', homeLocation.latitude);
-        await prefs.setDouble('home_longitude', homeLocation.longitude);
-        await prefs.setStringList(
-            'home_arrival_recipient_ids', messageRecipientIds);
-        await prefs.setString('home_arrival_message', arrivalMessage.value);
-        await prefs.setBool('home_arrival_tracking_enabled', true);
-        await prefs.setInt('home_arrival_radius', homeRadiusMeters.value);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble('home_latitude', homeLocation.latitude);
+      await prefs.setDouble('home_longitude', homeLocation.longitude);
+      await prefs.setStringList(
+          'home_arrival_recipient_ids', messageRecipientIds);
+      await prefs.setString('home_arrival_message', arrivalMessage.value);
+      await prefs.setBool('home_arrival_tracking_enabled', true);
+      await prefs.setInt('home_arrival_radius', homeRadiusMeters.value);
 
-        debugPrint(
-            '✅ 백그라운드 서비스를 위한 홈 위치 정보 저장: (${homeLocation.latitude}, ${homeLocation.longitude})');
-        debugPrint(
-            '✅ 백그라운드 서비스를 위한 수신자 정보 저장: ${messageRecipientIds.join(", ")}');
-        debugPrint(
-            '✅ 백그라운드 서비스를 위한 설정 저장: 반경=${homeRadiusMeters.value}m, 메시지=${arrivalMessage.value}');
-      }
+      debugPrint(
+          '✅ 백그라운드 서비스를 위한 홈 위치 정보 저장: (${homeLocation.latitude}, ${homeLocation.longitude})');
+      debugPrint(
+          '✅ 백그라운드 서비스를 위한 수신자 정보 저장: ${messageRecipientIds.join(", ")}');
+      debugPrint(
+          '✅ 백그라운드 서비스를 위한 설정 저장: 반경=${homeRadiusMeters.value}m, 메시지=${arrivalMessage.value}');
 
       await _saveSettings();
       _hasSentArrivalMessage = false;
@@ -1042,11 +1019,6 @@ class HomeArrivalService extends GetxController {
           debugPrint('❌ 직접 위치 가져오기 실패: $e');
           return;
         }
-      }
-
-      if (currentLocation == null) {
-        debugPrint('⚠️ 현재 위치를 가져올 수 없어 위치 확인을 건너뜁니다.');
-        return;
       }
 
       // 집과의 거리 계산 (미터 단위)

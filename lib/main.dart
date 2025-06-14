@@ -12,7 +12,6 @@ import 'package:workmanager/workmanager.dart';
 import 'services/auth_service.dart';
 import 'services/message_service.dart';
 import 'services/home_arrival_service.dart';
-import 'services/geofence_service.dart';
 import 'views/login_view.dart';
 import 'views/register_view.dart';
 import 'views/forgot_password_view.dart';
@@ -27,10 +26,8 @@ import 'services/emergency_contact_service.dart';
 import 'services/location_service.dart';
 import 'views/map_view.dart';
 import 'views/settings/settings_view.dart';
-import 'services/settings_service.dart';
 import 'utils/url_handler.dart';
 import 'views/profile/profile_edit_view.dart';
-import 'services/map_api_service.dart';
 import 'views/home_arrival_view.dart';
 import 'services/location_sharing_service.dart';
 import 'controllers/location_sharing_controller.dart';
@@ -227,7 +224,7 @@ class _MyAppState extends State<MyApp> {
     try {
       if (!Get.isRegistered<MessageService>()) {
         debugPrint('💬 MessageService 초기화 시작...');
-        final messageService = Get.put(MessageService(), permanent: true);
+        Get.put(MessageService(), permanent: true);
         debugPrint('✅ MessageService 초기화 성공');
       }
     } catch (e) {
@@ -238,7 +235,7 @@ class _MyAppState extends State<MyApp> {
     try {
       if (!Get.isRegistered<LocationService>()) {
         debugPrint('🗺️ LocationService 초기화 시작...');
-        final locationService = Get.put(LocationService(), permanent: true);
+        Get.put(LocationService(), permanent: true);
         debugPrint('✅ LocationService 초기화 성공');
       }
     } catch (e) {
@@ -249,8 +246,7 @@ class _MyAppState extends State<MyApp> {
     try {
       if (!Get.isRegistered<EmergencyContactService>()) {
         debugPrint('☎️ EmergencyContactService 초기화 시작...');
-        final emergencyContactService =
-            Get.put(EmergencyContactService(), permanent: true);
+        Get.put(EmergencyContactService(), permanent: true);
         debugPrint('✅ EmergencyContactService 초기화 성공');
       }
     } catch (e) {

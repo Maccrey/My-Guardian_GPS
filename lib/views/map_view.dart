@@ -3,7 +3,6 @@ import 'package:get/get.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../services/location_service.dart';
 import '../services/map_api_service.dart';
-import 'dart:io' show Platform;
 
 class MapView extends StatefulWidget {
   // LocationService 인스턴스 가져오기

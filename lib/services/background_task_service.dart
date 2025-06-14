@@ -1,12 +1,9 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:watch_over/services/notification_service.dart';
-import 'package:watch_over/services/home_arrival_service.dart';
-import 'package:watch_over/services/home_location_service.dart';
 
 /// 백그라운드 작업 서비스
 /// Workmanager를 사용하여 백그라운드 작업을 관리합니다.

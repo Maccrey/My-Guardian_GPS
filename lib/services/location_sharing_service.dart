@@ -432,14 +432,12 @@ class LocationSharingService extends GetxController {
         // MessageService에게 위치 공유 종료 알림 (추가)
         try {
           final messageService = Get.find<MessageService>();
-          if (messageService != null) {
-            print('🔔 [서비스] MessageService에 위치 공유 종료 알림');
-            messageService.activeLocationSharing.remove(receiverId);
-            messageService.activeLocationSharing.refresh();
+          print('🔔 [서비스] MessageService에 위치 공유 종료 알림');
+          messageService.activeLocationSharing.remove(receiverId);
+          messageService.activeLocationSharing.refresh();
 
-            // 메시지 목록 강제 새로고침 (UI 갱신을 위해)
-            messageService.refreshMessages();
-          }
+          // 메시지 목록 강제 새로고침 (UI 갱신을 위해)
+          messageService.refreshMessages();
         } catch (e) {
           print('⚠️ [서비스] MessageService 업데이트 오류 (무시됨): $e');
         }
@@ -459,11 +457,9 @@ class LocationSharingService extends GetxController {
         // 추가: 위치 공유 상태를 전역적으로 검사하고 정리
         try {
           final messageService = Get.find<MessageService>();
-          if (messageService != null) {
-            messageService.activeLocationSharing.remove(receiverId);
-            messageService.activeLocationSharing.refresh();
-            messageService.refreshMessages();
-          }
+          messageService.activeLocationSharing.remove(receiverId);
+          messageService.activeLocationSharing.refresh();
+          messageService.refreshMessages();
         } catch (e) {
           print('⚠️ [서비스] MessageService 업데이트 오류 (무시됨): $e');
         }
@@ -780,10 +776,11 @@ class LocationSharingService extends GetxController {
           .get()
           .catchError((e) {
         print('⚠️ [위치 공유] 문서 존재 확인 오류: $e');
+        // ignore: invalid_return_type_for_catch_error
         return null;
       });
 
-      if (docSnapshot == null || !docSnapshot.exists) {
+      if (!docSnapshot.exists) {
         print('⚠️ [위치 공유] Firebase 문서가 존재하지 않음: 위치 공유가 이미 중지됨');
         // 로컬 상태 정리 - 문서가 없다면 위치 공유가 중지된 것으로 간주
         _activeSharing.remove(receiverId);
@@ -1095,10 +1092,8 @@ class LocationSharingService extends GetxController {
         // MessageService에게도 메시지 추가 알림 (동기화)
         try {
           final messageService = Get.find<MessageService>();
-          if (messageService != null) {
-            print('🔔 [서비스] MessageService에 새 메시지 알림');
-            messageService.refreshMessages(); // 메시지 목록 새로고침
-          }
+          print('🔔 [서비스] MessageService에 새 메시지 알림');
+          messageService.refreshMessages(); // 메시지 목록 새로고침
         } catch (e) {
           print('⚠️ [서비스] MessageService 업데이트 오류 (무시됨): $e');
         }

@@ -8,18 +8,13 @@ import 'package:flutter_background_service_android/flutter_background_service_an
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:watch_over/services/home_location_service.dart';
 import 'package:watch_over/services/notification_service.dart';
-import 'package:watch_over/services/home_arrival_service.dart';
-import 'package:watch_over/models/home_location_model.dart';
 import 'package:watch_over/services/message_service.dart';
 
 /// 백그라운드 위치 추적 서비스
 /// 앱이 백그라운드에 있을 때도 위치 추적 및 귀가 알림 기능을 제공합니다.
 class BackgroundLocationService {
-  static const String _serviceName = 'home_arrival_background_service';
   static const String _channelId = 'home_arrival_foreground_channel';
-  static const String _channelName = '귀가 알림 서비스';
   static const int _notificationId = 888;
 
   // 싱글톤 인스턴스
@@ -480,8 +475,8 @@ void _onStart(ServiceInstance service) async {
     final distance = Geolocator.distanceBetween(
       position.latitude,
       position.longitude,
-      homeLat!,
-      homeLng!,
+      homeLat,
+      homeLng,
     );
 
     debugPrint(

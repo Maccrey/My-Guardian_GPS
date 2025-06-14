@@ -12,7 +12,6 @@ import '../services/emergency_contact_service.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'location_sharing/location_sharing_button.dart';
 
 class EmergencyContactsView extends StatefulWidget {
   const EmergencyContactsView({Key? key}) : super(key: key);
@@ -417,8 +416,6 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
     TextEditingController? phoneCtrl,
     TextEditingController? descCtrl,
     TextEditingController? searchCtrl,
-    List<UserModel>? results,
-    bool? searching,
     bool? appUserMode,
     UserModel? selected,
     bool? isLocationSharingEnabled,
@@ -427,8 +424,6 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
     final phoneController = phoneCtrl ?? TextEditingController();
     final descriptionController = descCtrl ?? TextEditingController();
     final searchController = searchCtrl ?? TextEditingController();
-    final searchResults = results ?? <UserModel>[];
-    final isSearching = searching ?? false;
     final selectedUser = selected;
     final canShareLocation = isLocationSharingEnabled ?? false;
 
@@ -1350,158 +1345,6 @@ class _EmergencyContactsViewState extends State<EmergencyContactsView>
   }
 
   // 연락처 상세 정보 바텀 시트
-  void _showContactDetailBottomSheet(
-      BuildContext context, EmergencyContact contact) {
-    // 디버그: 연락처 정보 로깅
-    print(
-        '연락처 상세 - ID: ${contact.id}, 이름: ${contact.name}, 앱 사용자: ${contact.isAppUser}, 관계: ${contact.relationship}');
-
-    // 위치 공유 버튼 가져오기
-    Widget locationSharingButton = const SizedBox.shrink();
-    if (contact.isAppUser && contact.userId != null) {
-      try {
-        // 위치 공유 버튼 위젯 사용
-        locationSharingButton = Padding(
-          padding: const EdgeInsets.only(top: 8.0),
-          child: LocationSharingButton(
-            contactId: contact.userId!,
-            contactName: contact.name,
-            isAppUser: contact.isAppUser,
-          ),
-        );
-        print('✅ 위치 공유 버튼 생성 성공: userId=${contact.userId}');
-      } catch (e) {
-        print('⚠️ 위치 공유 버튼 생성 오류: $e');
-      }
-    }
-
-    // Get.bottomSheet 사용 (showModalBottomSheet 대신)
-    Get.bottomSheet(
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 연락처 프로필 헤더
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(
-                backgroundColor: Get.theme.colorScheme.primary.withOpacity(0.2),
-                child: Icon(
-                  contact.isAppUser ? Icons.person : Icons.phone,
-                  color: Get.theme.colorScheme.primary,
-                ),
-              ),
-              title: Text(
-                contact.name,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
-              ),
-              subtitle: Text(
-                contact.relationship ?? (contact.description ?? ''),
-                style: TextStyle(
-                  color: Colors.grey[600],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // 구분선
-            Divider(color: Colors.grey[300]),
-
-            // 연락처 정보
-            ListTile(
-              leading: const Icon(Icons.phone),
-              title: const Text('전화번호'),
-              subtitle: Text(contact.phoneNumber),
-              trailing: IconButton(
-                icon: const Icon(Icons.call),
-                onPressed: () => _callPhone(contact.phoneNumber),
-              ),
-            ),
-
-            // 추가 정보 (있는 경우)
-            if (contact.description != null && contact.description!.isNotEmpty)
-              ListTile(
-                leading: const Icon(Icons.info_outline),
-                title: const Text('설명'),
-                subtitle: Text(contact.description!),
-              ),
-
-            // 위치 공유 버튼 (앱 사용자인 경우)
-            locationSharingButton,
-
-            const SizedBox(height: 16),
-
-            // 연락처 관리 버튼
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                // 수정 버튼
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Get.back(); // 바텀시트 닫기
-                    _showEditContactDialog(context, contact);
-                  },
-                  icon: const Icon(Icons.edit),
-                  label: const Text('수정'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Get.theme.colorScheme.primary,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-
-                // 삭제 버튼
-                OutlinedButton.icon(
-                  onPressed: () {
-                    Get.back(); // 바텀시트 닫기
-                    _showDeleteContactDialog(context, contact);
-                  },
-                  icon: const Icon(Icons.delete),
-                  label: const Text('삭제'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-    );
-  }
 
   // 전화 걸기 기능
-  Future<void> _callPhone(String phoneNumber) async {
-    final Uri phoneUri = Uri(scheme: 'tel', path: phoneNumber);
-    try {
-      if (await canLaunchUrl(phoneUri)) {
-        await launchUrl(phoneUri);
-      } else {
-        Get.snackbar(
-          '전화 오류',
-          '전화를 걸 수 없습니다.',
-          snackPosition: SnackPosition.BOTTOM,
-        );
-      }
-    } catch (e) {
-      print('전화 걸기 오류: $e');
-      Get.snackbar(
-        '전화 오류',
-        '전화를 걸 수 없습니다: $e',
-        snackPosition: SnackPosition.BOTTOM,
-      );
-    }
-  }
 }

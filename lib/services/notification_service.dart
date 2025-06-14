@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 // import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:io';
 
 /// 알림 서비스
 /// 로컬 알림을 관리하고 표시하는 기능을 제공합니다.

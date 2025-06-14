@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:uuid/uuid.dart';
 import '../models/user_model.dart';
 import '../models/emergency_contact_model.dart';
 import '../services/emergency_contact_service.dart';
 import '../services/auth_service.dart';
 
 class UserSearchContactView extends StatefulWidget {
-  const UserSearchContactView({Key? key}) : super(key: key);
+  const UserSearchContactView({super.key});
 
   @override
   State<UserSearchContactView> createState() => _UserSearchContactViewState();

@@ -74,7 +74,6 @@ class SOSController extends GetxController {
 
   Timer? _timer;
   AudioPlayer? _audioPlayer;
-  bool _isAudioInitialized = false;
   bool _isDisposed = false;
   Timer? _volumeKeeper;
 
@@ -130,11 +129,9 @@ class SOSController extends GetxController {
       _audioPlayer = AudioPlayer();
       await _audioPlayer!.setLoopMode(LoopMode.one); // 소리 반복 설정
       await _audioPlayer!.setVolume(1.0); // 최대 볼륨으로 설정
-      _isAudioInitialized = true;
       debugPrint('✅ 오디오 플레이어 초기화 성공');
     } catch (e) {
       debugPrint('⚠️ 오디오 플레이어 초기화 오류: $e');
-      _isAudioInitialized = false;
     }
   }
 

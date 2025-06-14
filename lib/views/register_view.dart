@@ -221,8 +221,7 @@ class RegisterView extends StatelessWidget {
                           ),
                         )),
                     Obx(() {
-                      if (controller.error != null &&
-                          controller.selectedCountry.value.isEmpty) {
+                      if (controller.selectedCountry.value.isEmpty) {
                         return Padding(
                           padding: const EdgeInsets.only(left: 12, top: 8),
                           child: Text(

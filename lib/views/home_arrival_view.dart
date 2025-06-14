@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:uuid/uuid.dart';
 import 'package:geocoding/geocoding.dart';
 import '../models/home_location_model.dart';
 import '../models/user_model.dart';
@@ -330,7 +329,7 @@ class _HomeArrivalViewState extends State<HomeArrivalView>
 
         // JSON 형식 메시지 전송
         final success = await messageService.sendMessage(
-          receiverId: selectedUser.uid ?? '',
+          receiverId: selectedUser.uid,
           content: locationContent,
           messageType: 'location_arrival',
         );
@@ -1047,7 +1046,7 @@ class _HomeArrivalViewState extends State<HomeArrivalView>
                             if (_selectedNotificationMethod.value == 'user' &&
                                 _selectedUser.value != null) {
                               await _homeArrivalService.setMessageRecipients(
-                                  [_selectedUser.value!.uid!]);
+                                  [_selectedUser.value!.uid]);
                             } else if (_selectedNotificationMethod.value ==
                                     'emergency' &&
                                 _selectedEmergencyContact.value != null) {

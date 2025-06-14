@@ -1,10 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
 import '../models/message_model.dart';
@@ -15,8 +13,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/location_message_model.dart';
 
 class MessageService extends GetxController {
-  static const String _localStorageKey = 'local_messages';
-
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final AuthService _authService = Get.find<AuthService>();
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -785,7 +781,7 @@ class MessageService extends GetxController {
             : message.senderId;
 
         // 상대방 ID 정규화 (타 서비스와 동일하게)
-        final String normalizedOtherUserId = _normalizeUserId(otherUserId);
+        _normalizeUserId(otherUserId);
 
         // chatRoomId가 있으면 먼저 확인 (위치 공유 메시지 등의 경우)
         if (message.chatRoomId != null && message.chatRoomId!.isNotEmpty) {
